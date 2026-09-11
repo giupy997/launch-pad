@@ -342,6 +342,11 @@ export const launchpadAbi = [
         "name": "quoteAsset",
         "type": "address",
         "internalType": "address"
+      },
+      {
+        "name": "feesToHolders_",
+        "type": "bool",
+        "internalType": "bool"
       }
     ],
     "outputs": [
@@ -486,6 +491,25 @@ export const launchpadAbi = [
         "name": "",
         "type": "address",
         "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "feesToHolders",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
       }
     ],
     "stateMutability": "view"
@@ -1272,6 +1296,12 @@ export const launchpadAbi = [
         "type": "string",
         "indexed": false,
         "internalType": "string"
+      },
+      {
+        "name": "feesToHolders",
+        "type": "bool",
+        "indexed": false,
+        "internalType": "bool"
       }
     ],
     "anonymous": false

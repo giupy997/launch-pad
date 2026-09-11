@@ -11,7 +11,7 @@ import { useLaunchpadAddress, useAppChain, ZERO_ADDRESS } from "@/lib/hooks";
 import { QUOTE_ASSETS } from "@/lib/config";
 import { fmtUnits } from "@/lib/format";
 
-/** Accrued creator fee earnings (50% of trade fees) per quote asset, with
+/** Accrued creator fee earnings (80% of trade fees on keep-mode tokens) per quote asset, with
  *  claim buttons. Renders nothing on deployments without creator fees. */
 export function CreatorFees() {
   const pad = useLaunchpadAddress();
@@ -77,7 +77,7 @@ export function CreatorFees() {
           {(error as { shortMessage?: string }).shortMessage ?? error.message}
         </p>
       )}
-      <p className="mt-1 text-[11px] text-zinc-600">50% of the 1% trade fee on your tokens.</p>
+      <p className="mt-1 text-[11px] text-zinc-600">80% of the 1% trade fee on your keep-mode tokens.</p>
     </div>
   );
 }

@@ -72,7 +72,13 @@ contract LaunchpadTest is Test {
 
     function _create() internal returns (address) {
         vm.prank(alice);
-        return pad.createToken("Test Coin", "TEST", 0, _meta(), address(0));
+        return pad.createToken("Test Coin", "TEST", 0, _meta(), address(0), false);
+    }
+
+    /// Token launched in holders-rewards mode: the whole fee pot is cashback.
+    function _createRewards() internal returns (address) {
+        vm.prank(alice);
+        return pad.createToken("Rewards Coin", "RWD", 0, _meta(), address(0), true);
     }
 
     // ------------------------------------------------------------- creation
@@ -86,7 +92,7 @@ contract LaunchpadTest is Test {
 
     function test_createWithInitialBuy() public {
         vm.prank(alice);
-        address token = pad.createToken{value: 0.1 ether}("Test", "TST", 0, _meta(), address(0));
+        address token = pad.createToken{value: 0.1 ether}("Test", "TST", 0, _meta(), address(0), false);
         assertGt(LaunchToken(token).balanceOf(alice), 0);
     }
 
@@ -125,13 +131,25 @@ contract LaunchpadTest is Test {
         pad.buy{value: 1 ether}(token, quoted);
 
         assertEq(LaunchToken(token).balanceOf(bob), quoted);
-        // 1% fee: 50% creator (alice), 30% holder cashback, 20% treasury
+        // 1% fee, creator mode: the whole 80% pot to alice, 20% treasury
         assertEq(treasury.balance, 0.002 ether);
-        assertEq(pad.creatorFees(alice, address(0)), 0.005 ether);
-        // bob is the only holder, so the whole cashback accrues to him
-        assertApproxEqAbs(pad.cashbackOf(token, bob), 0.003 ether, 1e12);
+        assertEq(pad.creatorFees(alice, address(0)), 0.008 ether);
+        assertEq(pad.cashbackOf(token, bob), 0);
         (,, uint256 realEth,,,,) = pad.curves(token);
         assertEq(realEth, 0.99 ether);
+    }
+
+    function test_buyFeesToHoldersMode() public {
+        address token = _createRewards();
+        vm.prank(bob);
+        pad.buy{value: 1 ether}(token, 0);
+
+        // 1% fee, holders mode: the whole 80% pot is cashback, 20% treasury
+        assertEq(treasury.balance, 0.002 ether);
+        assertEq(pad.creatorFees(alice, address(0)), 0);
+        // bob is the only holder, so the whole cashback accrues to him
+        assertApproxEqAbs(pad.cashbackOf(token, bob), 0.008 ether, 1e12);
+        assertTrue(pad.feesToHolders(token));
     }
 
     function test_creatorFeeAccruesOnSellToo() public {
@@ -143,7 +161,7 @@ contract LaunchpadTest is Test {
         pad.sell(token, bal, 0);
         vm.stopPrank();
         // fees from both legs accrued to alice, none lost
-        assertGt(pad.creatorFees(alice, address(0)), 0.005 ether); // buy fee + sell fee
+        assertGt(pad.creatorFees(alice, address(0)), 0.008 ether); // buy fee + sell fee
     }
 
     function test_claimCreatorFees() public {
@@ -175,14 +193,14 @@ contract LaunchpadTest is Test {
         vm.prank(bob);
         pad.buy{value: 1 ether}(token, 0);
 
-        assertEq(pad.creatorFees(vault, address(0)), 0.005 ether);
+        assertEq(pad.creatorFees(vault, address(0)), 0.008 ether);
         assertEq(pad.creatorFees(alice, address(0)), 0);
 
         // vault can claim
         uint256 before = vault.balance;
         vm.prank(vault);
         pad.claimCreatorFees(address(0));
-        assertEq(vault.balance - before, 0.005 ether);
+        assertEq(vault.balance - before, 0.008 ether);
     }
 
     function test_feeRedirectResetToCreator() public {
@@ -195,7 +213,7 @@ contract LaunchpadTest is Test {
 
         vm.prank(bob);
         pad.buy{value: 1 ether}(token, 0);
-        assertEq(pad.creatorFees(alice, address(0)), 0.005 ether);
+        assertEq(pad.creatorFees(alice, address(0)), 0.008 ether);
     }
 
     function test_onlyCreatorSetsFeeRecipient() public {
@@ -229,12 +247,12 @@ contract LaunchpadTest is Test {
     // ------------------------------------------------------------- cashback
 
     function test_cashbackClaim() public {
-        address token = _create();
+        address token = _createRewards();
         vm.prank(bob);
         pad.buy{value: 1 ether}(token, 0);
 
         uint256 claimable = pad.cashbackOf(token, bob);
-        assertApproxEqAbs(claimable, 0.003 ether, 1e12);
+        assertApproxEqAbs(claimable, 0.008 ether, 1e12);
 
         uint256 before = bob.balance;
         vm.prank(bob);
@@ -248,7 +266,7 @@ contract LaunchpadTest is Test {
     }
 
     function test_cashbackProRataAcrossHolders() public {
-        address token = _create();
+        address token = _createRewards();
         vm.prank(bob);
         pad.buy{value: 1 ether}(token, 0); // bob sole holder gets buy1 cashback
 
@@ -259,16 +277,16 @@ contract LaunchpadTest is Test {
 
         uint256 bobCb = pad.cashbackOf(token, bob);
         uint256 carolCb = pad.cashbackOf(token, carol);
-        // bob: all of buy1 (0.003) + his share of buy2; carol: only her share of buy2
-        assertGt(bobCb, 0.003 ether);
+        // bob: all of buy1 (0.008) + his share of buy2; carol: only her share of buy2
+        assertGt(bobCb, 0.008 ether);
         assertGt(carolCb, 0);
         assertLt(carolCb, bobCb);
-        // total distributed cashback matches 30% of both fees (0.006) within dust
-        assertApproxEqAbs(bobCb + carolCb, 0.006 ether, 1e12);
+        // total distributed cashback matches 80% of both fees (0.016) within dust
+        assertApproxEqAbs(bobCb + carolCb, 0.016 ether, 1e12);
     }
 
     function test_cashbackSurvivesPostGraduationTransfers() public {
-        address token = _create();
+        address token = _createRewards();
         _graduate(token);
         uint256 before = pad.cashbackOf(token, bob);
         assertGt(before, 0);
@@ -502,11 +520,11 @@ contract LaunchpadTest is Test {
 
     // ------------------------------------------------------- quote assets
 
-    function _createUsdCurve() internal returns (address token, MockUSD usd) {
+    function _createUsdCurve(bool feesToHolders) internal returns (address token, MockUSD usd) {
         usd = new MockUSD();
         pad.setQuoteAsset(address(usd), 4_000e6); // virtual reserve: 4000 mUSD
         vm.prank(alice);
-        token = pad.createToken("Stock Coin", "STK", 0, _meta(), address(usd));
+        token = pad.createToken("Stock Coin", "STK", 0, _meta(), address(usd), feesToHolders);
         usd.mint(bob, 1_000_000e6);
         vm.prank(bob);
         usd.approve(address(pad), type(uint256).max);
@@ -516,20 +534,20 @@ contract LaunchpadTest is Test {
         MockUSD usd = new MockUSD();
         vm.prank(alice);
         vm.expectRevert(Launchpad.QuoteAssetNotEnabled.selector);
-        pad.createToken("X", "X", 0, _meta(), address(usd));
+        pad.createToken("X", "X", 0, _meta(), address(usd), false);
     }
 
     function test_quoteCurveBuySellAndFees() public {
-        (address token, MockUSD usd) = _createUsdCurve();
+        (address token, MockUSD usd) = _createUsdCurve(false);
 
         vm.prank(bob);
         pad.buyWithQuote(token, 1_000e6, 0);
 
         assertGt(LaunchToken(token).balanceOf(bob), 0);
-        // 1% fee in mUSD: 50% creator, 30% cashback, 20% treasury
-        assertEq(pad.creatorFees(alice, address(usd)), 5e6);
+        // 1% fee in mUSD, creator mode: 80% pot to alice, 20% treasury
+        assertEq(pad.creatorFees(alice, address(usd)), 8e6);
         assertEq(usd.balanceOf(treasury), 2e6);
-        assertApproxEqAbs(pad.cashbackOf(token, bob), 3e6, 10);
+        assertEq(pad.cashbackOf(token, bob), 0);
 
         // native buy on a quote curve must revert
         vm.deal(bob, 1 ether);
@@ -546,16 +564,32 @@ contract LaunchpadTest is Test {
         vm.stopPrank();
         assertGt(usd.balanceOf(bob), usdBefore);
 
-        // claims in mUSD
+        // creator claim in mUSD
         vm.prank(alice);
         pad.claimCreatorFees(address(usd));
         assertGt(usd.balanceOf(alice), 0);
+    }
+
+    function test_quoteCurveHoldersMode() public {
+        (address token, MockUSD usd) = _createUsdCurve(true);
+
+        vm.prank(bob);
+        pad.buyWithQuote(token, 1_000e6, 0);
+
+        // 1% fee in mUSD, holders mode: 80% pot is cashback, 20% treasury
+        assertEq(pad.creatorFees(alice, address(usd)), 0);
+        assertEq(usd.balanceOf(treasury), 2e6);
+        assertApproxEqAbs(pad.cashbackOf(token, bob), 8e6, 10);
+
+        // cashback claim pays out mUSD
+        uint256 before = usd.balanceOf(bob);
         vm.prank(bob);
         pad.claimCashback(token);
+        assertGt(usd.balanceOf(bob), before);
     }
 
     function test_quoteCurveGraduatesAndMigratesInAsset() public {
-        (address token, MockUSD usd) = _createUsdCurve();
+        (address token, MockUSD usd) = _createUsdCurve(false);
 
         // curve raises ~ 4000 * 800/250 = 12800 mUSD; buy way past it
         vm.prank(bob);

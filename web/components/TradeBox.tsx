@@ -58,10 +58,12 @@ export function TradeBox({
   token,
   symbol,
   curve,
+  feesToHolders = false,
 }: {
   token: `0x${string}`;
   symbol: string;
   curve: CurveInfo;
+  feesToHolders?: boolean;
 }) {
   const padMaybe = useLaunchpadAddress();
   const deployed = !!padMaybe;
@@ -351,7 +353,9 @@ export function TradeBox({
       </form>
 
       <SlippageControl bps={slippageBps} onChange={setSlippageBps} />
-      <p className="text-xs text-zinc-600">1% fee · 50% creator · 30% holders · 20% treasury</p>
+      <p className="text-xs text-zinc-600">
+        1% fee · {feesToHolders ? "80% holder cashback" : "80% creator"} · 20% treasury
+      </p>
 
       {isSuccess && hash && (
         <p className="text-sm text-zinc-300">

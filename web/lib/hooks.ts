@@ -49,6 +49,7 @@ export type TokenInfo = {
   symbol: string;
   curve: CurveInfo;
   meta: TokenMeta;
+  feesToHolders: boolean;
 };
 
 const REFETCH = { refetchInterval: 5_000 } as const;
@@ -135,6 +136,7 @@ export function useTokens() {
     contracts: tokenAddrs.flatMap((t) => [
       { address: t, abi: launchTokenAbi, functionName: "name" as const },
       { address: t, abi: launchTokenAbi, functionName: "symbol" as const },
+      { address: padSafe, abi: launchpadAbi, functionName: "feesToHolders" as const, args: [t] as const },
     ]),
     query: { enabled: tokenAddrs.length > 0, ...IMMUTABLE, placeholderData: keepPreviousData },
   });
@@ -163,8 +165,9 @@ export function useTokens() {
     if (!statics || !curves) return [];
     return tokenAddrs
       .map((address, i) => {
-        const name = statics[i * 2];
-        const symbol = statics[i * 2 + 1];
+        const name = statics[i * 3];
+        const symbol = statics[i * 3 + 1];
+        const feesToHolders = statics[i * 3 + 2];
         const curve = curves[i];
         const meta = metas?.[i];
         if (
@@ -182,6 +185,7 @@ export function useTokens() {
             meta?.status === "success"
               ? parseMeta(meta.result)
               : { logoURI: "", website: "", twitter: "", telegram: "", livestream: "", description: "" },
+          feesToHolders: feesToHolders?.status === "success" ? (feesToHolders.result as boolean) : false,
         };
       })
       .filter((t): t is TokenInfo => t !== null)

@@ -35,11 +35,13 @@ contract Launchpad is Ownable, ReentrancyGuard {
 
     uint256 public constant FEE_DENOMINATOR = 10_000;
     uint256 public feeBps = 100; // 1% on buys and sells
-    /// Fee split: creator share + holder cashback share; the remainder goes
-    /// to the treasury. Creator fees and cashback are pull-based (claim
-    /// functions), so no external address can ever block trades.
-    uint256 public creatorFeeShareBps = 5_000; // 50% to the token creator
-    uint256 public holderCashbackBps = 3_000; //  30% back to token holders
+    /// Fee split: creatorFeeShareBps + holderCashbackBps form one pot that
+    /// goes ENTIRELY to the creator or ENTIRELY to the holders, per the
+    /// token's launch-time `feesToHolders` choice; the remainder goes to the
+    /// treasury. Creator fees and cashback are pull-based (claim functions),
+    /// so no external address can ever block trades.
+    uint256 public creatorFeeShareBps = 5_000;
+    uint256 public holderCashbackBps = 3_000;
     address public treasury;
     IDexMigrator public migrator;
 
@@ -90,11 +92,17 @@ contract Launchpad is Ownable, ReentrancyGuard {
     /// Per-token override for where the creator share of fees accrues.
     /// address(0) = the token's creator.
     mapping(address token => address) public feeRecipient;
+    /// Launch-time fee destination, immutable so buyers can rely on it:
+    /// true = the whole creator+holders pot is holder cashback, false = it
+    /// all accrues to the creator.
+    mapping(address token => bool) public feesToHolders;
     address[] public allTokens;
 
     // ---------------------------------------------------------------- events
 
-    event TokenCreated(address indexed token, address indexed creator, string name, string symbol);
+    event TokenCreated(
+        address indexed token, address indexed creator, string name, string symbol, bool feesToHolders
+    );
     event MetadataUpdated(
         address indexed token, string logoURI, string website, string twitter, string telegram, string livestream
     );
@@ -135,12 +143,16 @@ contract Launchpad is Ownable, ReentrancyGuard {
 
     /// @notice Deploy a new token and open its curve. Sending ETH performs an
     ///         initial buy for the creator in the same transaction.
+    ///         `feesToHolders_` fixes the fee destination forever: true sends
+    ///         the whole creator+holders pot to holders as cashback, false
+    ///         keeps it all for the creator.
     function createToken(
         string calldata name,
         string calldata symbol,
         uint256 minTokensOut,
         TokenMetadata calldata meta,
-        address quoteAsset
+        address quoteAsset,
+        bool feesToHolders_
     ) external payable nonReentrant returns (address token) {
         uint256 vQuote = VIRTUAL_ETH;
         if (quoteAsset != address(0)) {
@@ -158,8 +170,9 @@ contract Launchpad is Ownable, ReentrancyGuard {
             quoteAsset: quoteAsset
         });
         tokenMetadata[token] = meta;
+        if (feesToHolders_) feesToHolders[token] = true;
         allTokens.push(token);
-        emit TokenCreated(token, msg.sender, name, symbol);
+        emit TokenCreated(token, msg.sender, name, symbol, feesToHolders_);
         emit MetadataUpdated(token, meta.logoURI, meta.website, meta.twitter, meta.telegram, meta.livestream);
 
         if (quoteAsset == address(0)) {
@@ -375,22 +388,28 @@ contract Launchpad is Ownable, ReentrancyGuard {
 
     // ---------------------------------------------------------------- fees
 
-    /// @notice Splits a trade fee: creator share and holder cashback accrue
-    ///         for pull-withdrawal, the remainder goes straight to the treasury.
+    /// @notice Splits a trade fee: the creator+holders pot accrues either to
+    ///         the creator or to holder cashback (the token's launch-time
+    ///         choice), pull-withdrawal both ways; the remainder goes
+    ///         straight to the treasury.
     function _splitFee(address token, address creator, address asset, uint256 fee) internal {
-        uint256 creatorCut = (fee * creatorFeeShareBps) / FEE_DENOMINATOR;
-        if (creatorCut > 0) {
+        uint256 pot = (fee * (creatorFeeShareBps + holderCashbackBps)) / FEE_DENOMINATOR;
+        uint256 creatorCut;
+        uint256 cashbackCut;
+        if (feesToHolders[token]) {
+            cashbackCut = pot;
+            uint256 sold = curves[token].sold;
+            if (cashbackCut > 0 && sold > 0) {
+                accCashbackPerShare[token] += (cashbackCut * ACC_PRECISION) / sold;
+            } else {
+                // no holders yet: fold the cashback into the treasury share
+                cashbackCut = 0;
+            }
+        } else if (pot > 0) {
+            creatorCut = pot;
             address recipient = feeRecipient[token];
             if (recipient == address(0)) recipient = creator;
             creatorFees[recipient][asset] += creatorCut;
-        }
-        uint256 cashbackCut = (fee * holderCashbackBps) / FEE_DENOMINATOR;
-        uint256 sold = curves[token].sold;
-        if (cashbackCut > 0 && sold > 0) {
-            accCashbackPerShare[token] += (cashbackCut * ACC_PRECISION) / sold;
-        } else {
-            // no holders yet: fold the cashback into the treasury share
-            cashbackCut = 0;
         }
         _payOut(asset, treasury, fee - creatorCut - cashbackCut);
     }

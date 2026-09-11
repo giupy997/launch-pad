@@ -40,7 +40,7 @@ contract ZapRouterForkTest is Test {
         vm.prank(user);
         address token = pad.createToken(
             "Nvidia Fan", "NFAN", 0,
-            Launchpad.TokenMetadata("", "", "", "", "", ""), NVDA
+            Launchpad.TokenMetadata("", "", "", "", "", ""), NVDA, false
         );
 
         // WETH -500-> USDG -500-> NVDA

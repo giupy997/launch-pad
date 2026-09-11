@@ -29,6 +29,14 @@ export function TokenCard({ token: t }: { token: TokenInfo }) {
                 Pre-IPO
               </span>
             )}
+            {t.feesToHolders && (
+              <span
+                title="100% of the creator fee pot goes to holders as cashback"
+                className="font-mono text-[9px] tracking-widest uppercase border border-white rounded-full px-1.5 py-px shrink-0"
+              >
+                ✦ Rewards
+              </span>
+            )}
           </div>
           <div className="font-mono text-xs text-zinc-400">${t.symbol}</div>
         </div>

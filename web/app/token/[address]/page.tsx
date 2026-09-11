@@ -34,11 +34,12 @@ export default function TokenPage({ params }: { params: { address: string } }) {
   const explorer = useExplorer();
   const chain = useAppChain();
 
-  // name/symbol never change — read once; only curve + metadata poll.
+  // name/symbol/fee mode never change — read once; only curve + metadata poll.
   const { data: statics, isLoading: staticsLoading } = useReadContracts({
     contracts: [
       { address: token, abi: launchTokenAbi, functionName: "name" },
       { address: token, abi: launchTokenAbi, functionName: "symbol" },
+      { address: pad, abi: launchpadAbi, functionName: "feesToHolders", args: [token] },
     ],
     query: { ...IMMUTABLE },
   });
@@ -73,8 +74,9 @@ export default function TokenPage({ params }: { params: { address: string } }) {
       </div>
     );
 
-  const [nameR, symbolR] = statics;
+  const [nameR, symbolR, feeModeR] = statics;
   const [curveR, metaR] = dyn;
+  const feesToHolders = feeModeR?.status === "success" ? (feeModeR.result as boolean) : false;
   if (curveR.status !== "success" || (curveR.result as readonly unknown[])[0] === 0n) {
     return <p className="text-zinc-500">Token not found on this launchpad.</p>;
   }
@@ -107,6 +109,14 @@ export default function TokenPage({ params }: { params: { address: string } }) {
               {curve.graduated && (
                 <span className="ml-3 font-mono text-xs tracking-widest uppercase border border-white rounded-full px-2 py-0.5 align-middle">
                   Graduated
+                </span>
+              )}
+              {feesToHolders && (
+                <span
+                  title="100% of the creator fee pot goes to holders as cashback"
+                  className="ml-3 font-mono text-xs tracking-widest uppercase border border-white rounded-full px-2 py-0.5 align-middle"
+                >
+                  ✦ Rewards
                 </span>
               )}
             </h1>
@@ -178,8 +188,10 @@ export default function TokenPage({ params }: { params: { address: string } }) {
       </div>
 
       <div className="order-1 lg:order-2 space-y-6">
-        <TradeBox token={token} symbol={symbol} curve={curve} />
-        <CashbackCard token={token} quoteSymbol={q.symbol} quoteDecimals={q.decimals} />
+        <TradeBox token={token} symbol={symbol} curve={curve} feesToHolders={feesToHolders} />
+        {feesToHolders && (
+          <CashbackCard token={token} quoteSymbol={q.symbol} quoteDecimals={q.decimals} />
+        )}
         {user && user.toLowerCase() === curve.creator.toLowerCase() && (
           <CreatorPanel token={token} meta={meta} />
         )}

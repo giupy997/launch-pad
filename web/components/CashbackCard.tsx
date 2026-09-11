@@ -10,7 +10,7 @@ import { launchpadAbi } from "@/lib/abi";
 import { useLaunchpadAddress, useAppChain } from "@/lib/hooks";
 import { fmtUnits } from "@/lib/format";
 
-/** Holder cashback (30% of trade fees, pro-rata) for the connected wallet.
+/** Holder cashback (80% of trade fees on rewards-mode tokens, pro-rata) for the connected wallet.
  *  Renders nothing on deployments that predate the cashback system. */
 export function CashbackCard({
   token,
@@ -68,7 +68,7 @@ export function CashbackCard({
         {isSuccess && <span className="text-xs text-zinc-400">claimed ✓</span>}
       </div>
       <p className="mt-1 text-[11px] text-zinc-600">
-        30% of every trade fee is shared pro-rata with holders.
+        80% of every trade fee is shared pro-rata with holders.
       </p>
       {error && (
         <p className="mt-1 text-xs text-zinc-500 break-all">

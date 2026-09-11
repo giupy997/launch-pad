@@ -45,7 +45,7 @@ contract LiveGraduationForkTest is Test {
         vm.startPrank(whale);
         address token = PAD.createToken(
             "Dry Run", "DRY", 0,
-            Launchpad.TokenMetadata("", "", "", "", "", "graduation dry run"), address(0)
+            Launchpad.TokenMetadata("", "", "", "", "", "graduation dry run"), address(0), false
         );
         PAD.buy{value: 50 ether}(token, 0);
         vm.stopPrank();

@@ -56,7 +56,7 @@ contract UniV3MigratorForkTest is Test {
         vm.startPrank(whale);
         address token = pad.createToken(
             "Fork Test", "FORK", 0,
-            Launchpad.TokenMetadata("", "", "", "", "", ""), address(0)
+            Launchpad.TokenMetadata("", "", "", "", "", ""), address(0), false
         );
         pad.buy{value: 50 ether}(token, 0); // crosses graduation, surplus refunded
         vm.stopPrank();
@@ -96,7 +96,7 @@ contract UniV3MigratorForkTest is Test {
         usd.approve(address(pad), type(uint256).max);
         address token = pad.createToken(
             "Stock Pair", "SPX", 0,
-            Launchpad.TokenMetadata("", "", "", "", "", ""), address(usd)
+            Launchpad.TokenMetadata("", "", "", "", "", ""), address(usd), false
         );
         pad.buyWithQuote(token, 100_000e6, 0); // crosses graduation
         vm.stopPrank();
