@@ -11,7 +11,9 @@ import {
   useExplorer,
   useAppChain,
   quoteInfo,
+  IMMUTABLE,
 } from "@/lib/hooks";
+import { PRE_IPO_DISCLAIMER } from "@/lib/config";
 import { fmtUnits, fmtTokens, shortAddr } from "@/lib/format";
 import { TradeBox } from "@/components/TradeBox";
 import { TokenLogo } from "@/components/TokenLogo";
@@ -32,17 +34,24 @@ export default function TokenPage({ params }: { params: { address: string } }) {
   const explorer = useExplorer();
   const chain = useAppChain();
 
-  const { data, isLoading } = useReadContracts({
+  // name/symbol never change — read once; only curve + metadata poll.
+  const { data: statics, isLoading: staticsLoading } = useReadContracts({
     contracts: [
       { address: token, abi: launchTokenAbi, functionName: "name" },
       { address: token, abi: launchTokenAbi, functionName: "symbol" },
+    ],
+    query: { ...IMMUTABLE },
+  });
+  const { data: dyn, isLoading: dynLoading } = useReadContracts({
+    contracts: [
       { address: pad, abi: launchpadAbi, functionName: "curves", args: [token] },
       { address: pad, abi: launchpadAbi, functionName: "tokenMetadata", args: [token] },
     ],
     query: { refetchInterval: 5_000 },
   });
+  const isLoading = staticsLoading || dynLoading;
 
-  if (isLoading || !data)
+  if (isLoading || !statics || !dyn)
     return (
       <div className="grid gap-8 lg:grid-cols-[1fr_360px] animate-pulse">
         <div className="space-y-6">
@@ -64,7 +73,8 @@ export default function TokenPage({ params }: { params: { address: string } }) {
       </div>
     );
 
-  const [nameR, symbolR, curveR, metaR] = data;
+  const [nameR, symbolR] = statics;
+  const [curveR, metaR] = dyn;
   if (curveR.status !== "success" || (curveR.result as readonly unknown[])[0] === 0n) {
     return <p className="text-zinc-500">Token not found on this launchpad.</p>;
   }
@@ -106,7 +116,15 @@ export default function TokenPage({ params }: { params: { address: string } }) {
               </a>{" "}
               · creator {shortAddr(curve.creator)} · paired with{" "}
               <span className="text-zinc-300">{q.symbol}</span>
+              {q.preIpo && (
+                <span className="ml-2 font-mono text-[10px] tracking-widest uppercase border border-white rounded-full px-2 py-0.5 text-white">
+                  Pre-IPO
+                </span>
+              )}
             </p>
+            {q.preIpo && (
+              <p className="mt-1 text-[11px] text-zinc-600">{PRE_IPO_DISCLAIMER}</p>
+            )}
             {meta.description && (
               <p className="mt-2 text-sm text-zinc-400 max-w-lg">{meta.description}</p>
             )}

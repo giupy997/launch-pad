@@ -17,6 +17,11 @@ future multichain deployments (Monad, MegaETH, ...).
   - `src/LaunchToken.sol` — ERC-20 created by the launchpad; transfers locked
     until graduation
   - `src/interfaces/IDexMigrator.sol` — pluggable DEX adapter (one per chain)
+  - `script/launch-pre-markets.sh` + `script/enable-pre-markets.sh` — Notus
+    Pre-Markets: synthetic pre-IPO tokens (OpenAI, Anthropic, ...) launched as
+    regular ETH curves and, once graduated, whitelisted as quote assets so new
+    tokens can pair with them (stonkfun-style; clearly disclaimed as
+    price-discovery only — no equity, no backing, no affiliation)
   - `src/UniV3Migrator.sol` — graduation adapter for Robinhood Chain: seeds a
     full-range Uniswap v3 pool (1% tier), locks the LP NFT forever and splits
     the perpetual LP fees 50/50 creator/treasury (fork-tested against the
@@ -28,7 +33,9 @@ future multichain deployments (Monad, MegaETH, ...).
   - `/token/[address]`: curve stats, progress bar, buy/sell box with
     on-chain quotes, automatic approve and 1% slippage guard; price chart
     and trade feed built client-side from on-chain events (no indexer:
-    chunked `eth_getLogs` from the deployment block); embedded livestream
+    one full-range `eth_getLogs` where the RPC allows it, chunked otherwise,
+    with an incremental localStorage cache so revisits only scan new
+    blocks); embedded livestream
     player (YouTube/Twitch allowlist) with LIVE badges in Explore; creator
     panel to go live and redirect fees
   - `/swap`: ETH ↔ token swaps on the curve; token → token routed

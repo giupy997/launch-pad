@@ -24,6 +24,9 @@ export function Providers({
         },
       })
   );
+  if (typeof window !== "undefined" && process.env.NODE_ENV === "development") {
+    (window as unknown as Record<string, unknown>).__qc = queryClient;
+  }
   return (
     <WagmiProvider config={config} initialState={initialState}>
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>

@@ -24,6 +24,11 @@ export function TokenCard({ token: t }: { token: TokenInfo }) {
                 ● Live
               </span>
             )}
+            {q.preIpo && (
+              <span className="font-mono text-[9px] tracking-widest uppercase bg-white text-black rounded-full px-1.5 py-px shrink-0">
+                Pre-IPO
+              </span>
+            )}
           </div>
           <div className="font-mono text-xs text-zinc-400">${t.symbol}</div>
         </div>

@@ -64,7 +64,17 @@ export type QuoteAssetInfo = {
    *  [f1] = WETH -f1-> asset · [f1, f2] = WETH -f1-> USDG -f2-> asset.
    *  Omitted = no ETH route (direct asset buys only). */
   zapFees?: number[];
+  /** Synthetic Notus pre-market (pre-IPO company with no open market).
+   *  These are graduated Notus launch tokens whitelisted as quote assets:
+   *  community price discovery only — no equity, no backing, no affiliation.
+   *  Whitelist AFTER graduation only (pre-graduation transfers would block
+   *  the paired token's own migration). Their WETH pool from graduation is
+   *  the 1% tier, so zapFees: [10000] gives one-transaction ETH buys. */
+  preIpo?: boolean;
 };
+
+export const PRE_IPO_DISCLAIMER =
+  "Synthetic community pre-market: price discovery only. No equity, no backing, no affiliation with the company.";
 export const QUOTE_ASSETS: Record<number, QuoteAssetInfo[]> = {
   [giwaSepolia.id]: [{ address: null, symbol: "ETH", decimals: 18 }],
   [robinhood.id]: [
@@ -80,6 +90,8 @@ export const QUOTE_ASSETS: Record<number, QuoteAssetInfo[]> = {
     { address: "0x6330D8C3178a418788dF01a47479c0ce7CCF450b", symbol: "COIN", decimals: 18 },
     { address: "0x894E1EC2D74FFE5AEF8Dc8A9e84686acCB964F2A", symbol: "PLTR", decimals: 18 },
     { address: "0x86923f96303D656E4aa86D9d42D1e57ad2023fdC", symbol: "AMD", decimals: 18 },
+    // Notus Pre-Markets go here once graduated + whitelisted on-chain
+    // (script/enable-pre-markets.sh): { address, symbol, decimals: 18, preIpo: true, zapFees: [10000] }
   ],
 };
 
@@ -102,10 +114,12 @@ export const USDG: Record<number, `0x${string}` | undefined> = {
 export const L1_STANDARD_BRIDGE: `0x${string}` =
   "0x77b2ffc0F57598cAe1DB76cb398059cF5d10A7E7";
 
-// batch: true coalesces JSON-RPC requests fired in the same tick into a
-// single HTTP call — with multicall batching below it cuts RPC round trips
-// dramatically (every card/stat read used to be its own request).
-const transport = () => http(undefined, { batch: true });
+// batch coalesces JSON-RPC requests fired in the same tick into a single
+// HTTP call — with multicall batching below it cuts RPC round trips
+// dramatically. batchSize is capped: public RPCs take seconds to answer a
+// single mega-batch (e.g. 300 getBlock calls), while a few mid-size
+// parallel requests come back in a fraction of the time.
+const transport = () => http(undefined, { batch: { batchSize: 30, wait: 16 } });
 
 export const config = createConfig({
   // Cookie-backed state + ssr: the server renders with the persisted chain,

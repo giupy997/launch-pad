@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useAccount, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { launchpadAbi } from "@/lib/abi";
 import { useLaunchpadAddress, useExplorer, useAppChain, ZERO_ADDRESS } from "@/lib/hooks";
-import { robinhood, QUOTE_ASSETS } from "@/lib/config";
+import { robinhood, QUOTE_ASSETS, PRE_IPO_DISCLAIMER } from "@/lib/config";
 import { TokenLogo } from "@/components/TokenLogo";
 import { processLogoFile, dataUriBytes } from "@/lib/image";
 import { fmtTokens } from "@/lib/format";
@@ -203,25 +203,47 @@ export function CreateTokenForm() {
 
         <div>
           <Label>Pair with <span className="normal-case text-zinc-600">the asset your curve is priced in</span></Label>
-          <div className="flex gap-2 flex-wrap">
-            {quoteAssets.map((q, i) => (
-              <button
-                key={q.symbol}
-                type="button"
-                onClick={() => setQuoteIdx(i)}
-                className={`rounded-full px-3.5 py-1.5 text-xs font-mono ${
-                  i === quoteIdx
-                    ? "bg-white text-black"
-                    : "border border-zinc-700 text-zinc-400 hover:border-white hover:text-white"
-                }`}
-              >
-                {q.symbol}
-              </button>
-            ))}
+          <div className="space-y-2.5">
+            <div className="flex gap-2 flex-wrap">
+              {quoteAssets
+                .filter((q) => q.address === null)
+                .map((q) => (
+                  <QuoteButton key="ETH" label={q.symbol} selected={quote === q} onClick={() => setQuoteIdx(quoteAssets.indexOf(q))} />
+                ))}
+            </div>
+            {quoteAssets.some((q) => q.preIpo) && (
+              <div>
+                <div className="font-mono text-[9px] tracking-widest uppercase text-white mb-1.5">
+                  ◆ Pre-IPO <span className="text-zinc-600 normal-case">— private companies, priced by the market</span>
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  {quoteAssets
+                    .filter((q) => q.preIpo)
+                    .map((q) => (
+                      <QuoteButton key={q.symbol} label={q.symbol} selected={quote === q} onClick={() => setQuoteIdx(quoteAssets.indexOf(q))} />
+                    ))}
+                </div>
+              </div>
+            )}
+            {quoteAssets.some((q) => q.address !== null && !q.preIpo) && (
+              <div>
+                <div className="font-mono text-[9px] tracking-widest uppercase text-zinc-500 mb-1.5">
+                  Stocks
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  {quoteAssets
+                    .filter((q) => q.address !== null && !q.preIpo)
+                    .map((q) => (
+                      <QuoteButton key={q.symbol} label={q.symbol} selected={quote === q} onClick={() => setQuoteIdx(quoteAssets.indexOf(q))} />
+                    ))}
+                </div>
+              </div>
+            )}
           </div>
           {!isEthQuote && (
             <Hint>Buys, sells, fees and the graduation pool will all be in {quote.symbol}.</Hint>
           )}
+          {quote.preIpo && <Hint>⚠ {PRE_IPO_DISCLAIMER}</Hint>}
         </div>
 
         <div>
@@ -351,7 +373,7 @@ export function CreateTokenForm() {
             <Row k="Fee split" v="50% you · 30% holders · 20% treasury" strong />
             <Row k="Holders earn" v="Native ETH cashback" />
             <Row k="Supply" v="1B fixed" />
-            <Row k="Pair" v={quote.symbol} strong />
+            <Row k="Pair" v={quote.preIpo ? `${quote.symbol} · Pre-IPO` : quote.symbol} strong />
             <Row k="Curve" v={isEthQuote ? "800M · graduates at ~4 ETH" : `800M on the ${quote.symbol} curve`} />
             <Row
               k="Liquidity"
@@ -372,6 +394,30 @@ export function CreateTokenForm() {
         </div>
       </aside>
     </div>
+  );
+}
+
+function QuoteButton({
+  label,
+  selected,
+  onClick,
+}: {
+  label: string;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-full px-3.5 py-1.5 text-xs font-mono ${
+        selected
+          ? "bg-white text-black"
+          : "border border-zinc-700 text-zinc-400 hover:border-white hover:text-white"
+      }`}
+    >
+      {label}
+    </button>
   );
 }
 

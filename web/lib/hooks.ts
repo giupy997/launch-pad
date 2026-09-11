@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { keepPreviousData } from "@tanstack/react-query";
 import { useChainId, useReadContract, useReadContracts } from "wagmi";
 import { launchpadAbi, launchTokenAbi } from "./abi";
 import { APP_CHAINS, giwaSepolia, LAUNCHPAD_ADDRESS, QUOTE_ASSETS } from "./config";
@@ -51,6 +52,10 @@ export type TokenInfo = {
 };
 
 const REFETCH = { refetchInterval: 5_000 } as const;
+// name/symbol never change — fetch once per session, keep forever.
+export const IMMUTABLE = { staleTime: Infinity, gcTime: Infinity } as const;
+// metadata (logo, links, livestream) changes rarely — poll gently.
+export const META_REFETCH = { refetchInterval: 30_000, staleTime: 25_000 } as const;
 
 export function parseCurve(result: unknown): CurveInfo {
   const [vEth, vToken, realEth, sold, graduated, creator, quoteAsset] = result as readonly [
@@ -66,14 +71,17 @@ export function parseCurve(result: unknown): CurveInfo {
 }
 
 /** Display info for a curve's quote asset, resolved from the registry. */
-export function quoteInfo(chainId: number, quoteAsset: `0x${string}`): { symbol: string; decimals: number; address: `0x${string}` | null } {
-  if (quoteAsset === ZERO_ADDRESS) return { symbol: "ETH", decimals: 18, address: null };
+export function quoteInfo(
+  chainId: number,
+  quoteAsset: `0x${string}`
+): { symbol: string; decimals: number; address: `0x${string}` | null; preIpo: boolean } {
+  if (quoteAsset === ZERO_ADDRESS) return { symbol: "ETH", decimals: 18, address: null, preIpo: false };
   const found = (QUOTE_ASSETS[chainId] ?? []).find(
     (q) => q.address?.toLowerCase() === quoteAsset.toLowerCase()
   );
   return found
-    ? { symbol: found.symbol, decimals: found.decimals, address: found.address }
-    : { symbol: "?", decimals: 18, address: quoteAsset };
+    ? { symbol: found.symbol, decimals: found.decimals, address: found.address, preIpo: !!found.preIpo }
+    : { symbol: "?", decimals: 18, address: quoteAsset, preIpo: false };
 }
 
 export function parseMeta(result: unknown): TokenMeta {
@@ -102,6 +110,7 @@ export function useTokens() {
   const n = pad ? Number(count ?? 0n) : 0;
   const padSafe = (pad ?? "0x0000000000000000000000000000000000000000") as `0x${string}`;
 
+  // The token list is append-only: entries never change once read.
   const { data: addrs } = useReadContracts({
     contracts: Array.from({ length: n }, (_, i) => ({
       address: padSafe,
@@ -109,7 +118,7 @@ export function useTokens() {
       functionName: "allTokens" as const,
       args: [BigInt(i)] as const,
     })),
-    query: { enabled: n > 0 },
+    query: { enabled: n > 0, ...IMMUTABLE, placeholderData: keepPreviousData },
   });
 
   const tokenAddrs = useMemo(
@@ -120,29 +129,48 @@ export function useTokens() {
     [addrs]
   );
 
-  const { data: details, isLoading } = useReadContracts({
+  // Three tiers so the recurring RPC load stays light: name/symbol once per
+  // session, metadata every 30s, only curve state at full 5s cadence.
+  const { data: statics, isLoading: staticsLoading } = useReadContracts({
     contracts: tokenAddrs.flatMap((t) => [
       { address: t, abi: launchTokenAbi, functionName: "name" as const },
       { address: t, abi: launchTokenAbi, functionName: "symbol" as const },
-      { address: padSafe, abi: launchpadAbi, functionName: "curves" as const, args: [t] as const },
-      { address: padSafe, abi: launchpadAbi, functionName: "tokenMetadata" as const, args: [t] as const },
     ]),
-    query: { enabled: tokenAddrs.length > 0, ...REFETCH },
+    query: { enabled: tokenAddrs.length > 0, ...IMMUTABLE, placeholderData: keepPreviousData },
+  });
+
+  const { data: metas } = useReadContracts({
+    contracts: tokenAddrs.map((t) => ({
+      address: padSafe,
+      abi: launchpadAbi,
+      functionName: "tokenMetadata" as const,
+      args: [t] as const,
+    })),
+    query: { enabled: tokenAddrs.length > 0, ...META_REFETCH, placeholderData: keepPreviousData },
+  });
+
+  const { data: curves, isLoading: curvesLoading } = useReadContracts({
+    contracts: tokenAddrs.map((t) => ({
+      address: padSafe,
+      abi: launchpadAbi,
+      functionName: "curves" as const,
+      args: [t] as const,
+    })),
+    query: { enabled: tokenAddrs.length > 0, ...REFETCH, placeholderData: keepPreviousData },
   });
 
   const tokens: TokenInfo[] = useMemo(() => {
-    if (!details) return [];
+    if (!statics || !curves) return [];
     return tokenAddrs
       .map((address, i) => {
-        const name = details[i * 4];
-        const symbol = details[i * 4 + 1];
-        const curve = details[i * 4 + 2];
-        const meta = details[i * 4 + 3];
+        const name = statics[i * 2];
+        const symbol = statics[i * 2 + 1];
+        const curve = curves[i];
+        const meta = metas?.[i];
         if (
           name?.status !== "success" ||
           symbol?.status !== "success" ||
-          curve?.status !== "success" ||
-          meta?.status !== "success"
+          curve?.status !== "success"
         )
           return null;
         return {
@@ -150,14 +178,17 @@ export function useTokens() {
           name: name.result as string,
           symbol: symbol.result as string,
           curve: parseCurve(curve.result),
-          meta: parseMeta(meta.result),
+          meta:
+            meta?.status === "success"
+              ? parseMeta(meta.result)
+              : { logoURI: "", website: "", twitter: "", telegram: "", livestream: "", description: "" },
         };
       })
       .filter((t): t is TokenInfo => t !== null)
       .reverse(); // newest first
-  }, [details, tokenAddrs]);
+  }, [statics, curves, metas, tokenAddrs]);
 
-  return { tokens, isLoading: isLoading && n > 0, count: n };
+  return { tokens, isLoading: (staticsLoading || curvesLoading) && n > 0, count: n };
 }
 
 /** Spot price in wei per whole token (1e18). */
