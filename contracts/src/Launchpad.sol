@@ -523,6 +523,16 @@ contract Launchpad is Ownable, ReentrancyGuard {
         emit QuoteAssetUpdated(asset, virtualReserve);
     }
 
+    /// @notice Enable/disable many quote assets at once — the whole RWA
+    ///         catalogue (stocks, ETFs, commodities) fits in one transaction.
+    function setQuoteAssets(address[] calldata assets, uint256[] calldata virtualReserves) external onlyOwner {
+        if (assets.length != virtualReserves.length) revert ZeroAmount();
+        for (uint256 i = 0; i < assets.length; i++) {
+            quoteVirtualReserve[assets[i]] = virtualReserves[i];
+            emit QuoteAssetUpdated(assets[i], virtualReserves[i]);
+        }
+    }
+
     function setMigrator(address newMigrator) external onlyOwner {
         migrator = IDexMigrator(newMigrator);
         emit MigratorUpdated(newMigrator);

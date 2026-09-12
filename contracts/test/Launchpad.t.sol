@@ -518,6 +518,27 @@ contract LaunchpadTest is Test {
     }
 
 
+    function test_setQuoteAssetsBatch() public {
+        address[] memory assets = new address[](3);
+        uint256[] memory reserves = new uint256[](3);
+        for (uint256 i = 0; i < 3; i++) {
+            assets[i] = address(new MockUSD());
+            reserves[i] = (i + 1) * 1_000e6;
+        }
+        pad.setQuoteAssets(assets, reserves);
+        for (uint256 i = 0; i < 3; i++) {
+            assertEq(pad.quoteVirtualReserve(assets[i]), (i + 1) * 1_000e6);
+        }
+
+        // length mismatch and non-owner both revert
+        uint256[] memory short = new uint256[](2);
+        vm.expectRevert(Launchpad.ZeroAmount.selector);
+        pad.setQuoteAssets(assets, short);
+        vm.prank(alice);
+        vm.expectRevert();
+        pad.setQuoteAssets(assets, reserves);
+    }
+
     // ------------------------------------------------------- pre-markets
 
     function _createPreMarket() internal returns (address) {

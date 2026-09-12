@@ -6,7 +6,13 @@ import Link from "next/link";
 import { useAccount, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { launchpadAbi } from "@/lib/abi";
 import { useLaunchpadAddress, useExplorer, useAppChain, ZERO_ADDRESS } from "@/lib/hooks";
-import { robinhood, QUOTE_ASSETS, PRE_IPO_DISCLAIMER, type QuoteAssetInfo } from "@/lib/config";
+import {
+  robinhood,
+  QUOTE_ASSETS,
+  PRE_IPO_DISCLAIMER,
+  rwaLogo,
+  type QuoteAssetInfo,
+} from "@/lib/config";
 import { TokenLogo } from "@/components/TokenLogo";
 import { processLogoFile, dataUriBytes } from "@/lib/image";
 import { fmtTokens } from "@/lib/format";
@@ -84,7 +90,9 @@ export function CreateTokenForm() {
     }
   }
 
-  const quoteAssets = QUOTE_ASSETS[chain.id] ?? [{ address: null, symbol: "ETH", decimals: 18 }];
+  const quoteAssets = QUOTE_ASSETS[chain.id] ?? [
+    { address: null, symbol: "ETH", decimals: 18, kind: "native" as const },
+  ];
   const quote = quoteAssets[Math.min(quoteIdx, quoteAssets.length - 1)];
   const isEthQuote = quote.address === null;
 
@@ -209,9 +217,9 @@ export function CreateTokenForm() {
           {!isEthQuote && (
             <Hint>Buys, sells, fees and the graduation pool will all be in {quote.symbol}.</Hint>
           )}
-          {quote.synthetic && <Hint>⚠ {PRE_IPO_DISCLAIMER}</Hint>}
-          {quote.preIpo && !quote.synthetic && (
-            <Hint>Official Robinhood tokenized stock of a pre-IPO company.</Hint>
+          {quote.kind === "premarket" && <Hint>⚠ {PRE_IPO_DISCLAIMER}</Hint>}
+          {quote.kind === "preipo" && (
+            <Hint>Official Robinhood tokenized share of a private, pre-IPO company.</Hint>
           )}
         </div>
 
@@ -371,7 +379,15 @@ export function CreateTokenForm() {
               v={feesToHolders ? `Cashback in ${quote.symbol}` : "—"}
             />
             <Row k="Supply" v="1B fixed" />
-            <Row k="Pair" v={quote.preIpo ? `${quote.symbol} · Pre-IPO` : quote.symbol} strong />
+            <Row
+              k="Pair"
+              v={
+                quote.kind === "preipo" || quote.kind === "premarket"
+                  ? `${quote.symbol} · Pre-IPO`
+                  : quote.symbol
+              }
+              strong
+            />
             <Row k="Curve" v={isEthQuote ? "800M · graduates at ~4 ETH" : `800M on the ${quote.symbol} curve`} />
             <Row
               k="Liquidity"
@@ -406,6 +422,7 @@ function PairSelect({
   onChange: (idx: number) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -416,76 +433,140 @@ function PairSelect({
     return () => document.removeEventListener("mousedown", onClick);
   }, []);
 
-  const preIpos = assets.filter((a) => a.preIpo);
-  const stocks = assets.filter((a) => a.address !== null && !a.preIpo);
+  const s = search.trim().toLowerCase();
+  const matches = assets.filter(
+    (a) =>
+      !s ||
+      a.symbol.toLowerCase().includes(s) ||
+      (a.name ?? "").toLowerCase().includes(s) ||
+      a.address?.toLowerCase() === s
+  );
+  const groups: { label: string; note?: string; assets: QuoteAssetInfo[] }[] = [
+    { label: "", assets: matches.filter((a) => a.kind === "native") },
+    {
+      label: "◆ Pre-IPO",
+      note: "no public market",
+      assets: matches.filter((a) => a.kind === "premarket" || a.kind === "preipo"),
+    },
+    {
+      label: "ETFs & commodities",
+      assets: matches.filter((a) => a.kind === "etf"),
+    },
+    { label: "Stocks", assets: matches.filter((a) => a.kind === "stock") },
+  ].filter((g) => g.assets.length > 0);
 
   const pick = (a: QuoteAssetInfo) => {
     onChange(assets.indexOf(a));
+    setSearch("");
     setOpen(false);
   };
 
-  const item = (a: QuoteAssetInfo) => (
-    <button
-      key={a.symbol}
-      type="button"
-      onClick={() => pick(a)}
-      className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-mono ${
-        a === value ? "bg-white text-black" : "text-zinc-300 hover:bg-zinc-900 hover:text-white"
-      }`}
-    >
-      {a.symbol}
-      {a.preIpo && (
+  const item = (a: QuoteAssetInfo) => {
+    const active = a === value;
+    return (
+      <button
+        key={a.symbol}
+        type="button"
+        onClick={() => pick(a)}
+        className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left ${
+          active ? "bg-white text-black" : "text-zinc-300 hover:bg-zinc-900 hover:text-white"
+        }`}
+      >
+        <AssetLogo asset={a} size={22} />
+        <span className="font-mono text-sm">{a.symbol}</span>
         <span
-          className={`font-mono text-[9px] tracking-widest uppercase rounded-full px-1.5 py-px border ${
-            a === value ? "border-black" : "border-white"
-          }`}
+          className={`truncate text-[11px] flex-1 ${active ? "text-zinc-700" : "text-zinc-500"}`}
         >
-          Pre-IPO
+          {a.name}
         </span>
-      )}
-    </button>
-  );
+        {a.kind === "premarket" && (
+          <span
+            className={`font-mono text-[9px] tracking-widest uppercase rounded-full px-1.5 py-px border shrink-0 ${
+              active ? "border-black" : "border-white"
+            }`}
+          >
+            Notus
+          </span>
+        )}
+      </button>
+    );
+  };
 
   return (
     <div ref={ref} className="relative">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full sm:w-72 items-center justify-between rounded-lg bg-black border border-zinc-700 px-3 py-2 text-sm font-mono text-white hover:border-white focus:border-white outline-none"
+        className="flex w-full sm:w-72 items-center justify-between rounded-lg bg-black border border-zinc-700 px-3 py-2 text-sm text-white hover:border-white focus:border-white outline-none"
       >
-        <span className="flex items-center gap-2">
-          {value.symbol}
-          {value.preIpo && (
-            <span className="font-mono text-[9px] tracking-widest uppercase bg-white text-black rounded-full px-1.5 py-px">
-              Pre-IPO
-            </span>
-          )}
+        <span className="flex items-center gap-2 min-w-0">
+          <AssetLogo asset={value} size={20} />
+          <span className="font-mono">{value.symbol}</span>
+          <span className="truncate text-[11px] text-zinc-500">{value.name}</span>
         </span>
         <span className={`text-zinc-500 transition-transform ${open ? "rotate-180" : ""}`}>▾</span>
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full mt-2 w-full sm:w-72 max-h-80 overflow-y-auto rounded-xl border border-zinc-700 bg-black p-1.5 z-30 shadow-lg shadow-black/60">
-          {assets.filter((a) => a.address === null).map(item)}
-          {preIpos.length > 0 && (
-            <>
-              <div className="px-3 pt-2 pb-1 font-mono text-[9px] tracking-widest uppercase text-white">
-                ◆ Pre-IPO <span className="text-zinc-600 normal-case">— no open market yet</span>
+        <div className="absolute left-0 top-full mt-2 w-full sm:w-80 rounded-xl border border-zinc-700 bg-black p-1.5 z-30 shadow-lg shadow-black/60">
+          <input
+            autoFocus
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={`Search ${assets.length} assets — ticker, name or CA`}
+            className="w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-1.5 text-xs outline-none focus:border-white placeholder:text-zinc-600 mb-1"
+          />
+          <div className="max-h-72 overflow-y-auto">
+            {groups.length === 0 && (
+              <p className="px-3 py-4 text-center text-xs text-zinc-600">No asset matches.</p>
+            )}
+            {groups.map((g) => (
+              <div key={g.label}>
+                {g.label && (
+                  <div
+                    className={`px-2.5 pt-2 pb-1 font-mono text-[9px] tracking-widest uppercase ${
+                      g.label.startsWith("◆") ? "text-white" : "text-zinc-500"
+                    }`}
+                  >
+                    {g.label}
+                    {g.note && <span className="text-zinc-600 normal-case"> — {g.note}</span>}
+                  </div>
+                )}
+                {g.assets.map(item)}
               </div>
-              {preIpos.map(item)}
-            </>
-          )}
-          {stocks.length > 0 && (
-            <>
-              <div className="px-3 pt-2 pb-1 font-mono text-[9px] tracking-widest uppercase text-zinc-500">
-                Stocks
-              </div>
-              {stocks.map(item)}
-            </>
-          )}
+            ))}
+          </div>
         </div>
       )}
     </div>
+  );
+}
+
+/** Official Robinhood logo for RWAs, monogram fallback for everything else. */
+function AssetLogo({ asset, size }: { asset: QuoteAssetInfo; size: number }) {
+  const [failed, setFailed] = useState(false);
+  const src = rwaLogo(asset);
+  if (src && !failed) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return (
+      <img
+        src={src}
+        alt=""
+        width={size}
+        height={size}
+        onError={() => setFailed(true)}
+        className="rounded-full bg-zinc-900 shrink-0 object-cover"
+        style={{ width: size, height: size }}
+      />
+    );
+  }
+  return (
+    <span
+      className="rounded-full bg-zinc-800 text-white font-mono grid place-items-center shrink-0"
+      style={{ width: size, height: size, fontSize: size * (asset.kind === "native" ? 0.6 : 0.42) }}
+    >
+      {asset.kind === "native" ? "Ξ" : asset.symbol.slice(0, 2)}
+    </span>
   );
 }
 

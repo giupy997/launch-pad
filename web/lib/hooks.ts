@@ -92,8 +92,8 @@ export function quoteInfo(
         symbol: found.symbol,
         decimals: found.decimals,
         address: found.address,
-        preIpo: !!found.preIpo,
-        synthetic: !!found.synthetic,
+        preIpo: found.kind === "preipo" || found.kind === "premarket",
+        synthetic: found.kind === "premarket",
       }
     : { symbol: "?", decimals: 18, address: quoteAsset, preIpo: false, synthetic: false };
 }
