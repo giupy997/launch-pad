@@ -168,7 +168,7 @@ export function rwaLogo(asset: QuoteAssetInfo): string | undefined {
 
 // ETH-zap infrastructure on Robinhood Chain (router deployed per launchpad).
 export const ZAP_ROUTER: Record<number, `0x${string}` | undefined> = {
-  [robinhood.id]: "0x5A21C91BC53734f4b6185744D1260Be63FF59385", // v7.3
+  [robinhood.id]: "0x6b52d9C2631f216fe3076149C0A8cb36864a9D81", // v7.3
 };
 export const UNISWAP_QUOTER: Record<number, `0x${string}` | undefined> = {
   [robinhood.id]: "0x33e885ed0ec9bf04ecfb19341582aadcb4c8a9e7",

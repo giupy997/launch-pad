@@ -13,7 +13,7 @@ import {ZapRouter} from "../src/ZapRouter.sol";
 /// Run with: RUN_FORK_LIVE=true forge test --match-contract LivePreMarket -vv
 contract LivePreMarketForkTest is Test {
     Launchpad constant PAD = Launchpad(0x39fE527714571FE9EA35c4e19C5Bc66503f6F777);
-    ZapRouter constant ZAP = ZapRouter(payable(0x5A21C91BC53734f4b6185744D1260Be63FF59385));
+    ZapRouter constant ZAP = ZapRouter(payable(0x6b52d9C2631f216fe3076149C0A8cb36864a9D81));
     address constant OPENAI = 0xD1f2f5CdC507b76e72B245EC32eDBED68babE50F;
     address constant NVDA = 0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC;
 
@@ -47,9 +47,11 @@ contract LivePreMarketForkTest is Test {
         (,,,,,, address quote) = PAD.curves(token);
         assertEq(quote, OPENAI, "curve quoted in the pre-market");
 
-        // and buy it paying plain ETH, in ONE transaction, with no pool
+        // and buy it paying plain ETH, in ONE transaction, with no pool.
+        // 0.1 ETH buys ~77M OPENAI, below the ~160M this curve needs to
+        // graduate, so the sell leg below still has an open curve to hit.
         vm.prank(user);
-        ZAP.zapBuyCurve{value: 1 ether}(token, 0, 0);
+        ZAP.zapBuyCurve{value: 0.1 ether}(token, 0, 0);
         assertGt(LaunchToken(token).balanceOf(user), 0, "tokens received");
         assertEq(address(ZAP).balance, 0, "router holds no ETH");
         assertEq(LaunchToken(OPENAI).balanceOf(address(ZAP)), 0, "router holds no quote");
