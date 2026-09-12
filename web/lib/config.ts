@@ -89,10 +89,10 @@ export const QUOTE_ASSETS: Record<number, QuoteAssetInfo[]> = {
     // buys route through their own curve (ZapRouter.zapBuyCurve) while it is
     // open; once a pre-market graduates into its Uniswap v4 pool the curve
     // zap stops and paired tokens are bought with the pre-market directly.
-    { address: "0xD1f2f5CdC507b76e72B245EC32eDBED68babE50F", symbol: "OPENAI", name: "OpenAI Pre-Market", decimals: 18, kind: "premarket" },
-    { address: "0x5e6cbD4535bf47B7ccb1d8A25f9831461a7D5534", symbol: "ANTHRO", name: "Anthropic Pre-Market", decimals: 18, kind: "premarket" },
-    { address: "0x5CfbDb207FA7dDBB601A47C6Ff6FBDC77dB72BC8", symbol: "XAI", name: "xAI Pre-Market", decimals: 18, kind: "premarket" },
-    { address: "0x0eE6e9647FDD52F13f8a511EbC1CCBd2337A9f2f", symbol: "STRIPE", name: "Stripe Pre-Market", decimals: 18, kind: "premarket" },
+    { address: "0x87F5D45737bb5A80Cb6cdcA6732d42c5991156e9", symbol: "OPENAI", name: "OpenAI Pre-Market", decimals: 18, kind: "premarket" },
+    { address: "0xb9DbeEB586e246919f16d322F53b64c60f1d31F3", symbol: "ANTHRO", name: "Anthropic Pre-Market", decimals: 18, kind: "premarket" },
+    { address: "0x771d56D235c0dE30c81503406cDd0f1d409B645c", symbol: "XAI", name: "xAI Pre-Market", decimals: 18, kind: "premarket" },
+    { address: "0xa4a6877e02AD9A773DCF58d702B3c773139F788b", symbol: "STRIPE", name: "Stripe Pre-Market", decimals: 18, kind: "premarket" },
     { address: "0x4a0E65A3EcceC6dBe60AE065F2e7bb85Fae35eEa", symbol: "SPCX", name: "SpaceX", decimals: 18, kind: "preipo", zapFees: [500] },
     { address: "0xC9a981FEE1F9DEc688bb123ccDeCc63D0deBFC4e", symbol: "GLD", name: "SPDR Gold Shares", decimals: 18, kind: "etf", zapFees: [10000] },
     { address: "0xD5f3879160bc7c32ebb4dC785F8a4F505888de68", symbol: "QQQ", name: "Invesco QQQ", decimals: 18, kind: "etf", zapFees: [3000] },

@@ -12,9 +12,9 @@ import {ZapRouter} from "../src/ZapRouter.sol";
 /// zap, and sell back.
 /// Run with: RUN_FORK_LIVE=true forge test --match-contract LivePreMarket -vv
 contract LivePreMarketForkTest is Test {
-    Launchpad constant PAD = Launchpad(0x39fE527714571FE9EA35c4e19C5Bc66503f6F777);
-    ZapRouter constant ZAP = ZapRouter(payable(0x6b52d9C2631f216fe3076149C0A8cb36864a9D81));
-    address constant OPENAI = 0xD1f2f5CdC507b76e72B245EC32eDBED68babE50F;
+    Launchpad constant PAD = Launchpad(0x4A84c7B0dc45a473eA67f56617BC5903CA2c001c);
+    ZapRouter constant ZAP = ZapRouter(payable(0xfd0C942E3DB34672715B862A8e19838bC9EDa7B5));
+    address constant OPENAI = 0x87F5D45737bb5A80Cb6cdcA6732d42c5991156e9;
     address constant NVDA = 0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC;
 
     bool skipAll;
