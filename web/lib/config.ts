@@ -61,7 +61,7 @@ export const LAUNCHPAD_DEPLOY_BLOCK: Record<number, bigint> = {
  *  Notus synthetic pre-market (createPreMarket): a transferable launch token
  *  on its own ETH curve, whitelisted as a quote asset from day one, pure
  *  community price discovery with no equity or backing. */
-export type QuoteAssetKind = "native" | "stock" | "etf" | "preipo" | "premarket";
+export type QuoteAssetKind = "native" | "stable" | "stock" | "etf" | "preipo" | "premarket";
 
 export type QuoteAssetInfo = {
   address: `0x${string}` | null;
@@ -83,6 +83,7 @@ export const QUOTE_ASSETS: Record<number, QuoteAssetInfo[]> = {
   [giwaSepolia.id]: [{ address: null, symbol: "ETH", decimals: 18, kind: "native" }],
   [robinhood.id]: [
     { address: null, symbol: "ETH", decimals: 18, kind: "native" },
+    { address: "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168", symbol: "USDG", name: "Global Dollar", decimals: 6, kind: "stable", zapFees: [500] },
     // Notus synthetic pre-markets (createPreMarket) are appended here after
     // deployment: { address, symbol, name, decimals: 18, kind: "premarket" }
     { address: "0x4a0E65A3EcceC6dBe60AE065F2e7bb85Fae35eEa", symbol: "SPCX", name: "SpaceX", decimals: 18, kind: "preipo", zapFees: [500] },
@@ -155,6 +156,7 @@ export const QUOTE_ASSETS: Record<number, QuoteAssetInfo[]> = {
  *  Notus pre-markets have no CDN logo and fall back to their on-chain one. */
 export function rwaLogo(asset: QuoteAssetInfo): string | undefined {
   if (!asset.address || asset.kind === "premarket" || asset.kind === "native") return undefined;
+  if (asset.kind === "stable") return undefined;
   return `https://cdn.robinhood.com/ncw_assets/logos/${asset.address.toLowerCase()}.png`;
 }
 

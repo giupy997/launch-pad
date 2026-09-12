@@ -442,7 +442,7 @@ function PairSelect({
       a.address?.toLowerCase() === s
   );
   const groups: { label: string; note?: string; assets: QuoteAssetInfo[] }[] = [
-    { label: "", assets: matches.filter((a) => a.kind === "native") },
+    { label: "", assets: matches.filter((a) => a.kind === "native" || a.kind === "stable") },
     {
       label: "◆ Pre-IPO",
       note: "no public market",
