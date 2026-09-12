@@ -4,7 +4,7 @@
 # tune the numbers below if stock prices have moved a lot.
 set -e
 cd "$(dirname "$0")/.." && source .env
-PAD=${LAUNCHPAD:-0x88d5d0B0233768192e1E79fa146DB6e5E1aa0E81}
+PAD=${LAUNCHPAD:-0xD5d932C0A1418Bc0976D1a2D733F8e363746A4bC}
 RPC=https://rpc.mainnet.chain.robinhood.com
 echo "enabling NVDA (virtual 24 shares)..."
 cast send $PAD 'setQuoteAsset(address,uint256)' 0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC 24000000000000000000 --rpc-url $RPC --private-key "$PRIVATE_KEY"

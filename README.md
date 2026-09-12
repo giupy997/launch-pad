@@ -59,10 +59,20 @@ future multichain deployments (Monad, MegaETH, ...).
 
 | Chain | Contract | Address |
 |---|---|---|
-| GIWA Sepolia (91342) | Launchpad | [`0x8E1a1308E3b176528Ee9278d7a531F185F9fBeFD`](https://sepolia-explorer.giwa.io/address/0x8E1a1308E3b176528Ee9278d7a531F185F9fBeFD) — v7.1 |
-| Robinhood Chain (4663) | Launchpad | [`0xDE295591af5A8c950fB5Edf564B82a4b0A5f2B04`](https://robinhoodchain.blockscout.com/address/0xDE295591af5A8c950fB5Edf564B82a4b0A5f2B04) — v7.1, 11 stocks whitelisted |
-| Robinhood Chain (4663) | UniV3Migrator | [`0x3FEAe4c7D5216EbB9Cf3135A645ceb36AfEf57eE`](https://robinhoodchain.blockscout.com/address/0x3FEAe4c7D5216EbB9Cf3135A645ceb36AfEf57eE) — wired |
-| Robinhood Chain (4663) | ZapRouter | [`0x24D96Ec9162264F3E42edE7169dc8967d71E1cfb`](https://robinhoodchain.blockscout.com/address/0x24d96ec9162264f3e42ede7169dc8967d71e1cfb) — ETH zap buys |
+| GIWA Sepolia (91342) | Launchpad | [`0x8E1a1308E3b176528Ee9278d7a531F185F9fBeFD`](https://sepolia-explorer.giwa.io/address/0x8E1a1308E3b176528Ee9278d7a531F185F9fBeFD) — v7.1 (v7.2 redeploy pending) |
+| Robinhood Chain (4663) | Launchpad | [`0xD5d932C0A1418Bc0976D1a2D733F8e363746A4bC`](https://robinhoodchain.blockscout.com/address/0xD5d932C0A1418Bc0976D1a2D733F8e363746A4bC) — v7.2, 11 stocks whitelisted |
+| Robinhood Chain (4663) | UniV3Migrator | [`0x5e81b8c1E89283d19DC7Ab8e6600565224ab8940`](https://robinhoodchain.blockscout.com/address/0x5e81b8c1E89283d19DC7Ab8e6600565224ab8940) — wired, live fork test green |
+| Robinhood Chain (4663) | ZapRouter | [`0xD6b78EB9f8715Fc35D9813f2Ba818fDA97030407`](https://robinhoodchain.blockscout.com/address/0xD6b78EB9f8715Fc35D9813f2Ba818fDA97030407) — ETH zap buys |
+
+Notus Pre-Markets (synthetic pre-IPO, holders-rewards mode, on their ETH
+curves — whitelisted as quote assets after each one graduates):
+
+| Pre-market | Address |
+|---|---|
+| OPENAI | [`0xaF36F6d838E8A8659058f47C160527f70E9F1D82`](https://robinhoodchain.blockscout.com/address/0xaF36F6d838E8A8659058f47C160527f70E9F1D82) |
+| ANTHRO | [`0xBa92c337817d2b3F3A18712d22bd87CC78abA09c`](https://robinhoodchain.blockscout.com/address/0xBa92c337817d2b3F3A18712d22bd87CC78abA09c) |
+| XAI | [`0x84bAC7fA06c48AC169E2f3EF18CB9EB9F8bE1c42`](https://robinhoodchain.blockscout.com/address/0x84bAC7fA06c48AC169E2f3EF18CB9EB9F8bE1c42) |
+| STRIPE | [`0x7B6EBdA0eE157b04C221133C62C4D74d791053b5`](https://robinhoodchain.blockscout.com/address/0x7B6EBdA0eE157b04C221133C62C4D74d791053b5) |
 
 (previous GIWA deployments: `0x1f3F...fC73` no creator fees, `0xf71b...9cC1` no metadata)
 

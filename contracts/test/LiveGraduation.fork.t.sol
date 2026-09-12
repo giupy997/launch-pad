@@ -15,8 +15,8 @@ interface IUniV3FactoryView {
 /// NOTE: targets the deployed production addresses — update PAD/MIG after
 /// each redeploy. Run with: RUN_FORK_LIVE=true forge test --match-contract LiveGraduation -vv
 contract LiveGraduationForkTest is Test {
-    Launchpad constant PAD = Launchpad(0xDE295591af5A8c950fB5Edf564B82a4b0A5f2B04);
-    UniV3Migrator constant MIG = UniV3Migrator(0x3FEAe4c7D5216EbB9Cf3135A645ceb36AfEf57eE);
+    Launchpad constant PAD = Launchpad(0xD5d932C0A1418Bc0976D1a2D733F8e363746A4bC);
+    UniV3Migrator constant MIG = UniV3Migrator(0x5e81b8c1E89283d19DC7Ab8e6600565224ab8940);
     address constant FACTORY = 0x1f7d7550B1b028f7571E69A784071F0205FD2EfA;
     address constant WETH = 0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73;
 
@@ -38,14 +38,14 @@ contract LiveGraduationForkTest is Test {
         // wiring sanity on the real deployment
         assertEq(address(PAD.migrator()), address(MIG), "migrator wired");
         assertEq(MIG.launchpad(), address(PAD), "migrator points back");
-        assertEq(PAD.creatorFeeShareBps(), 5_000, "50% creator");
-        assertEq(PAD.holderCashbackBps(), 3_000, "30% cashback");
+        // v7.2: creator+cashback bps form one 80% pot, all-creator or all-holders
+        assertEq(PAD.creatorFeeShareBps() + PAD.holderCashbackBps(), 8_000, "80% pot");
 
-        // launch + buy through graduation, exactly like a real user
+        // launch in holders-rewards mode + buy through graduation, like a real user
         vm.startPrank(whale);
         address token = PAD.createToken(
             "Dry Run", "DRY", 0,
-            Launchpad.TokenMetadata("", "", "", "", "", "graduation dry run"), address(0), false
+            Launchpad.TokenMetadata("", "", "", "", "", "graduation dry run"), address(0), true
         );
         PAD.buy{value: 50 ether}(token, 0);
         vm.stopPrank();
@@ -62,8 +62,9 @@ contract LiveGraduationForkTest is Test {
         assertGt(IERC20(WETH).balanceOf(pool), 3.9 ether, "~4 ETH in pool");
         assertGt(IERC20(token).balanceOf(pool), 190_000_000e18, "DEX reserve in pool");
 
-        // fee plumbing worked along the way
-        assertGt(PAD.creatorFees(whale, address(0)), 0, "creator fees accrued");
+        // fee plumbing worked along the way (rewards mode: the whole pot is cashback)
+        assertTrue(PAD.feesToHolders(token), "rewards mode stored");
+        assertEq(PAD.creatorFees(whale, address(0)), 0, "no creator fees in rewards mode");
         assertGt(PAD.cashbackOf(token, whale), 0, "holder cashback accrued");
 
         // LP fee collection callable

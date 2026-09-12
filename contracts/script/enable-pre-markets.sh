@@ -17,7 +17,7 @@
 # (the graduation pool IS the 1% WETH pool, so ETH zap buys work in one hop).
 set -e
 cd "$(dirname "$0")/.." && source .env
-PAD=${LAUNCHPAD:-0xDE295591af5A8c950fB5Edf564B82a4b0A5f2B04}
+PAD=${LAUNCHPAD:-0xD5d932C0A1418Bc0976D1a2D733F8e363746A4bC}
 RPC=https://rpc.mainnet.chain.robinhood.com
 
 TOKEN=${1:?usage: enable-pre-markets.sh <token-address> [virtual-reserve-tokens]}

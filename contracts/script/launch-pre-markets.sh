@@ -9,7 +9,7 @@
 # Optional dev buy: append  --value 0.05ether  to any cast send below.
 set -e
 cd "$(dirname "$0")/.." && source .env
-PAD=${LAUNCHPAD:-0xDE295591af5A8c950fB5Edf564B82a4b0A5f2B04}
+PAD=${LAUNCHPAD:-0xD5d932C0A1418Bc0976D1a2D733F8e363746A4bC}
 RPC=https://rpc.mainnet.chain.robinhood.com
 SIG='createToken(string,string,uint256,(string,string,string,string,string,string),address,bool)'
 DISCLAIMER="Synthetic community pre-market: price discovery only. No equity, no backing, no affiliation with the company."
