@@ -225,18 +225,18 @@ export function CreateTokenForm() {
 
         <div>
           <Label>
-            Trading fees <span className="normal-case text-zinc-600">1% per trade · 20% platform · you pick where the other 80% goes, locked forever</span>
+            Trading fees <span className="normal-case text-zinc-600">1% per trade, on the curve and in the pool after graduation · 20% platform · you pick where the other 80% goes, locked forever</span>
           </Label>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FeeModeCard
               title="Keep the fees"
-              detail="80% of every trade fee accrues to you"
+              detail="80% of every trade fee accrues to you, before and after graduation"
               selected={!feesToHolders}
               onClick={() => setFeesToHolders(false)}
             />
             <FeeModeCard
               title="Reward holders"
-              detail="80% of every trade fee is cashback for your holders"
+              detail="80% of every trade fee is cashback for your holders, for as long as it trades"
               selected={feesToHolders}
               onClick={() => setFeesToHolders(true)}
             />
@@ -391,9 +391,10 @@ export function CreateTokenForm() {
             <Row k="Curve" v={isEthQuote ? "800M · graduates at ~4 ETH" : `800M on the ${quote.symbol} curve`} />
             <Row
               k="Liquidity"
-              v={chain.id === robinhood.id ? "Auto-locked on Uniswap v3" : "Locked at graduation"}
+              v={chain.id === robinhood.id ? "Locked forever on Uniswap v4" : "Locked at graduation"}
               strong
             />
+            {chain.id === robinhood.id && <Row k="After graduation" v="1% fee keeps flowing" strong />}
             <Row
               k="Dev buy"
               v={devBuyNum > 0 ? `${formatEther(parseEtherSafe(initialBuy))} ETH` : "0 ETH"}
@@ -401,9 +402,9 @@ export function CreateTokenForm() {
           </div>
 
           <p className="text-[11px] text-zinc-600">
-            One transaction deploys your coin and its bonding curve. At
-            graduation, liquidity moves to the DEX automatically and is locked
-            forever — you keep earning LP fees.
+            {chain.id === robinhood.id
+              ? `One transaction deploys your coin and its bonding curve. At graduation, liquidity moves to a Uniswap v4 pool, locked forever, and every swap there keeps paying the 1% fee — ${feesToHolders ? "to your holders" : "to you"}, as chosen above.`
+              : "One transaction deploys your coin and its bonding curve. At graduation, liquidity moves to the DEX automatically and is locked forever."}
           </p>
         </div>
       </aside>

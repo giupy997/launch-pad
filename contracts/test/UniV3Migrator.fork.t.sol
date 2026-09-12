@@ -44,7 +44,7 @@ contract UniV3MigratorForkTest is Test {
             return;
         }
         vm.createSelectFork("https://rpc.mainnet.chain.robinhood.com");
-        pad = new Launchpad(treasury);
+        pad = new Launchpad(treasury, address(0));
         mig = new UniV3Migrator(address(pad), NPM, WETH);
         pad.setMigrator(address(mig));
         vm.deal(whale, 100 ether);

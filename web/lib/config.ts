@@ -70,7 +70,7 @@ export type QuoteAssetInfo = {
   name?: string;
   decimals: number;
   kind: QuoteAssetKind;
-  /** Uniswap v3 fee hops from WETH for ETH zap buys:
+  /** Uniswap v3 fee hops from WETH for ETH zap buys (existing RWA pools):
    *  [f1] = WETH -f1-> asset · [f1, f2] = WETH -f1-> USDG -f2-> asset.
    *  Measured from live pool liquidity. Omitted = no ETH pool route; for
    *  premarket assets ETH still zaps through their own curve instead. */
@@ -86,8 +86,9 @@ export const QUOTE_ASSETS: Record<number, QuoteAssetInfo[]> = {
     { address: "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168", symbol: "USDG", name: "Global Dollar", decimals: 6, kind: "stable", zapFees: [500] },
     // Notus synthetic pre-markets (createPreMarket): transferable from day
     // one, rewards fee mode, whitelisted as quote assets on creation. ETH
-    // buys route through their own curve (ZapRouter.zapBuyCurve) until they
-    // graduate; add zapFees: [10000] once their Uniswap pool exists.
+    // buys route through their own curve (ZapRouter.zapBuyCurve) while it is
+    // open; once a pre-market graduates into its Uniswap v4 pool the curve
+    // zap stops and paired tokens are bought with the pre-market directly.
     { address: "0xD1f2f5CdC507b76e72B245EC32eDBED68babE50F", symbol: "OPENAI", name: "OpenAI Pre-Market", decimals: 18, kind: "premarket" },
     { address: "0x5e6cbD4535bf47B7ccb1d8A25f9831461a7D5534", symbol: "ANTHRO", name: "Anthropic Pre-Market", decimals: 18, kind: "premarket" },
     { address: "0x5CfbDb207FA7dDBB601A47C6Ff6FBDC77dB72BC8", symbol: "XAI", name: "xAI Pre-Market", decimals: 18, kind: "premarket" },

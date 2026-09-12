@@ -23,7 +23,7 @@ contract ZapRouterCurveTest is Test {
     address token;
 
     function setUp() public {
-        pad = new Launchpad(treasury);
+        pad = new Launchpad(treasury, address(0));
         pad.setMigrator(address(new NoopMigrator()));
         // swapRouter/weth are unused by the curve zap: dummies are fine
         zap = new ZapRouter(address(pad), makeAddr("swapRouter"), makeAddr("weth"));

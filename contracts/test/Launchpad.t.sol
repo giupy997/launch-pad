@@ -52,7 +52,7 @@ contract LaunchpadTest is Test {
     address bob = makeAddr("bob");
 
     function setUp() public {
-        pad = new Launchpad(treasury);
+        pad = new Launchpad(treasury, address(0));
         migrator = new MockMigrator();
         pad.setMigrator(address(migrator));
         vm.deal(alice, 100 ether);

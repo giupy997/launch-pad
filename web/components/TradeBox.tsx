@@ -302,8 +302,13 @@ export function TradeBox({
     return (
       <div className="rounded-xl border border-zinc-700 bg-black p-5 h-fit">
         <p className="text-sm text-zinc-300">
-          🎓 Curve completed: trading here is closed. This token now trades on
-          the DEX, paired with {q.symbol}.
+          🎓 Curve completed: trading here is closed. This token now trades in
+          its Uniswap v4 pool, paired with {q.symbol}, with liquidity locked
+          forever.
+        </p>
+        <p className="mt-2 text-xs text-zinc-500">
+          The 1% fee still applies to every swap in the pool —{" "}
+          {feesToHolders ? "holders keep earning cashback" : "the creator keeps earning"}.
         </p>
       </div>
     );

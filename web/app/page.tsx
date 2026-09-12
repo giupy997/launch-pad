@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useTokens, useAppChain, isQuoteAsset } from "@/lib/hooks";
+import { robinhood } from "@/lib/config";
 import { TokenCard } from "@/components/TokenCard";
 import { NotDeployedNotice } from "@/components/NotDeployedNotice";
 
@@ -43,7 +44,10 @@ export default function Explore() {
         </h1>
         <p className="text-zinc-400 max-w-xl mx-auto">
           Transparent bonding curve: price rises with every buy, automatic
-          graduation at 800M tokens sold, liquidity migrated to the DEX.
+          graduation at 800M tokens sold,{" "}
+          {chain.id === robinhood.id
+            ? "liquidity locked forever in Uniswap v4 — where the fees keep flowing."
+            : "liquidity migrated to the DEX."}
         </p>
         <Link
           href="/create"

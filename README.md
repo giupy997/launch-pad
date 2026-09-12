@@ -29,10 +29,17 @@ future multichain deployments (Monad, MegaETH, ...).
     assets in one `setQuoteAssets` transaction
   - `script/create-pre-markets.sh` — creates the Notus Pre-Markets and
     whitelists SPCX
-  - `src/UniV3Migrator.sol` — graduation adapter for Robinhood Chain: seeds a
-    full-range Uniswap v3 pool (1% tier), locks the LP NFT forever and splits
-    the perpetual LP fees 50/50 creator/treasury (fork-tested against the
-    live Uniswap deployment)
+  - `src/NotusV4Hook.sol` — graduation adapter and Uniswap v4 hook in one
+    contract (Robinhood Chain): seeds a full-range v4 pool in native ETH (or
+    the quote asset) with the DEX reserve, locks the position forever, and
+    charges the launchpad's 1% fee on every swap in the pool — in the quote
+    asset, for exact-input and exact-output trades alike — depositing it with
+    the launchpad, which splits it exactly like a curve fee. Tokens launched
+    in holders mode keep paying their holders after graduation, for as long
+    as the pool trades. The pool itself charges 0%; only this contract can
+    create pools bound to the hook. Fork-tested against the live PoolManager,
+    V4Quoter and Universal Router, including a real Robinhood NVDA pair.
+  - `src/UniV3Migrator.sol` — legacy v3 graduation adapter (v7.3 and earlier)
 - `web/` — Next.js 14 + wagmi v2 + viem frontend
   - `/` Explore: on-chain token list (multicall, 5s refresh) with search
     and sorting
@@ -62,8 +69,12 @@ future multichain deployments (Monad, MegaETH, ...).
 - Virtual reserves: 1.25 ETH / 1.05B tokens → the curve raises ~4 ETH
 - Fee: 1% on buys and sells (max 5%, owner-configurable), split 20%
   treasury / 80% to the creator or to holders per the launch-time choice
-- Graduation: once the 800M are sold out → curve trading closes,
-  `migrate()` moves 200M tokens + raised ETH to the DEX adapter
+- Graduation: once the 800M are sold out → curve trading closes and the
+  200M reserve + raised quote move automatically into a locked Uniswap v4
+  pool, where the same 1% fee keeps being charged and split
+- Holder cashback is spread over the eligible supply (every wallet, not the
+  launchpad or the v4 PoolManager), with debts rounded up so the sum of all
+  claims can never exceed what the contract holds
 
 ## Deployments
 
@@ -121,7 +132,8 @@ costs real ETH, and the contracts are unaudited — trade accordingly.
 
 ```bash
 cd contracts
-forge test                       # 55 tests incl. fuzz
+forge test                       # 67 tests incl. a cashback-solvency fuzz
+# v4 hook against the live Robinhood v4 stack: RUN_FORK=true forge test --match-contract NotusV4Hook
 # fork tests against live contracts: RUN_FORK_LIVE=true forge test --match-contract Live
 ```
 

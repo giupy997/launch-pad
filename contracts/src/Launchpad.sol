@@ -5,6 +5,7 @@ import {Ownable} from "openzeppelin-contracts/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "openzeppelin-contracts/contracts/utils/ReentrancyGuard.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Math} from "openzeppelin-contracts/contracts/utils/math/Math.sol";
 import {LaunchToken} from "./LaunchToken.sol";
 import {IDexMigrator} from "./interfaces/IDexMigrator.sol";
 
@@ -59,9 +60,28 @@ contract Launchpad is Ownable, ReentrancyGuard {
     /// transfer hook, so pro-rata accounting stays exact even after
     /// graduation when transfers are free.
     uint256 private constant ACC_PRECISION = 1e30;
+    /// Holder fees are only spread over at least one whole token; below that
+    /// the pot joins the treasury share. A near-empty denominator would blow
+    /// the accumulator up until balance * acc overflows and every transfer of
+    /// the token reverts.
+    uint256 private constant MIN_ELIGIBLE_SUPPLY = 1e18;
     mapping(address token => uint256) public accCashbackPerShare;
     mapping(address token => mapping(address holder => uint256)) public pendingCashback;
     mapping(address token => mapping(address holder => uint256)) public cashbackDebt;
+
+    /// Tokens held by cashback-eligible wallets, per token — everyone except
+    /// the zero address, this contract (unsold curve inventory) and the
+    /// Uniswap v4 PoolManager (graduated pool reserves). Holder fees are
+    /// spread over exactly this supply, which keeps the accumulator solvent
+    /// after graduation, when part of the supply sits inside the pool.
+    mapping(address token => uint256) public eligibleSupply;
+    /// Fixed at deploy (address(0) on chains without Uniswap v4): an address
+    /// that became ineligible while holding tokens would desync the counter.
+    address public immutable poolManager;
+
+    /// Hooks allowed to deposit post-graduation pool fees. Add-only: a pool is
+    /// bound to its hook forever, so revoking one would brick that pool.
+    mapping(address hook => bool) public isPoolFeeHook;
 
     // ---------------------------------------------------------------- state
 
@@ -120,6 +140,8 @@ contract Launchpad is Ownable, ReentrancyGuard {
     event TreasuryUpdated(address treasury);
     event MigratorUpdated(address migrator);
     event QuoteAssetUpdated(address indexed asset, uint256 virtualReserve);
+    event PoolFeeHookAuthorized(address indexed hook);
+    event PoolFeeDistributed(address indexed token, uint256 amount);
 
     // ---------------------------------------------------------------- errors
 
@@ -134,9 +156,11 @@ contract Launchpad is Ownable, ReentrancyGuard {
     error EthTransferFailed();
     error QuoteAssetNotEnabled();
     error WrongPayment();
+    error NotPoolFeeHook();
 
-    constructor(address treasury_) Ownable(msg.sender) {
+    constructor(address treasury_, address poolManager_) Ownable(msg.sender) {
         treasury = treasury_;
+        poolManager = poolManager_;
     }
 
     // ---------------------------------------------------------------- create
@@ -416,61 +440,107 @@ contract Launchpad is Ownable, ReentrancyGuard {
 
     // ---------------------------------------------------------------- fees
 
-    /// @notice Splits a trade fee: the creator+holders pot accrues either to
-    ///         the creator or to holder cashback (the token's launch-time
-    ///         choice), pull-withdrawal both ways; the remainder goes
-    ///         straight to the treasury.
+    /// @notice Splits a curve trade fee (see _accrueFee); the treasury share
+    ///         is paid straight out.
     function _splitFee(address token, address creator, address asset, uint256 fee) internal {
+        _payOut(asset, treasury, _accrueFee(token, creator, asset, fee));
+    }
+
+    /// @notice Accrues a fee: the creator+holders pot goes either to the
+    ///         creator or to holder cashback (the token's launch-time choice),
+    ///         pull-withdrawal both ways. Returns the treasury share, which
+    ///         also absorbs the pot while there is no eligible supply.
+    function _accrueFee(address token, address creator, address asset, uint256 fee)
+        internal
+        returns (uint256 toTreasury)
+    {
         uint256 pot = (fee * (creatorFeeShareBps + holderCashbackBps)) / FEE_DENOMINATOR;
-        uint256 creatorCut;
-        uint256 cashbackCut;
+        toTreasury = fee - pot;
+        if (pot == 0) return toTreasury;
         if (feesToHolders[token]) {
-            cashbackCut = pot;
-            uint256 sold = curves[token].sold;
-            if (cashbackCut > 0 && sold > 0) {
-                accCashbackPerShare[token] += (cashbackCut * ACC_PRECISION) / sold;
-            } else {
-                // no holders yet: fold the cashback into the treasury share
-                cashbackCut = 0;
-            }
-        } else if (pot > 0) {
-            creatorCut = pot;
+            uint256 eligible = eligibleSupply[token];
+            if (eligible < MIN_ELIGIBLE_SUPPLY) return fee;
+            accCashbackPerShare[token] += (pot * ACC_PRECISION) / eligible;
+        } else {
             address recipient = feeRecipient[token];
             if (recipient == address(0)) recipient = creator;
-            creatorFees[recipient][asset] += creatorCut;
+            creatorFees[recipient][asset] += pot;
         }
-        _payOut(asset, treasury, fee - creatorCut - cashbackCut);
+    }
+
+    /// @notice Deposit a post-graduation DEX trading fee for `token`, paid in
+    ///         its quote asset (ETH as msg.value, ERC-20 pulled from the hook).
+    ///         Split exactly like curve fees, so a token launched in holders
+    ///         mode keeps paying its holders for as long as its pool trades.
+    ///         Every share — treasury included — accrues pull-based: a pool
+    ///         swap never pushes funds to an address that could revert it.
+    function distributePoolFee(address token, uint256 amount) external payable nonReentrant {
+        if (!isPoolFeeHook[msg.sender]) revert NotPoolFeeHook();
+        Curve storage c = curves[token];
+        if (c.vEth == 0) revert UnknownToken();
+        if (!c.graduated) revert NotYetGraduated();
+        if (amount == 0) revert ZeroAmount();
+        if (c.quoteAsset == address(0)) {
+            if (msg.value != amount) revert WrongPayment();
+        } else {
+            if (msg.value != 0) revert WrongPayment();
+            IERC20(c.quoteAsset).safeTransferFrom(msg.sender, address(this), amount);
+        }
+        creatorFees[treasury][c.quoteAsset] += _accrueFee(token, c.creator, c.quoteAsset, amount);
+        emit PoolFeeDistributed(token, amount);
     }
 
     /// @notice Transfer hook called by LaunchTokens right after every balance
     ///         change: harvests each wallet's accrual at its pre-transfer
-    ///         balance and re-anchors its debt at the new balance, so cashback
-    ///         stays pro-rata forever. Unknown callers only touch their own
-    ///         isolated storage keys and can never mint claims (their
-    ///         accumulator is always zero).
+    ///         balance, re-anchors its debt at the new balance and keeps the
+    ///         eligible supply in sync, so cashback stays pro-rata forever.
+    ///         Unknown callers only touch their own isolated storage keys and
+    ///         can never mint claims (their accumulator is always zero).
     function onTokenTransfer(address from, address to, uint256 value) external {
         address token = msg.sender;
-        if (from != address(0) && from != address(this)) {
+        bool fromEligible = _isEligible(from);
+        bool toEligible = _isEligible(to);
+
+        if (from == to) {
+            // Moves nothing. Settling both sides would harvest `value` twice
+            // off an inflated "old balance" — free cashback on every call.
+            if (fromEligible) {
+                uint256 bal = IERC20(token).balanceOf(from);
+                _settleCashback(token, from, bal, bal);
+            }
+            return;
+        }
+
+        if (fromEligible) {
             uint256 newBal = IERC20(token).balanceOf(from);
             _settleCashback(token, from, newBal + value, newBal);
         }
-        if (to != address(0) && to != address(this)) {
+        if (toEligible) {
             uint256 newBal = IERC20(token).balanceOf(to);
             _settleCashback(token, to, newBal - value, newBal);
         }
+        if (fromEligible && !toEligible) eligibleSupply[token] -= value;
+        else if (!fromEligible && toEligible) eligibleSupply[token] += value;
     }
 
+    function _isEligible(address account) internal view returns (bool) {
+        return account != address(0) && account != address(this) && account != poolManager;
+    }
+
+    /// Entitlements round down and debts round up: with both floored, every
+    /// settle could overpay a wallet by a wei, and the dust adds up past what
+    /// the contract holds.
     function _settleCashback(address token, address holder, uint256 oldBal, uint256 newBal) internal {
         uint256 acc = accCashbackPerShare[token];
         uint256 debt = cashbackDebt[token][holder];
-        uint256 earned = (oldBal * acc) / ACC_PRECISION;
+        uint256 earned = Math.mulDiv(oldBal, acc, ACC_PRECISION);
         if (earned > debt) pendingCashback[token][holder] += earned - debt;
-        cashbackDebt[token][holder] = (newBal * acc) / ACC_PRECISION;
+        cashbackDebt[token][holder] = Math.mulDiv(newBal, acc, ACC_PRECISION, Math.Rounding.Ceil);
     }
 
     /// @notice Live claimable cashback for a holder of `token`.
     function cashbackOf(address token, address holder) external view returns (uint256) {
-        uint256 entitled = (IERC20(token).balanceOf(holder) * accCashbackPerShare[token]) / ACC_PRECISION;
+        uint256 entitled = Math.mulDiv(IERC20(token).balanceOf(holder), accCashbackPerShare[token], ACC_PRECISION);
         uint256 debt = cashbackDebt[token][holder];
         return pendingCashback[token][holder] + (entitled > debt ? entitled - debt : 0);
     }
@@ -531,6 +601,13 @@ contract Launchpad is Ownable, ReentrancyGuard {
             quoteVirtualReserve[assets[i]] = virtualReserves[i];
             emit QuoteAssetUpdated(assets[i], virtualReserves[i]);
         }
+    }
+
+    /// @notice Allow a Uniswap v4 hook to deposit post-graduation pool fees.
+    ///         There is deliberately no way to revoke it (see isPoolFeeHook).
+    function authorizePoolFeeHook(address hook) external onlyOwner {
+        isPoolFeeHook[hook] = true;
+        emit PoolFeeHookAuthorized(hook);
     }
 
     function setMigrator(address newMigrator) external onlyOwner {

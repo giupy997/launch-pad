@@ -28,7 +28,7 @@ contract ZapRouterForkTest is Test {
             return;
         }
         vm.createSelectFork("https://rpc.mainnet.chain.robinhood.com");
-        pad = new Launchpad(treasury);
+        pad = new Launchpad(treasury, address(0));
         pad.setQuoteAsset(NVDA, 24e18);
         zap = new ZapRouter(address(pad), SWAP_ROUTER, WETH);
         vm.deal(user, 10 ether);
