@@ -25,6 +25,7 @@ interface ILaunchpadZap {
         external
         view
         returns (uint256, uint256, uint256, uint256, bool, address, address quoteAsset);
+    function buy(address token, uint256 minTokensOut) external payable;
     function buyWithQuoteFor(address token, uint256 amountIn, uint256 minTokensOut, address recipient) external;
 }
 
@@ -45,6 +46,7 @@ contract ZapRouter is ReentrancyGuard {
     error NotQuoteCurve();
     error PathMismatch();
     error ZeroAmount();
+    error EthTransferFailed();
 
     constructor(address launchpad_, address swapRouter_, address weth_) {
         launchpad = launchpad_;
@@ -85,4 +87,39 @@ contract ZapRouter is ReentrancyGuard {
 
         emit ZappedBuy(token, msg.sender, msg.value, quoteOut);
     }
+
+    /// @notice One-transaction ETH buy on a PRE-MARKET-quoted curve: buys the
+    ///         quote asset on ITS OWN launchpad curve (no DEX involved), then
+    ///         buys `token` with it for the caller. Works from day one — no
+    ///         Uniswap pool needed for the pre-market.
+    /// @param token         the curve token to buy (quoted in a pre-market)
+    /// @param minQuoteOut   slippage guard on the pre-market curve leg
+    /// @param minTokensOut  slippage guard on the token curve leg
+    function zapBuyCurve(address token, uint256 minQuoteOut, uint256 minTokensOut) external payable nonReentrant {
+        if (msg.value == 0) revert ZeroAmount();
+        (,,,,,, address quote) = ILaunchpadZap(launchpad).curves(token);
+        if (quote == address(0)) revert NotQuoteCurve();
+
+        // leg 1: ETH -> pre-market on its own curve (reverts inside the
+        // launchpad if `quote` is not a live ETH curve)
+        ILaunchpadZap(launchpad).buy{value: msg.value}(quote, minQuoteOut);
+        uint256 quoteOut = IERC20(quote).balanceOf(address(this));
+        if (quoteOut == 0) revert ZeroAmount();
+
+        // leg 2: pre-market -> token, recipient is the user
+        IERC20(quote).forceApprove(launchpad, quoteOut);
+        ILaunchpadZap(launchpad).buyWithQuoteFor(token, quoteOut, minTokensOut, msg.sender);
+
+        // a graduating pre-market buy can refund surplus ETH to this router
+        uint256 leftover = address(this).balance;
+        if (leftover > 0) {
+            (bool ok,) = msg.sender.call{value: leftover}("");
+            if (!ok) revert EthTransferFailed();
+        }
+
+        emit ZappedBuy(token, msg.sender, msg.value, quoteOut);
+    }
+
+    /// Accepts graduation-buy refunds from the launchpad during zapBuyCurve.
+    receive() external payable {}
 }

@@ -154,12 +154,46 @@ contract Launchpad is Ownable, ReentrancyGuard {
         address quoteAsset,
         bool feesToHolders_
     ) external payable nonReentrant returns (address token) {
+        token = _create(name, symbol, meta, quoteAsset, feesToHolders_, false);
+
+        if (quoteAsset == address(0)) {
+            if (msg.value > 0) _buy(token, msg.sender, msg.value, minTokensOut);
+        } else if (msg.value > 0) {
+            revert WrongPayment();
+        }
+    }
+
+    /// @notice Deploy a Notus Pre-Market (owner only): a synthetic pre-IPO
+    ///         asset on its own ETH curve, transferable from day one, fees in
+    ///         holders-rewards mode, and immediately whitelisted as a quote
+    ///         asset so new tokens can pair with it (`quoteVirtualReserve_`
+    ///         sizes those paired curves in pre-market units — retune later
+    ///         with setQuoteAsset as its price discovers).
+    function createPreMarket(
+        string calldata name,
+        string calldata symbol,
+        TokenMetadata calldata meta,
+        uint256 quoteVirtualReserve_
+    ) external onlyOwner nonReentrant returns (address token) {
+        token = _create(name, symbol, meta, address(0), true, true);
+        quoteVirtualReserve[token] = quoteVirtualReserve_;
+        emit QuoteAssetUpdated(token, quoteVirtualReserve_);
+    }
+
+    function _create(
+        string calldata name,
+        string calldata symbol,
+        TokenMetadata calldata meta,
+        address quoteAsset,
+        bool feesToHolders_,
+        bool transferable_
+    ) internal returns (address token) {
         uint256 vQuote = VIRTUAL_ETH;
         if (quoteAsset != address(0)) {
             vQuote = quoteVirtualReserve[quoteAsset];
             if (vQuote == 0) revert QuoteAssetNotEnabled();
         }
-        token = address(new LaunchToken(name, symbol, TOTAL_SUPPLY));
+        token = address(new LaunchToken(name, symbol, TOTAL_SUPPLY, transferable_));
         curves[token] = Curve({
             vEth: vQuote,
             vToken: VIRTUAL_TOKEN,
@@ -174,12 +208,6 @@ contract Launchpad is Ownable, ReentrancyGuard {
         allTokens.push(token);
         emit TokenCreated(token, msg.sender, name, symbol, feesToHolders_);
         emit MetadataUpdated(token, meta.logoURI, meta.website, meta.twitter, meta.telegram, meta.livestream);
-
-        if (quoteAsset == address(0)) {
-            if (msg.value > 0) _buy(token, msg.sender, msg.value, minTokensOut);
-        } else if (msg.value > 0) {
-            revert WrongPayment();
-        }
     }
 
     /// @notice Buy on an ERC-20 quoted curve, paying from msg.sender.

@@ -209,7 +209,10 @@ export function CreateTokenForm() {
           {!isEthQuote && (
             <Hint>Buys, sells, fees and the graduation pool will all be in {quote.symbol}.</Hint>
           )}
-          {quote.preIpo && <Hint>⚠ {PRE_IPO_DISCLAIMER}</Hint>}
+          {quote.synthetic && <Hint>⚠ {PRE_IPO_DISCLAIMER}</Hint>}
+          {quote.preIpo && !quote.synthetic && (
+            <Hint>Official Robinhood tokenized stock of a pre-IPO company.</Hint>
+          )}
         </div>
 
         <div>

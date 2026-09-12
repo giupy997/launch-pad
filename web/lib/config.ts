@@ -64,13 +64,17 @@ export type QuoteAssetInfo = {
    *  [f1] = WETH -f1-> asset · [f1, f2] = WETH -f1-> USDG -f2-> asset.
    *  Omitted = no ETH route (direct asset buys only). */
   zapFees?: number[];
-  /** Synthetic Notus pre-market (pre-IPO company with no open market).
-   *  These are graduated Notus launch tokens whitelisted as quote assets:
-   *  community price discovery only — no equity, no backing, no affiliation.
-   *  Whitelist AFTER graduation only (pre-graduation transfers would block
-   *  the paired token's own migration). Their WETH pool from graduation is
-   *  the 1% tier, so zapFees: [10000] gives one-transaction ETH buys. */
+  /** Pre-IPO company (no public market) — grouped in the ◆ Pre-IPO section
+   *  of the pair picker. Covers both official tokens (SPCX) and Notus
+   *  synthetic pre-markets. */
   preIpo?: boolean;
+  /** Notus synthetic pre-market (v7.3 createPreMarket): a transferable
+   *  launch token on its own ETH curve, whitelisted as a quote asset from
+   *  day one. Pure community price discovery — no equity, no backing, no
+   *  affiliation. While its curve is open, ETH buys on paired tokens route
+   *  through ZapRouter.zapBuyCurve (no Uniswap pool needed); after it
+   *  graduates, add zapFees: [10000] for the pool route. */
+  synthetic?: boolean;
 };
 
 export const PRE_IPO_DISCLAIMER =
@@ -79,6 +83,11 @@ export const QUOTE_ASSETS: Record<number, QuoteAssetInfo[]> = {
   [giwaSepolia.id]: [{ address: null, symbol: "ETH", decimals: 18 }],
   [robinhood.id]: [
     { address: null, symbol: "ETH", decimals: 18 },
+    // -------- pre-IPO: official Robinhood token + Notus pre-markets --------
+    { address: "0x4a0E65A3EcceC6dBe60AE065F2e7bb85Fae35eEa", symbol: "SPCX", decimals: 18, preIpo: true },
+    // Notus synthetic pre-markets (v7.3 createPreMarket) are added here after
+    // deployment: { address, symbol, decimals: 18, preIpo: true, synthetic: true }
+    // ----------------------------- stocks ---------------------------------
     { address: "0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC", symbol: "NVDA", decimals: 18, zapFees: [500, 500] },
     { address: "0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9", symbol: "AAPL", decimals: 18, zapFees: [500, 3000] },
     { address: "0x322F0929c4625eD5bAd873c95208D54E1c003b2d", symbol: "TSLA", decimals: 18, zapFees: [500, 3000] },

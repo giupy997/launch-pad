@@ -284,6 +284,72 @@ export const launchpadAbi = [
   },
   {
     "type": "function",
+    "name": "createPreMarket",
+    "inputs": [
+      {
+        "name": "name",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "symbol",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "meta",
+        "type": "tuple",
+        "internalType": "struct Launchpad.TokenMetadata",
+        "components": [
+          {
+            "name": "logoURI",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "website",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "twitter",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "telegram",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "livestream",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "description",
+            "type": "string",
+            "internalType": "string"
+          }
+        ]
+      },
+      {
+        "name": "quoteVirtualReserve_",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "createToken",
     "inputs": [
       {

@@ -11,6 +11,7 @@ import {
   useExplorer,
   useAppChain,
   quoteInfo,
+  isQuoteAsset,
   IMMUTABLE,
 } from "@/lib/hooks";
 import { PRE_IPO_DISCLAIMER } from "@/lib/config";
@@ -90,6 +91,8 @@ export default function TokenPage({ params }: { params: { address: string } }) {
       : { logoURI: "", website: "", twitter: "", telegram: "", livestream: "", description: "" };
   const progress = curveProgress(curve);
   const q = quoteInfo(chain.id, curve.quoteAsset);
+  // this token is itself a Notus pre-market (a registered pair asset)
+  const isPreMarket = isQuoteAsset(chain.id, token);
 
   const links = [
     { label: "Website", href: safeLink(meta.website) },
@@ -109,6 +112,14 @@ export default function TokenPage({ params }: { params: { address: string } }) {
               {curve.graduated && (
                 <span className="ml-3 font-mono text-xs tracking-widest uppercase border border-white rounded-full px-2 py-0.5 align-middle">
                   Graduated
+                </span>
+              )}
+              {isPreMarket && (
+                <span
+                  title="Registered pair asset: new tokens can launch against it"
+                  className="ml-3 font-mono text-xs tracking-widest uppercase bg-white text-black rounded-full px-2 py-0.5 align-middle"
+                >
+                  ◆ Pre-IPO market
                 </span>
               )}
               {feesToHolders && (
@@ -132,7 +143,7 @@ export default function TokenPage({ params }: { params: { address: string } }) {
                 </span>
               )}
             </p>
-            {q.preIpo && (
+            {(q.synthetic || isPreMarket) && (
               <p className="mt-1 text-[11px] text-zinc-600">{PRE_IPO_DISCLAIMER}</p>
             )}
             {meta.description && (

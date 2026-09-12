@@ -518,6 +518,78 @@ contract LaunchpadTest is Test {
     }
 
 
+    // ------------------------------------------------------- pre-markets
+
+    function _createPreMarket() internal returns (address) {
+        // owner is this test contract; 50M tokens of virtual reserve for
+        // curves paired with the pre-market
+        return pad.createPreMarket("OpenAI Pre-Market", "OPENAI", _meta(), 50_000_000e18);
+    }
+
+    function test_createPreMarketWiresEverything() public {
+        address pre = _createPreMarket();
+        assertTrue(LaunchToken(pre).transferable(), "transferable from day one");
+        assertTrue(pad.feesToHolders(pre), "rewards mode");
+        assertEq(pad.quoteVirtualReserve(pre), 50_000_000e18, "whitelisted as quote");
+        assertEq(pad.tokenCount(), 1, "listed like any launch");
+    }
+
+    function test_onlyOwnerCreatesPreMarkets() public {
+        vm.prank(alice);
+        vm.expectRevert();
+        pad.createPreMarket("X", "X", _meta(), 1e18);
+    }
+
+    function test_preMarketTransferableBeforeGraduation() public {
+        address pre = _createPreMarket();
+        vm.prank(bob);
+        pad.buy{value: 1 ether}(pre, 0);
+
+        address carol = makeAddr("carol");
+        vm.prank(bob);
+        LaunchToken(pre).transfer(carol, 1e18); // meme tokens would revert here
+        assertEq(LaunchToken(pre).balanceOf(carol), 1e18);
+    }
+
+    function test_pairWithPreMarketEndToEnd() public {
+        address pre = _createPreMarket();
+
+        // bob stocks up on the pre-market from its own ETH curve
+        vm.prank(bob);
+        pad.buy{value: 2 ether}(pre, 0);
+        uint256 preBal = LaunchToken(pre).balanceOf(bob);
+        assertGt(preBal, 0);
+
+        // alice launches a token paired with the (non-graduated) pre-market
+        vm.prank(alice);
+        address token = pad.createToken("OpenAI Fan", "OFAN", 0, _meta(), pre, false);
+
+        vm.startPrank(bob);
+        LaunchToken(pre).approve(address(pad), type(uint256).max);
+        pad.buyWithQuote(token, 1_000_000e18, 0); // small paired buy first
+        assertGt(LaunchToken(token).balanceOf(bob), 0, "paired buy works");
+
+        // graduate the paired token (raise = 50M virtual * 3.2 = 160M pre,
+        // bob holds ~640M from the 2 ETH buy; surplus is refunded in pre):
+        // migration moves the pre-market quote to the migrator even though
+        // the pre-market itself has not graduated
+        pad.buyWithQuote(token, preBal - 1_000_000e18, 0);
+        vm.stopPrank();
+
+        (,,, uint256 sold, bool graduated,,) = pad.curves(token);
+        assertTrue(graduated, "paired token graduated");
+        assertEq(sold, pad.CURVE_SUPPLY());
+        assertEq(migrator.lastToken(), token);
+        assertEq(migrator.lastQuoteAsset(), pre);
+        uint256 migBal = LaunchToken(pre).balanceOf(address(migrator));
+        assertEq(migBal, migrator.lastQuoteAmount(), "quote delivered to migrator");
+
+        // and the migrator can move it onward (e.g. into a DEX pool)
+        vm.prank(address(migrator));
+        LaunchToken(pre).transfer(alice, migBal);
+        assertEq(LaunchToken(pre).balanceOf(alice), migBal);
+    }
+
     // ------------------------------------------------------- quote assets
 
     function _createUsdCurve(bool feesToHolders) internal returns (address token, MockUSD usd) {

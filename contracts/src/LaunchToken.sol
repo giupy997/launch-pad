@@ -16,13 +16,19 @@ interface ILaunchpadHook {
 ///         exact (the hook is pure storage math and never reverts transfers).
 contract LaunchToken is ERC20 {
     address public immutable launchpad;
+    /// Pre-markets are transferable from day one so they can serve as quote
+    /// assets (and migrate paired pools) while their own curve is still open.
+    bool public immutable transferable;
     bool public graduated;
 
     error OnlyLaunchpad();
     error NotGraduated();
 
-    constructor(string memory name_, string memory symbol_, uint256 supply_) ERC20(name_, symbol_) {
+    constructor(string memory name_, string memory symbol_, uint256 supply_, bool transferable_)
+        ERC20(name_, symbol_)
+    {
         launchpad = msg.sender;
+        transferable = transferable_;
         _mint(msg.sender, supply_);
     }
 
@@ -33,8 +39,9 @@ contract LaunchToken is ERC20 {
 
     function _update(address from, address to, uint256 value) internal override {
         // Pre-graduation, only flows through the launchpad (curve buys/sells,
-        // mint, and the migration transfer) are allowed.
-        if (!graduated && from != launchpad && to != launchpad && from != address(0)) {
+        // mint, and the migration transfer) are allowed — unless the token
+        // was created transferable (pre-markets).
+        if (!graduated && !transferable && from != launchpad && to != launchpad && from != address(0)) {
             revert NotGraduated();
         }
         super._update(from, to, value);

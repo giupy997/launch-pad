@@ -15,6 +15,7 @@ import {
   useExplorer,
   useAppChain,
   quoteInfo,
+  parseCurve,
   type CurveInfo,
 } from "@/lib/hooks";
 import { fmtUnits, fmtTokens } from "@/lib/format";
@@ -29,6 +30,17 @@ const zapRouterAbi = [
     inputs: [
       { name: "token", type: "address" },
       { name: "path", type: "bytes" },
+      { name: "minQuoteOut", type: "uint256" },
+      { name: "minTokensOut", type: "uint256" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "zapBuyCurve",
+    stateMutability: "payable",
+    inputs: [
+      { name: "token", type: "address" },
       { name: "minQuoteOut", type: "uint256" },
       { name: "minTokensOut", type: "uint256" },
     ],
@@ -88,11 +100,28 @@ export function TradeBox({
   const zapFees = (QUOTE_ASSETS[chain.id] ?? []).find(
     (a) => a.address?.toLowerCase() === curve.quoteAsset.toLowerCase()
   )?.zapFees;
-  const canZap = !isEthQuote && !!zapAddr && !!quoterAddr && !!wethAddr && !!zapFees;
+  const canZapPool = !isEthQuote && !!zapAddr && !!quoterAddr && !!wethAddr && !!zapFees;
+
+  // Synthetic pre-market quote with its own curve still open: ETH routes
+  // through ZapRouter.zapBuyCurve (buy the pre-market on ITS curve, then buy
+  // this token with it) — no Uniswap pool involved.
+  const { data: preCurveRaw } = useReadContract({
+    address: pad,
+    abi: launchpadAbi,
+    functionName: "curves",
+    args: q.address ? [q.address] : undefined,
+    chainId: chain.id,
+    query: { enabled: q.synthetic && !!q.address, refetchInterval: 15_000 },
+  });
+  const canZapCurve =
+    q.synthetic && !!zapAddr && !!preCurveRaw && !parseCurve(preCurveRaw).graduated;
+
+  const canZap = canZapPool || canZapCurve;
   const zapMode = mode === "buy" && canZap && payWithEth;
+  const curveZapMode = zapMode && canZapCurve;
 
   const zapPath =
-    canZap && wethAddr && q.address
+    canZapPool && wethAddr && q.address
       ? zapFees!.length === 2 && usdgAddr
         ? encodePacked(
             ["address", "uint24", "address", "uint24", "address"],
@@ -103,16 +132,29 @@ export function TradeBox({
 
   const parsed = safeParse(amount, mode === "buy" ? (zapMode ? 18 : q.decimals) : 18);
 
-  // ETH -> quote estimate via the Uniswap quoter
+  // ETH -> quote estimate via the Uniswap quoter (pool route)
   const { data: quoterSim } = useSimulateContract({
     address: quoterAddr,
     abi: quoterAbi,
     functionName: "quoteExactInput",
     args: zapPath ? [zapPath, parsed] : undefined,
     chainId: chain.id,
-    query: { enabled: zapMode && !!zapPath && parsed > 0n, refetchInterval: 10_000 },
+    query: { enabled: zapMode && !curveZapMode && !!zapPath && parsed > 0n, refetchInterval: 10_000 },
   });
-  const zapQuoteOut = quoterSim?.result?.[0] as bigint | undefined;
+
+  // ETH -> pre-market estimate straight from its own curve (curve route)
+  const { data: preQuoteOut } = useReadContract({
+    address: pad,
+    abi: launchpadAbi,
+    functionName: "quoteBuy",
+    args: q.address ? [q.address, parsed] : undefined,
+    chainId: chain.id,
+    query: { enabled: curveZapMode && parsed > 0n, refetchInterval: 5_000 },
+  });
+
+  const zapQuoteOut = curveZapMode
+    ? (preQuoteOut as bigint | undefined)
+    : (quoterSim?.result?.[0] as bigint | undefined);
 
   const { data: balance } = useReadContract({
     address: token,
@@ -184,7 +226,20 @@ export function TradeBox({
     e.preventDefault();
     reset();
     if (mode === "buy") {
-      if (zapMode && zapPath && zapAddr) {
+      if (curveZapMode && zapAddr) {
+        writeContract({
+          address: zapAddr,
+          abi: zapRouterAbi,
+          functionName: "zapBuyCurve",
+          chainId: chain.id,
+          args: [
+            token,
+            zapQuoteOut !== undefined ? withSlippage(zapQuoteOut) : 0n,
+            buyQuote !== undefined ? withSlippage(buyQuote as bigint) : 0n,
+          ],
+          value: parsed,
+        });
+      } else if (zapMode && zapPath && zapAddr) {
         writeContract({
           address: zapAddr,
           abi: zapRouterAbi,

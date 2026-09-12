@@ -75,14 +75,36 @@ export function parseCurve(result: unknown): CurveInfo {
 export function quoteInfo(
   chainId: number,
   quoteAsset: `0x${string}`
-): { symbol: string; decimals: number; address: `0x${string}` | null; preIpo: boolean } {
-  if (quoteAsset === ZERO_ADDRESS) return { symbol: "ETH", decimals: 18, address: null, preIpo: false };
+): {
+  symbol: string;
+  decimals: number;
+  address: `0x${string}` | null;
+  preIpo: boolean;
+  synthetic: boolean;
+} {
+  if (quoteAsset === ZERO_ADDRESS)
+    return { symbol: "ETH", decimals: 18, address: null, preIpo: false, synthetic: false };
   const found = (QUOTE_ASSETS[chainId] ?? []).find(
     (q) => q.address?.toLowerCase() === quoteAsset.toLowerCase()
   );
   return found
-    ? { symbol: found.symbol, decimals: found.decimals, address: found.address, preIpo: !!found.preIpo }
-    : { symbol: "?", decimals: 18, address: quoteAsset, preIpo: false };
+    ? {
+        symbol: found.symbol,
+        decimals: found.decimals,
+        address: found.address,
+        preIpo: !!found.preIpo,
+        synthetic: !!found.synthetic,
+      }
+    : { symbol: "?", decimals: 18, address: quoteAsset, preIpo: false, synthetic: false };
+}
+
+/** True if `address` is itself a registered quote asset on this chain
+ *  (a Notus pre-market or a whitelisted stock) — used to keep pair assets
+ *  out of the regular Explore grid. */
+export function isQuoteAsset(chainId: number, address: `0x${string}`): boolean {
+  return (QUOTE_ASSETS[chainId] ?? []).some(
+    (q) => q.address?.toLowerCase() === address.toLowerCase()
+  );
 }
 
 export function parseMeta(result: unknown): TokenMeta {
