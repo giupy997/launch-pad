@@ -27,6 +27,7 @@ interface ILaunchpadZap {
         returns (uint256, uint256, uint256, uint256, bool, address, address quoteAsset);
     function buy(address token, uint256 minTokensOut) external payable;
     function buyWithQuoteFor(address token, uint256 amountIn, uint256 minTokensOut, address recipient) external;
+    function claimCashback(address token) external;
 }
 
 /// @title ZapRouter
@@ -110,7 +111,14 @@ contract ZapRouter is ReentrancyGuard {
         IERC20(quote).forceApprove(launchpad, quoteOut);
         ILaunchpadZap(launchpad).buyWithQuoteFor(token, quoteOut, minTokensOut, msg.sender);
 
-        // a graduating pre-market buy can refund surplus ETH to this router
+        // Holding the pre-market for those two calls accrues holder cashback
+        // to this router. It is paid in the pre-market's own quote (ETH), and
+        // it was earned by this user's trade — claim it and hand it over with
+        // the rest, so nothing is ever stranded here. Reverts when there is
+        // nothing to claim, which is not an error.
+        try ILaunchpadZap(launchpad).claimCashback(quote) {} catch {}
+
+        // plus any surplus a graduating pre-market buy refunded to this router
         uint256 leftover = address(this).balance;
         if (leftover > 0) {
             (bool ok,) = msg.sender.call{value: leftover}("");

@@ -41,6 +41,7 @@ contract ZapRouterCurveTest is Test {
     }
 
     function test_zapBuyCurve() public {
+        uint256 before = bob.balance;
         vm.prank(bob);
         zap.zapBuyCurve{value: 0.5 ether}(token, 0, 0);
 
@@ -49,6 +50,10 @@ contract ZapRouterCurveTest is Test {
         assertEq(address(zap).balance, 0, "no ETH stuck");
         assertEq(LaunchToken(pre).balanceOf(address(zap)), 0, "no pre stuck");
         assertEq(LaunchToken(token).balanceOf(address(zap)), 0, "no tokens stuck");
+        // the cashback the router earned while holding the pre-market was
+        // claimed and forwarded, so bob spent strictly less than he sent
+        assertEq(pad.cashbackOf(pre, address(zap)), 0, "router cashback claimed");
+        assertLt(before - bob.balance, 0.5 ether, "cashback refunded to bob");
     }
 
     function test_zapBuyCurveSlippageGuards() public {

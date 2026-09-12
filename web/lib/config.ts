@@ -44,13 +44,13 @@ export const APP_CHAINS = [giwaSepolia, robinhood] as const;
 // One address per chain: add future deployments here (multichain).
 export const LAUNCHPAD_ADDRESS: Record<number, `0x${string}` | undefined> = {
   [giwaSepolia.id]: "0x8E1a1308E3b176528Ee9278d7a531F185F9fBeFD",
-  [robinhood.id]: "0xD5d932C0A1418Bc0976D1a2D733F8e363746A4bC", // v7.2
+  [robinhood.id]: "0x39fE527714571FE9EA35c4e19C5Bc66503f6F777", // v7.3
 };
 
 // Launchpad deployment blocks: where on-chain event scans start.
 export const LAUNCHPAD_DEPLOY_BLOCK: Record<number, bigint> = {
   [giwaSepolia.id]: 31_997_798n, // v7.1
-  [robinhood.id]: 61_199_716n, // v7.2
+  [robinhood.id]: 61_261_636n, // v7.3
 };
 
 // Quote assets offered at launch per chain. address null = native ETH.
@@ -84,8 +84,14 @@ export const QUOTE_ASSETS: Record<number, QuoteAssetInfo[]> = {
   [robinhood.id]: [
     { address: null, symbol: "ETH", decimals: 18, kind: "native" },
     { address: "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168", symbol: "USDG", name: "Global Dollar", decimals: 6, kind: "stable", zapFees: [500] },
-    // Notus synthetic pre-markets (createPreMarket) are appended here after
-    // deployment: { address, symbol, name, decimals: 18, kind: "premarket" }
+    // Notus synthetic pre-markets (createPreMarket): transferable from day
+    // one, rewards fee mode, whitelisted as quote assets on creation. ETH
+    // buys route through their own curve (ZapRouter.zapBuyCurve) until they
+    // graduate; add zapFees: [10000] once their Uniswap pool exists.
+    { address: "0xD1f2f5CdC507b76e72B245EC32eDBED68babE50F", symbol: "OPENAI", name: "OpenAI Pre-Market", decimals: 18, kind: "premarket" },
+    { address: "0x5e6cbD4535bf47B7ccb1d8A25f9831461a7D5534", symbol: "ANTHRO", name: "Anthropic Pre-Market", decimals: 18, kind: "premarket" },
+    { address: "0x5CfbDb207FA7dDBB601A47C6Ff6FBDC77dB72BC8", symbol: "XAI", name: "xAI Pre-Market", decimals: 18, kind: "premarket" },
+    { address: "0x0eE6e9647FDD52F13f8a511EbC1CCBd2337A9f2f", symbol: "STRIPE", name: "Stripe Pre-Market", decimals: 18, kind: "premarket" },
     { address: "0x4a0E65A3EcceC6dBe60AE065F2e7bb85Fae35eEa", symbol: "SPCX", name: "SpaceX", decimals: 18, kind: "preipo", zapFees: [500] },
     { address: "0xC9a981FEE1F9DEc688bb123ccDeCc63D0deBFC4e", symbol: "GLD", name: "SPDR Gold Shares", decimals: 18, kind: "etf", zapFees: [10000] },
     { address: "0xD5f3879160bc7c32ebb4dC785F8a4F505888de68", symbol: "QQQ", name: "Invesco QQQ", decimals: 18, kind: "etf", zapFees: [3000] },
@@ -162,7 +168,7 @@ export function rwaLogo(asset: QuoteAssetInfo): string | undefined {
 
 // ETH-zap infrastructure on Robinhood Chain (router deployed per launchpad).
 export const ZAP_ROUTER: Record<number, `0x${string}` | undefined> = {
-  [robinhood.id]: "0xD6b78EB9f8715Fc35D9813f2Ba818fDA97030407", // v7.2
+  [robinhood.id]: "0x5A21C91BC53734f4b6185744D1260Be63FF59385", // v7.3
 };
 export const UNISWAP_QUOTER: Record<number, `0x${string}` | undefined> = {
   [robinhood.id]: "0x33e885ed0ec9bf04ecfb19341582aadcb4c8a9e7",
