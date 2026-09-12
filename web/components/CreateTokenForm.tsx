@@ -547,8 +547,8 @@ function AssetLogo({ asset, size }: { asset: QuoteAssetInfo; size: number }) {
   const [failed, setFailed] = useState(false);
   const src = rwaLogo(asset);
   if (src && !failed) {
-    // eslint-disable-next-line @next/next/no-img-element
     return (
+      // eslint-disable-next-line @next/next/no-img-element
       <img
         src={src}
         alt=""

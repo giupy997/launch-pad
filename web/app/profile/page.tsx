@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useAccount, useBalance, useReadContracts } from "wagmi";
 import { launchTokenAbi } from "@/lib/abi";
-import { useTokens, spotPrice, useExplorer } from "@/lib/hooks";
+import { useTokens, spotPrice, useExplorer, useAppChain, isQuoteAsset } from "@/lib/hooks";
 import { fmtEth, fmtTokens, shortAddr } from "@/lib/format";
 import { TokenCard } from "@/components/TokenCard";
 import { TokenLogo } from "@/components/TokenLogo";
@@ -13,6 +13,7 @@ export default function ProfilePage() {
   const { address: user, isConnected } = useAccount();
   const { tokens } = useTokens();
   const explorer = useExplorer();
+  const chainId = useAppChain().id;
   const { data: ethBal } = useBalance({ address: user, query: { enabled: !!user } });
 
   const { data: balances } = useReadContracts({
@@ -39,7 +40,12 @@ export default function ProfilePage() {
     );
   }
 
-  const created = tokens.filter((t) => t.curve.creator.toLowerCase() === user.toLowerCase());
+  // Pre-markets stay out of "created" (they're platform pair assets), but a
+  // wallet that ends up holding one — e.g. from a graduation refund — still
+  // sees it under holdings.
+  const created = tokens.filter(
+    (t) => t.curve.creator.toLowerCase() === user.toLowerCase() && !isQuoteAsset(chainId, t.address)
+  );
 
   const holdings = tokens
     .map((t, i) => {

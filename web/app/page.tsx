@@ -2,10 +2,8 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useTokens, useAppChain, isQuoteAsset, spotPrice, curveProgress } from "@/lib/hooks";
-import { fmtEth } from "@/lib/format";
+import { useTokens, useAppChain, isQuoteAsset } from "@/lib/hooks";
 import { TokenCard } from "@/components/TokenCard";
-import { TokenLogo } from "@/components/TokenLogo";
 import { NotDeployedNotice } from "@/components/NotDeployedNotice";
 
 type Sort = "newest" | "raised" | "progress";
@@ -16,8 +14,8 @@ export default function Explore() {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<Sort>("newest");
 
-  // Pair assets (Notus pre-markets) live in their own section, not the grid.
-  const preMarkets = allTokens.filter((t) => isQuoteAsset(chain.id, t.address));
+  // Pre-markets are pair assets, bought for users by the zap when they trade
+  // a paired token — never listed as tokens to buy on their own.
   const tokens = allTokens.filter((t) => !isQuoteAsset(chain.id, t.address));
 
   const q = query.trim().toLowerCase();
@@ -54,52 +52,6 @@ export default function Explore() {
           Create a token
         </Link>
       </section>
-
-      {preMarkets.length > 0 && (
-        <section>
-          <div className="flex items-baseline justify-between mb-4">
-            <h2 className="font-mono text-sm font-semibold tracking-[0.2em] uppercase text-white">
-              ◆ Pre-IPO markets
-            </h2>
-            <span className="text-[11px] text-zinc-600 text-right">
-              Pair assets — hold them, launch against them, earn their fees
-            </span>
-          </div>
-          <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-            {preMarkets.map((t) => (
-              <Link
-                key={t.address}
-                href={`/token/${t.address}`}
-                className="rounded-xl border border-zinc-700 bg-black p-4 hover:border-white transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <TokenLogo uri={t.meta.logoURI} symbol={t.symbol} size={36} />
-                  <div className="min-w-0">
-                    <div className="font-mono font-bold truncate">{t.symbol}</div>
-                    <div className="text-[11px] text-zinc-500 truncate">{t.name}</div>
-                  </div>
-                </div>
-                <div className="mt-3 flex items-baseline justify-between gap-2">
-                  <span className="text-sm text-zinc-300">{fmtEth(spotPrice(t.curve))} ETH</span>
-                  <span className="font-mono text-[9px] tracking-widest uppercase border border-white rounded-full px-1.5 py-px text-white shrink-0">
-                    Pair
-                  </span>
-                </div>
-                <div className="mt-3 h-1 rounded bg-zinc-800 overflow-hidden">
-                  <div
-                    className="h-full bg-white"
-                    style={{ width: `${Math.min(curveProgress(t.curve), 100)}%` }}
-                  />
-                </div>
-              </Link>
-            ))}
-          </div>
-          <p className="mt-2 text-[11px] text-zinc-600">
-            Synthetic community pre-markets: price discovery only — no equity, no backing, no
-            affiliation. 80% of their trading fees goes to holders.
-          </p>
-        </section>
-      )}
 
       <section>
         <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
