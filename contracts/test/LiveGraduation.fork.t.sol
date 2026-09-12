@@ -2,25 +2,33 @@
 pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
-import {Launchpad} from "../src/Launchpad.sol";
-import {UniV3Migrator} from "../src/UniV3Migrator.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {IPoolManager} from "v4-core/src/interfaces/IPoolManager.sol";
+import {IHooks} from "v4-core/src/interfaces/IHooks.sol";
+import {StateLibrary} from "v4-core/src/libraries/StateLibrary.sol";
+import {PoolKey} from "v4-core/src/types/PoolKey.sol";
+import {PoolIdLibrary} from "v4-core/src/types/PoolId.sol";
+import {Currency} from "v4-core/src/types/Currency.sol";
+import {Launchpad} from "../src/Launchpad.sol";
+import {NotusV4Hook} from "../src/NotusV4Hook.sol";
+import {V4Swapper} from "./NotusV4Hook.fork.t.sol";
 
-interface IUniV3FactoryView {
-    function getPool(address, address, uint24) external view returns (address);
-}
-
-/// End-to-end graduation check against the PRODUCTION contracts deployed on
-/// Robinhood Chain mainnet (fork simulation — no real funds spent).
-/// NOTE: targets the deployed production addresses — update PAD/MIG after
-/// each redeploy. Run with: RUN_FORK_LIVE=true forge test --match-contract LiveGraduation -vv
+/// End-to-end graduation against the PRODUCTION contracts deployed on
+/// Robinhood Chain mainnet (fork simulation — no real funds spent): launch in
+/// holders mode, buy through graduation into the Uniswap v4 pool, trade in
+/// the pool, and check the holders keep earning.
+/// NOTE: targets the deployed addresses — update PAD/HOOK after each redeploy.
+/// Run with: RUN_FORK_LIVE=true forge test --match-contract LiveGraduation -vv
 contract LiveGraduationForkTest is Test {
-    Launchpad constant PAD = Launchpad(0x39fE527714571FE9EA35c4e19C5Bc66503f6F777);
-    UniV3Migrator constant MIG = UniV3Migrator(0xa48432984D508A686A7ab86BFe2359f980e53dC3);
-    address constant FACTORY = 0x1f7d7550B1b028f7571E69A784071F0205FD2EfA;
-    address constant WETH = 0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73;
+    using PoolIdLibrary for PoolKey;
+    using StateLibrary for IPoolManager;
+
+    Launchpad constant PAD = Launchpad(0x4A84c7B0dc45a473eA67f56617BC5903CA2c001c);
+    NotusV4Hook constant HOOK = NotusV4Hook(payable(0x11E98A9d691B8730990d9bE1da9CD012f4e320cC));
+    IPoolManager constant PM = IPoolManager(0x8366a39CC670B4001A1121B8F6A443A643e40951);
 
     bool skipAll;
+    address creator = makeAddr("creator");
     address whale = makeAddr("whale");
 
     function setUp() public {
@@ -32,42 +40,41 @@ contract LiveGraduationForkTest is Test {
         vm.deal(whale, 100 ether);
     }
 
-    function test_liveContracts_graduationAutoMigrates() public {
+    function test_liveContracts_graduateIntoV4AndHoldersKeepEarning() public {
         if (skipAll) return;
 
-        // wiring sanity on the real deployment
-        assertEq(address(PAD.migrator()), address(MIG), "migrator wired");
-        assertEq(MIG.launchpad(), address(PAD), "migrator points back");
-        // v7.2: creator+cashback bps form one 80% pot, all-creator or all-holders
-        assertEq(PAD.creatorFeeShareBps() + PAD.holderCashbackBps(), 8_000, "80% pot");
+        // wiring on the real deployment
+        assertEq(address(PAD.migrator()), address(HOOK), "hook is the migrator");
+        assertTrue(PAD.isPoolFeeHook(address(HOOK)), "hook may deposit pool fees");
+        assertEq(PAD.poolManager(), address(PM), "v4 pool reserves excluded from cashback");
+        assertEq(HOOK.launchpad(), address(PAD), "hook points back");
 
-        // launch in holders-rewards mode + buy through graduation, like a real user
-        vm.startPrank(whale);
+        vm.prank(creator);
         address token = PAD.createToken(
-            "Dry Run", "DRY", 0,
-            Launchpad.TokenMetadata("", "", "", "", "", "graduation dry run"), address(0), true
+            "Dry Run", "DRY", 0, Launchpad.TokenMetadata("", "", "", "", "", "graduation dry run"), address(0), true
         );
+        vm.prank(whale);
         PAD.buy{value: 50 ether}(token, 0);
-        vm.stopPrank();
 
-        (,, uint256 realEth, uint256 sold, bool graduated,,) = PAD.curves(token);
+        (,, uint256 realEth,, bool graduated,,) = PAD.curves(token);
         assertTrue(graduated, "graduated");
-        assertEq(sold, PAD.CURVE_SUPPLY(), "curve sold out");
-        assertEq(realEth, 0, "curve ETH fully migrated");
+        assertEq(realEth, 0, "curve ETH moved into the pool");
 
-        // the Uniswap v3 pool exists, holds the liquidity, position locked
-        address pool = IUniV3FactoryView(FACTORY).getPool(token, WETH, 10_000);
-        assertTrue(pool != address(0), "pool created");
-        assertGt(MIG.positions(token), 0, "LP NFT locked in migrator");
-        assertGt(IERC20(WETH).balanceOf(pool), 3.9 ether, "~4 ETH in pool");
-        assertGt(IERC20(token).balanceOf(pool), 190_000_000e18, "DEX reserve in pool");
+        (Currency c0, Currency c1, uint24 fee, int24 spacing, IHooks hooks) = HOOK.poolKeys(token);
+        PoolKey memory key = PoolKey(c0, c1, fee, spacing, hooks);
+        assertGt(PM.getLiquidity(key.toId()), 0, "locked liquidity in the v4 pool");
 
-        // fee plumbing worked along the way (rewards mode: the whole pot is cashback)
-        assertTrue(PAD.feesToHolders(token), "rewards mode stored");
-        assertEq(PAD.creatorFees(whale, address(0)), 0, "no creator fees in rewards mode");
-        assertGt(PAD.cashbackOf(token, whale), 0, "holder cashback accrued");
+        // trade in the pool: the whale's holdings keep earning cashback
+        uint256 before = PAD.cashbackOf(token, whale);
+        V4Swapper swapper = new V4Swapper(PM);
+        vm.deal(address(swapper), 5 ether);
+        swapper.swap(key, true, -1 ether);
+        assertGt(PAD.cashbackOf(token, whale), before, "holder rewards continue after graduation");
+        assertEq(PAD.creatorFees(creator, address(0)), 0, "holders mode: nothing to the creator");
 
-        // LP fee collection callable
-        MIG.collectFees(token);
+        uint256 whaleEth = whale.balance;
+        vm.prank(whale);
+        PAD.claimCashback(token);
+        assertGt(whale.balance, whaleEth, "claim pays out");
     }
 }
