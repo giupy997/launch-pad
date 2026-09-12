@@ -8,20 +8,27 @@ future multichain deployments (Monad, MegaETH, ...).
 
 - `contracts/` — smart contracts (Solidity + Foundry)
   - `src/Launchpad.sol` — factory + bonding curve (constant product with
-    virtual reserves), graduation with automatic DEX migration (manual fallback if the DEX leg fails); on-chain token metadata
-    (1:1 logo URI, website, X, Telegram, livestream URL) editable by the
-    creator; 1% trade fee split 50% creator (pull-based `claimCreatorFees`)
-    / 30% holder cashback (pro-rata accumulator, `claimCashback`) / 20%
-    treasury, with a per-token creator-settable fee recipient
-    (`setFeeRecipient`, pump.fun-style redirect)
+    virtual reserves), graduation with automatic DEX migration (manual
+    fallback if the DEX leg fails); on-chain token metadata (1:1 logo URI,
+    website, X, Telegram, livestream URL) editable by the creator; curves
+    quoted in ETH or in any whitelisted ERC-20 (stocks, ETFs, stablecoin,
+    pre-IPO); 1% trade fee, of which 20% is treasury and the other 80% goes
+    — by the creator's irrevocable choice at launch (`feesToHolders`) —
+    either entirely to the creator (`claimCreatorFees`, redirectable with
+    `setFeeRecipient`) or entirely to holders as pro-rata cashback
+    (`claimCashback`); `createPreMarket` mints a synthetic pre-IPO pair
+    asset, transferable from day one and whitelisted on creation
   - `src/LaunchToken.sol` — ERC-20 created by the launchpad; transfers locked
-    until graduation
+    until graduation, except for pre-markets, which are transferable from
+    day one so they can serve as pair assets right away
   - `src/interfaces/IDexMigrator.sol` — pluggable DEX adapter (one per chain)
-  - `script/launch-pre-markets.sh` + `script/enable-pre-markets.sh` — Notus
-    Pre-Markets: synthetic pre-IPO tokens (OpenAI, Anthropic, ...) launched as
-    regular ETH curves and, once graduated, whitelisted as quote assets so new
-    tokens can pair with them (stonkfun-style; clearly disclaimed as
-    price-discovery only — no equity, no backing, no affiliation)
+  - `src/ZapRouter.sol` — one-transaction ETH buys on asset-quoted curves:
+    through Uniswap for RWA pairs, or straight through the pre-market's own
+    curve for Notus Pre-Markets (no pool needed)
+  - `script/enable-rwa-quotes.sh` — enables the whole RWA catalogue as quote
+    assets in one `setQuoteAssets` transaction
+  - `script/create-pre-markets.sh` — creates the Notus Pre-Markets and
+    whitelists SPCX
   - `src/UniV3Migrator.sol` — graduation adapter for Robinhood Chain: seeds a
     full-range Uniswap v3 pool (1% tier), locks the LP NFT forever and splits
     the perpetual LP fees 50/50 creator/treasury (fork-tested against the
@@ -29,7 +36,9 @@ future multichain deployments (Monad, MegaETH, ...).
 - `web/` — Next.js 14 + wagmi v2 + viem frontend
   - `/` Explore: on-chain token list (multicall, 5s refresh) with search
     and sorting
-  - `/create`: token creation with logo (1:1) and social links
+  - `/create`: token creation with logo (1:1) and social links, a searchable
+    pair picker over all 64 quote assets (grouped Pre-IPO / ETFs & commodities
+    / Stocks, with official logos) and the irrevocable fee-destination choice
   - `/token/[address]`: curve stats, progress bar, buy/sell box with
     on-chain quotes, automatic approve and 1% slippage guard; price chart
     and trade feed built client-side from on-chain events (no indexer:
@@ -51,7 +60,8 @@ future multichain deployments (Monad, MegaETH, ...).
 
 - Total supply: 1B per token; 800M sold on the curve, 200M reserved for DEX
 - Virtual reserves: 1.25 ETH / 1.05B tokens → the curve raises ~4 ETH
-- Fee: 1% on buys and sells (max 5%, owner-configurable)
+- Fee: 1% on buys and sells (max 5%, owner-configurable), split 20%
+  treasury / 80% to the creator or to holders per the launch-time choice
 - Graduation: once the 800M are sold out → curve trading closes,
   `migrate()` moves 200M tokens + raised ETH to the DEX adapter
 
@@ -59,20 +69,32 @@ future multichain deployments (Monad, MegaETH, ...).
 
 | Chain | Contract | Address |
 |---|---|---|
-| GIWA Sepolia (91342) | Launchpad | [`0x8E1a1308E3b176528Ee9278d7a531F185F9fBeFD`](https://sepolia-explorer.giwa.io/address/0x8E1a1308E3b176528Ee9278d7a531F185F9fBeFD) — v7.1 (v7.2 redeploy pending) |
-| Robinhood Chain (4663) | Launchpad | [`0xD5d932C0A1418Bc0976D1a2D733F8e363746A4bC`](https://robinhoodchain.blockscout.com/address/0xD5d932C0A1418Bc0976D1a2D733F8e363746A4bC) — v7.2, 11 stocks whitelisted |
-| Robinhood Chain (4663) | UniV3Migrator | [`0x5e81b8c1E89283d19DC7Ab8e6600565224ab8940`](https://robinhoodchain.blockscout.com/address/0x5e81b8c1E89283d19DC7Ab8e6600565224ab8940) — wired, live fork test green |
-| Robinhood Chain (4663) | ZapRouter | [`0xD6b78EB9f8715Fc35D9813f2Ba818fDA97030407`](https://robinhoodchain.blockscout.com/address/0xD6b78EB9f8715Fc35D9813f2Ba818fDA97030407) — ETH zap buys |
+| GIWA Sepolia (91342) | Launchpad | [`0x8E1a1308E3b176528Ee9278d7a531F185F9fBeFD`](https://sepolia-explorer.giwa.io/address/0x8E1a1308E3b176528Ee9278d7a531F185F9fBeFD) — v7.1 (v7.3 redeploy pending) |
+| Robinhood Chain (4663) | Launchpad | [`0x39fE527714571FE9EA35c4e19C5Bc66503f6F777`](https://robinhoodchain.blockscout.com/address/0x39fE527714571FE9EA35c4e19C5Bc66503f6F777) — v7.3, 64 quote assets |
+| Robinhood Chain (4663) | UniV3Migrator | [`0xa48432984D508A686A7ab86BFe2359f980e53dC3`](https://robinhoodchain.blockscout.com/address/0xa48432984D508A686A7ab86BFe2359f980e53dC3) — wired |
+| Robinhood Chain (4663) | ZapRouter | [`0x6b52d9C2631f216fe3076149C0A8cb36864a9D81`](https://robinhoodchain.blockscout.com/address/0x6b52d9C2631f216fe3076149C0A8cb36864a9D81) — ETH zap buys |
 
-Notus Pre-Markets (synthetic pre-IPO, holders-rewards mode, on their ETH
-curves — whitelisted as quote assets after each one graduates):
+### Pair assets (Robinhood Chain)
+
+64 quote assets: 55 tokenized stocks, 7 ETFs and commodities (SPY, QQQ,
+XLK, GLD gold, SLV silver, USO oil, SGOV treasuries), USDG, SPCX
+(SpaceX, pre-IPO) and the four Notus Pre-Markets below. Every RWA
+address is verified on-chain (symbol, 18 decimals, official
+`... - Robinhood Token` name); virtual reserves are sized from live
+prices for a ~$14k raise, and 57 of them have a measured Uniswap route
+for one-transaction ETH buys.
+
+Notus Pre-Markets — synthetic pre-IPO markets created with
+`createPreMarket`: transferable from day one, holder-rewards fee mode,
+whitelisted as quote assets on creation. Price discovery only: no
+equity, no backing, no affiliation with the companies.
 
 | Pre-market | Address |
 |---|---|
-| OPENAI | [`0xaF36F6d838E8A8659058f47C160527f70E9F1D82`](https://robinhoodchain.blockscout.com/address/0xaF36F6d838E8A8659058f47C160527f70E9F1D82) |
-| ANTHRO | [`0xBa92c337817d2b3F3A18712d22bd87CC78abA09c`](https://robinhoodchain.blockscout.com/address/0xBa92c337817d2b3F3A18712d22bd87CC78abA09c) |
-| XAI | [`0x84bAC7fA06c48AC169E2f3EF18CB9EB9F8bE1c42`](https://robinhoodchain.blockscout.com/address/0x84bAC7fA06c48AC169E2f3EF18CB9EB9F8bE1c42) |
-| STRIPE | [`0x7B6EBdA0eE157b04C221133C62C4D74d791053b5`](https://robinhoodchain.blockscout.com/address/0x7B6EBdA0eE157b04C221133C62C4D74d791053b5) |
+| OPENAI | [`0xD1f2f5CdC507b76e72B245EC32eDBED68babE50F`](https://robinhoodchain.blockscout.com/address/0xD1f2f5CdC507b76e72B245EC32eDBED68babE50F) |
+| ANTHRO | [`0x5e6cbD4535bf47B7ccb1d8A25f9831461a7D5534`](https://robinhoodchain.blockscout.com/address/0x5e6cbD4535bf47B7ccb1d8A25f9831461a7D5534) |
+| XAI | [`0x5CfbDb207FA7dDBB601A47C6Ff6FBDC77dB72BC8`](https://robinhoodchain.blockscout.com/address/0x5CfbDb207FA7dDBB601A47C6Ff6FBDC77dB72BC8) |
+| STRIPE | [`0x0eE6e9647FDD52F13f8a511EbC1CCBd2337A9f2f`](https://robinhoodchain.blockscout.com/address/0x0eE6e9647FDD52F13f8a511EbC1CCBd2337A9f2f) |
 
 (previous GIWA deployments: `0x1f3F...fC73` no creator fees, `0xf71b...9cC1` no metadata)
 
@@ -99,7 +121,8 @@ costs real ETH, and the contracts are unaudited — trade accordingly.
 
 ```bash
 cd contracts
-forge test                       # 33 tests incl. fuzz; fork test: RUN_FORK=true forge test --match-contract Fork
+forge test                       # 55 tests incl. fuzz
+# fork tests against live contracts: RUN_FORK_LIVE=true forge test --match-contract Live
 ```
 
 ```bash
