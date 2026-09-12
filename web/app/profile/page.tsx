@@ -44,7 +44,7 @@ export default function ProfilePage() {
   // wallet that ends up holding one — e.g. from a graduation refund — still
   // sees it under holdings.
   const created = tokens.filter(
-    (t) => t.curve.creator.toLowerCase() === user.toLowerCase() && !isQuoteAsset(chainId, t.address)
+    (t) => t.curve.creator.toLowerCase() === user.toLowerCase() && !t.isPreMarket && !isQuoteAsset(chainId, t.address)
   );
 
   const holdings = tokens

@@ -38,6 +38,7 @@ export default function SwapPage() {
     (t) =>
       !t.curve.graduated &&
       t.curve.quoteAsset === ZERO_ADDRESS &&
+      !t.isPreMarket &&
       !isQuoteAsset(appChainId, t.address) // pre-markets are pair assets, not swap targets
   );
 

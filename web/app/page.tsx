@@ -17,7 +17,7 @@ export default function Explore() {
 
   // Pre-markets are pair assets, bought for users by the zap when they trade
   // a paired token — never listed as tokens to buy on their own.
-  const tokens = allTokens.filter((t) => !isQuoteAsset(chain.id, t.address));
+  const tokens = allTokens.filter((t) => !t.isPreMarket && !isQuoteAsset(chain.id, t.address));
 
   const q = query.trim().toLowerCase();
   const filtered = tokens.filter(

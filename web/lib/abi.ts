@@ -1640,6 +1640,11 @@ export const launchTokenAbi = [
         "name": "supply_",
         "type": "uint256",
         "internalType": "uint256"
+      },
+      {
+        "name": "transferable_",
+        "type": "bool",
+        "internalType": "bool"
       }
     ],
     "stateMutability": "nonpayable"
@@ -1848,6 +1853,19 @@ export const launchTokenAbi = [
       }
     ],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "transferable",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "event",

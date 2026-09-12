@@ -50,6 +50,10 @@ export type TokenInfo = {
   curve: CurveInfo;
   meta: TokenMeta;
   feesToHolders: boolean;
+  /** Notus pre-market: a pair asset, never listed as a token to buy. Read
+   *  on-chain (only createPreMarket makes transferable tokens), so hiding
+   *  them never depends on the web config being up to date. */
+  isPreMarket: boolean;
 };
 
 const REFETCH = { refetchInterval: 5_000 } as const;
@@ -159,6 +163,8 @@ export function useTokens() {
       { address: t, abi: launchTokenAbi, functionName: "name" as const },
       { address: t, abi: launchTokenAbi, functionName: "symbol" as const },
       { address: padSafe, abi: launchpadAbi, functionName: "feesToHolders" as const, args: [t] as const },
+      // reverts on tokens from launchpads older than v7.3 — treated as false
+      { address: t, abi: launchTokenAbi, functionName: "transferable" as const },
     ]),
     query: { enabled: tokenAddrs.length > 0, ...IMMUTABLE, placeholderData: keepPreviousData },
   });
@@ -187,9 +193,10 @@ export function useTokens() {
     if (!statics || !curves) return [];
     return tokenAddrs
       .map((address, i) => {
-        const name = statics[i * 3];
-        const symbol = statics[i * 3 + 1];
-        const feesToHolders = statics[i * 3 + 2];
+        const name = statics[i * 4];
+        const symbol = statics[i * 4 + 1];
+        const feesToHolders = statics[i * 4 + 2];
+        const transferable = statics[i * 4 + 3];
         const curve = curves[i];
         const meta = metas?.[i];
         if (
@@ -208,6 +215,7 @@ export function useTokens() {
               ? parseMeta(meta.result)
               : { logoURI: "", website: "", twitter: "", telegram: "", livestream: "", description: "" },
           feesToHolders: feesToHolders?.status === "success" ? (feesToHolders.result as boolean) : false,
+          isPreMarket: transferable?.status === "success" ? (transferable.result as boolean) : false,
         };
       })
       .filter((t): t is TokenInfo => t !== null)
