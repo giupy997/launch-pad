@@ -13,3 +13,8 @@ node_modules/
 
 # OS
 .DS_Store
+
+# Notus on Zcash: desk wallet (seed, keys, sqlite) and the devtool build
+zcash/desk/
+zcash/user/
+zcash/tool/

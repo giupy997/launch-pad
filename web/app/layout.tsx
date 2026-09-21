@@ -5,7 +5,7 @@ import { cookieToInitialState } from "wagmi";
 import "./globals.css";
 import { config } from "@/lib/config";
 import { Providers } from "./providers";
-import { ConnectButton } from "@/components/ConnectButton";
+import { HeaderWallet } from "@/components/HeaderWallet";
 import { ChainSwitcher } from "@/components/ChainSwitcher";
 import { Nav } from "@/components/Nav";
 import { LogoVideo } from "@/components/LogoVideo";
@@ -50,7 +50,7 @@ export default function RootLayout({
               <Nav />
               <div className="flex items-center gap-2 shrink-0">
                 <ChainSwitcher />
-                <ConnectButton />
+                <HeaderWallet />
               </div>
             </div>
           </header>
@@ -68,7 +68,7 @@ export default function RootLayout({
               <p className="mt-2 normal-case tracking-normal font-sans text-zinc-700">
                 Notus is an independent, open-source token launchpad. It is not
                 affiliated with, endorsed by, or operated by Robinhood Markets,
-                GIWA, Dunamu or Uniswap — their names identify the public
+                GIWA, Dunamu, Uniswap, Zcash or the Electric Coin Company — their names identify the public
                 blockchain networks and protocols this app connects to.
                 Cryptoassets are highly volatile; nothing here is financial advice.
               </p>

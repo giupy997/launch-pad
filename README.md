@@ -40,6 +40,9 @@ future multichain deployments (Monad, MegaETH, ...).
     create pools bound to the hook. Fork-tested against the live PoolManager,
     V4Quoter and Universal Router, including a real Robinhood NVDA pair.
   - `src/UniV3Migrator.sol` — legacy v3 graduation adapter (v7.3 and earlier)
+- `zcash/` — **Notus on Zcash** (testnet): a launchpad with no contracts — one
+  shielded address, a published viewing key and a bonding-curve ledger
+  replayed from encrypted memos. See [zcash/README.md](zcash/README.md)
 - `web/` — Next.js 14 + wagmi v2 + viem frontend
   - `/` Explore: on-chain token list (multicall, 5s refresh) with search
     and sorting

@@ -11,12 +11,25 @@ const ITEMS = [
   { href: "/profile", label: "Profile" },
 ];
 
+const ZCASH_ITEMS = [
+  { href: "/zcash", label: "Explore" },
+  { href: "/zcash/create", label: "Deploy" },
+  { href: "/zcash/wallet", label: "Wallet" },
+  { href: "/zcash/ledger", label: "Ledger" },
+];
+
 export function Nav() {
   const pathname = usePathname();
+  const onZcash = pathname.startsWith("/zcash");
+  const items = onZcash ? ZCASH_ITEMS : ITEMS;
+  const root = onZcash ? "/zcash" : "/";
   return (
     <nav className="hidden md:flex gap-0.5 sm:gap-1 font-mono text-[11px] sm:text-xs tracking-wider sm:tracking-widest uppercase overflow-x-auto no-scrollbar">
-      {ITEMS.map((it) => {
-        const active = it.href === "/" ? pathname === "/" : pathname.startsWith(it.href);
+      {items.map((it) => {
+        const active =
+          it.href === root
+            ? pathname === root || pathname.startsWith("/zcash/c/")
+            : pathname.startsWith(it.href);
         return (
           <Link
             key={it.href}

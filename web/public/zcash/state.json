@@ -1,0 +1,25 @@
+{
+ "protocol": "NOTUS1",
+ "network": "test",
+ "height": 0,
+ "stateRoot": null,
+ "memosRead": 0,
+ "treasuryZat": "0",
+ "liabilitiesZat": "0",
+ "coins": [],
+ "balances": {},
+ "claimable": {},
+ "nonces": {},
+ "payouts": [],
+ "trades": [],
+ "rejected": [],
+ "roots": [],
+ "desk": {
+  "address": "utest1h9kazq4ewtqsadqthdc5744uu9qcxvp9k0dlrnhf59gmch4lpxhhzca6q4a2r9240srkq838u4t70pfaaxcwr6kng8g340fkr3h9t033zunptxt7ypl8alt49ejakvn9985g7ty84up0mr4r3uehan0ffrt6vy3j06vwndtsrwv0gfee4ksxnq9rlyqtg5kw2qn2nthmxq3w27re25s",
+  "ufvk": "uviewtest17xzk0axm9u4qfusgrx3yl89glq53walf3rzsk89n8356e4e9rc79kg55ace6tfkcley2jyr6jg69489arxrvj7pq8rdqc0lkvyc5uau66j5jl2u9gqe56prareagfgzzr5n7nsds7d5ehry2vpvpkd5hegd5k70k4qpxum8vsa4duqjq50jqmdyrddq5eyukuwvlu5t96hvdu8qthya2gk906j98gazwl96p8fgpyg6p3jcjgdynfmmnszjnuna2em3klnn69rmqkqw22f657vf43m55rgd33c8q04nr8w4ygkqduzgj9syzswrp49qnrrtgq2gphpzss22fed96ukkdajaryv9jlyrxe4z64vclxtztfuy0cm2pmg3ma4lvwlxa43a8agkw2he3dawxf3nye0s4x0kn2su2fdywvyx4ycq0n57wuzkh457uzmrg33egf9ja2qlc676v9f4g34ystvpmjegwu8vgye4s8hssuz5ef5qqevnz",
+  "birthday": 4374478
+ },
+ "chainTip": 4374601,
+ "confirmations": 2,
+ "updatedAt": 1789989187
+}
