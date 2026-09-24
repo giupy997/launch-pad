@@ -1,0 +1,29 @@
+# systemd unit for the Notus on Litecoin desk (indexer + payouts + snapshot server).
+#   sudo cp litecoin/deploy/notus-desk.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now notus-desk
+#   journalctl -u notus-desk -f
+[Unit]
+Description=Notus on Litecoin desk
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=notus
+WorkingDirectory=/home/notus/launch-pad
+ExecStart=/usr/bin/node litecoin/desk.ts
+Restart=always
+RestartSec=10
+Environment=PORT=8787
+Environment=NOTUS_LTC_NETWORK=test
+# Environment=NOTUS_LTC_API=https://litecoinspace.org/testnet/api
+# Environment=NOTUS_LTC_CONFIRMATIONS=2
+# the key lives in litecoin/desk/key.json (chmod 600); or set NOTUS_LTC_DESK_KEY here instead
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/notus/launch-pad/litecoin /home/notus/launch-pad/web/public/litecoin
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

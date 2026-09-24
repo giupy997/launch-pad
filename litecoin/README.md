@@ -17,6 +17,7 @@ Currently on the **Litecoin testnet** (testnet LTC has no value).
 | Chain access | `web/lib/litecoin/esplora.ts` | Esplora / mempool.space API client (litecoinspace.org by default) and the mapping from an explorer transaction to a ledger event. |
 | Indexer | `litecoin/indexer.ts` | Reads the desk's history, orders it by block and position, replays the rules, writes `web/public/litecoin/state.json`. |
 | Spend path | `litecoin/payout.ts` | Pays what the ledger says is due (sell proceeds, claims), batched, each transaction carrying `NOTUS1 paid <ids>` — the payment itself marks them settled. |
+| The desk | `litecoin/desk.ts` | Indexer + payouts + snapshot server in one long-running process, for a VPS (`litecoin/deploy/` has the systemd unit and Caddy config). |
 | Website | `web/app/litecoin/*` | Explore, deploy, trade, wallet, ledger. Keeps a Litecoin wallet in the browser, builds every transaction there, signs it and broadcasts it through `/api/ltc` (a same-origin proxy to the explorer). |
 | Test user | `litecoin/user.ts` | Does from a key file what the site does from the browser — for end-to-end tests. |
 
@@ -129,13 +130,42 @@ node litecoin/payout.ts                 # pay what is due (add --dry-run to only
 node --test web/lib/litecoin/*.test.ts  # 16 tests: ledger rules, solvency fuzz, transaction building
 ```
 
+### On a server (the way to run it for real)
+
+One process does everything — `node litecoin/desk.ts`: an indexer pass every
+minute, payouts every other pass, and the snapshot served on `:8787`
+(`/state.json`, `/health`). Point the website at it and nothing depends on a
+laptop or a commit any more.
+
+```bash
+# Ubuntu/Debian VPS, as a user "notus" (never root)
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt-get install -y nodejs
+git clone https://github.com/giupy997/launch-pad.git ~/launch-pad && cd ~/launch-pad
+(cd web && npm install)
+node litecoin/keygen.ts desk          # or copy your existing litecoin/desk/key.json here (chmod 600)
+node litecoin/indexer.ts              # first full sync, prints the desk address
+sudo cp litecoin/deploy/notus-desk.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now notus-desk
+journalctl -u notus-desk -f           # watch it work
+```
+
+Put HTTPS in front with Caddy (`litecoin/deploy/Caddyfile`, a DNS record
+such as `desk.notuspad.com` pointing at the server), then on Netlify set
+`LTC_STATE_URL=https://desk.notuspad.com/state.json` and redeploy: the pages
+read the live snapshot through `/api/ltc-state`, and the committed
+`web/public/litecoin/state.json` only serves as a fallback. Fund the desk
+address with a little LTC for payout fees; back the key file up; the
+process exposes only the snapshot, never the key.
+
 Needs Node ≥ 22.18 (runs the TypeScript directly). Environment variables:
 `NOTUS_LTC_NETWORK` (`test`, default, or `main`), `NOTUS_LTC_API` (an Esplora
 endpoint; default `https://litecoinspace.org/testnet/api`), `NOTUS_LTC_DESK`
 (the desk address, for verifiers without the key), `NOTUS_LTC_STATE`,
-`NOTUS_LTC_CACHE`, `NOTUS_LTC_CONFIRMATIONS`. For the website:
-`NEXT_PUBLIC_LTC_NETWORK`, `LTC_API_UPSTREAM` (where `/api/ltc` forwards),
-`NEXT_PUBLIC_LTC_API` (to bypass the proxy).
+`NOTUS_LTC_CACHE`, `NOTUS_LTC_CONFIRMATIONS`; for the desk process also
+`PORT`, `NOTUS_LTC_INDEX_EVERY`, `NOTUS_LTC_PAYOUT_EVERY`. For the website:
+`LTC_STATE_URL` (the desk's snapshot URL), `NEXT_PUBLIC_LTC_NETWORK`,
+`LTC_API_UPSTREAM` (where `/api/ltc` forwards), `NEXT_PUBLIC_LTC_API` (to
+bypass the proxy).
 
 To verify the published ledger you need no key at all:
 
