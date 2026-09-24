@@ -23,7 +23,8 @@ import { walletFromSecret } from "../web/lib/litecoin/tx.ts";
 const ROOT = import.meta.dirname;
 const NETWORK: Network = process.env.NOTUS_LTC_NETWORK === "main" ? "main" : "test";
 const API = process.env.NOTUS_LTC_API ?? PUBLIC_API[NETWORK];
-const OUT = process.env.NOTUS_LTC_STATE ?? join(ROOT, "../web/public/litecoin/state.json");
+export const STATE_PATH = process.env.NOTUS_LTC_STATE ?? join(ROOT, "../web/public/litecoin/state.json");
+const OUT = STATE_PATH;
 const CACHE = process.env.NOTUS_LTC_CACHE ?? join(ROOT, "cache", `${NETWORK}.json`);
 /** Transactions fold into the ledger once this deep, so a reorg cannot unwind them. */
 const CONFIRMATIONS = Number(process.env.NOTUS_LTC_CONFIRMATIONS ?? 2);
@@ -111,7 +112,8 @@ export function eventsFromCache(cache: Cache, desk: string, maxHeight: number): 
 
 let firstPass = true;
 
-async function pass(sync: boolean) {
+/** One indexer pass: sync (unless told not to), replay, write the snapshot. */
+export async function pass(sync: boolean) {
   const desk = deskAddress();
   const api = new Esplora(API);
   const cache = loadCache(desk);

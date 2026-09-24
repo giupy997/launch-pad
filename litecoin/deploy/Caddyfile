@@ -1,0 +1,9 @@
+# HTTPS in front of the desk (Caddy fetches the certificate itself).
+# Point a DNS record, e.g. desk.notuspad.com, at the server, then:
+#   sudo cp litecoin/deploy/Caddyfile /etc/caddy/Caddyfile && sudo systemctl reload caddy
+# Only /state.json and /health are served; everything else is refused.
+desk.notuspad.com {
+	@allowed path /state.json /health
+	reverse_proxy @allowed localhost:8787
+	respond 404
+}

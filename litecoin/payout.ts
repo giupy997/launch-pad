@@ -22,56 +22,72 @@ const API = process.env.NOTUS_LTC_API ?? PUBLIC_API[NETWORK];
 const STATE = process.env.NOTUS_LTC_STATE ?? join(ROOT, "../web/public/litecoin/state.json");
 // A payout stays "due" in the ledger until its payment is mined and folded
 // in, so remember what was already broadcast or it would be paid twice.
-const SENT = join(ROOT, "desk/sent-payouts.json");
+const SENT = process.env.NOTUS_LTC_SENT ?? join(ROOT, "desk/sent-payouts.json");
 const MAX_OUTPUTS = 20;
 
 type Payout = { id: number; kind: string; to: string; lit: string; paidTxid: string | null };
 
-const secret = process.env.NOTUS_LTC_DESK_KEY ?? JSON.parse(readFileSync(join(ROOT, "desk/key.json"), "utf8")).secret;
-const desk = walletFromSecret(secret, NETWORK);
-const dryRun = process.argv.includes("--dry-run");
-const state = JSON.parse(readFileSync(STATE, "utf8")) as { payouts: Payout[]; desk: { address: string } };
-if (state.desk.address !== desk.address) throw new Error(`snapshot desk ${state.desk.address} is not this key's ${desk.address}`);
-const sent: Record<string, string> = existsSync(SENT) ? JSON.parse(readFileSync(SENT, "utf8")) : {};
-const due = state.payouts.filter((p) => !p.paidTxid && !(p.id in sent));
-
-if (due.length === 0) console.log("nothing due");
-for (const p of due) console.log(`due  #${p.id} ${p.kind} ${fmtLit(BigInt(p.lit))} LTC -> ${p.to}`);
-if (dryRun || due.length === 0) process.exit(0);
-
-// batches: as many as fit the memo and a sane output count
-const batches: Payout[][] = [];
-for (const p of due) {
-  const cur = batches.at(-1);
-  if (cur && cur.length < MAX_OUTPUTS && memoBytes(memo.paid([...cur, p].map((x) => x.id))) <= MEMO_MAX_BYTES) cur.push(p);
-  else batches.push([p]);
+function deskSecret(): string {
+  return process.env.NOTUS_LTC_DESK_KEY ?? JSON.parse(readFileSync(join(ROOT, "desk/key.json"), "utf8")).secret;
 }
 
-const api = new Esplora(API);
-const feeRate = await api.feeRate();
-let utxos: Utxo[] = await api.utxos(desk.address);
-console.log(`desk holds ${fmtLit(utxos.reduce((t, u) => t + u.value, 0n))} LTC in ${utxos.length} coins · fee ${feeRate} lit/vB`);
+/** Pay (or, dry, list) everything due. Returns how many payouts were broadcast. */
+export async function payDue(dryRun = false, log: (line: string) => void = console.log): Promise<number> {
+  const secret = deskSecret();
+  const desk = walletFromSecret(secret, NETWORK);
+  const state = JSON.parse(readFileSync(STATE, "utf8")) as { payouts: Payout[]; desk: { address: string | null } };
+  if (state.desk.address !== desk.address) throw new Error(`snapshot desk ${state.desk.address} is not this key's ${desk.address}`);
+  const sent: Record<string, string> = existsSync(SENT) ? JSON.parse(readFileSync(SENT, "utf8")) : {};
+  const due = state.payouts.filter((p) => !p.paidTxid && !(p.id in sent));
 
-for (const batch of batches) {
-  try {
-    const built = buildTx({
-      network: NETWORK,
-      secret,
-      utxos,
-      payments: batch.map((p) => ({ address: p.to, lit: BigInt(p.lit) })),
-      memo: memo.paid(batch.map((p) => p.id)),
-      feeRate,
-    });
-    const txid = await api.broadcast(built.hex);
-    for (const p of batch) sent[p.id] = txid;
-    writeFileSync(SENT, JSON.stringify(sent, null, 1));
-    console.log(`paid ${batch.map((p) => `#${p.id}`).join(" ")} · ${fmtLit(built.fee)} LTC fee · ${txid}`);
-    // spend the change of this transaction in the next one, not the coins it used
-    const spent = new Set(built.inputs.map((u) => `${u.txid}:${u.vout}`));
-    utxos = utxos.filter((u) => !spent.has(`${u.txid}:${u.vout}`));
-    if (built.change > 0n) utxos.push({ txid, vout: built.outputs.length - 1, value: built.change, confirmed: false });
-  } catch (e) {
-    // not enough coins, explorer down, a rejected broadcast… leave it due and move on
-    console.error(`FAIL ${batch.map((p) => `#${p.id}`).join(" ")}: ${(e as Error).message.split("\n")[0]}`);
+  for (const p of due) log(`due  #${p.id} ${p.kind} ${fmtLit(BigInt(p.lit))} LTC -> ${p.to}`);
+  if (due.length === 0) {
+    if (dryRun) log("nothing due");
+    return 0;
   }
+  if (dryRun) return 0;
+
+  // batches: as many as fit the memo and a sane output count
+  const batches: Payout[][] = [];
+  for (const p of due) {
+    const cur = batches.at(-1);
+    if (cur && cur.length < MAX_OUTPUTS && memoBytes(memo.paid([...cur, p].map((x) => x.id))) <= MEMO_MAX_BYTES) cur.push(p);
+    else batches.push([p]);
+  }
+
+  const api = new Esplora(API);
+  const feeRate = await api.feeRate();
+  let utxos: Utxo[] = await api.utxos(desk.address);
+  log(`desk holds ${fmtLit(utxos.reduce((t, u) => t + u.value, 0n))} LTC in ${utxos.length} coins · fee ${feeRate} lit/vB`);
+
+  let paid = 0;
+  for (const batch of batches) {
+    try {
+      const built = buildTx({
+        network: NETWORK,
+        secret,
+        utxos,
+        payments: batch.map((p) => ({ address: p.to, lit: BigInt(p.lit) })),
+        memo: memo.paid(batch.map((p) => p.id)),
+        feeRate,
+      });
+      const txid = await api.broadcast(built.hex);
+      for (const p of batch) sent[p.id] = txid;
+      writeFileSync(SENT, JSON.stringify(sent, null, 1));
+      paid += batch.length;
+      log(`paid ${batch.map((p) => `#${p.id}`).join(" ")} · ${fmtLit(built.fee)} LTC fee · ${txid}`);
+      // spend the change of this transaction in the next one, not the coins it used
+      const spent = new Set(built.inputs.map((u) => `${u.txid}:${u.vout}`));
+      utxos = utxos.filter((u) => !spent.has(`${u.txid}:${u.vout}`));
+      if (built.change > 0n) utxos.push({ txid, vout: built.outputs.length - 1, value: built.change, confirmed: false });
+    } catch (e) {
+      // not enough coins, explorer down, a rejected broadcast… leave it due and move on
+      log(`FAIL ${batch.map((p) => `#${p.id}`).join(" ")}: ${(e as Error).message.split("\n")[0]}`);
+    }
+  }
+  return paid;
+}
+
+if (process.argv[1] === import.meta.filename) {
+  await payDue(process.argv.includes("--dry-run"));
 }

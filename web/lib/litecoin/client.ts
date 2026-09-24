@@ -37,13 +37,19 @@ export type LState = {
   chainTip: number | null; confirmations: number; updatedAt: number; demo?: boolean;
 };
 
-/** The ledger snapshot the indexer publishes. */
+/** The ledger snapshot: live from the desk through /api/ltc-state when the
+ *  site is pointed at one (LTC_STATE_URL), else the file published with it. */
 export function useLitecoinState() {
   return useQuery({
     queryKey: ["litecoin-state"],
     queryFn: async (): Promise<LState | null> => {
-      const r = await fetch("/litecoin/state.json", { cache: "no-store" });
-      return r.ok ? ((await r.json()) as LState) : null;
+      for (const url of ["/api/ltc-state", "/litecoin/state.json"]) {
+        try {
+          const r = await fetch(url, { cache: "no-store" });
+          if (r.ok) return (await r.json()) as LState;
+        } catch {}
+      }
+      return null;
     },
     refetchInterval: 10_000,
     placeholderData: (prev) => prev,
