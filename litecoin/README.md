@@ -67,6 +67,50 @@ Transactions fold into the ledger after 2 confirmations (~5 minutes; the
 indexer's `NOTUS_LTC_CONFIRMATIONS`). Inside a block they are applied in
 block order.
 
+## The road to LitVM
+
+LitVM is Litecoin's EVM layer 2 (Arbitrum Orbit, gas in zkLTC = bridged
+LTC). Its Liteforge testnet is live (chain 4441); the mainnet is expected in
+the second half of 2026. The Notus contracts run there unchanged, and every
+coin on this ledger can move over with its holders and its price:
+
+- **Same key, both chains.** Litecoin and EVM chains share secp256k1, and
+  every holder who ever bought revealed their public key in their own
+  transaction to the desk. The indexer records it (`pubkeys` in the
+  snapshot), so each Litecoin address maps to an EVM address — the wallet
+  page shows yours — and the migration mints straight to it. A holder who
+  only ever *received* coins by `send` has no key on record: their balance
+  is listed as unresolved and parked in a vault address for a signed claim.
+- **Freeze.** `NOTUS_LTC_FREEZE=<height>` on the indexer: past that block
+  the ledger takes no deploy, buy, sell, send or logo (the LTC they carry is
+  credited back); claims and payouts keep working, so the desk settles what
+  it owes on Litecoin. The frozen state root is what gets re-created.
+- **The file.** `node litecoin/migration-snapshot.ts` turns the frozen
+  snapshot into `litecoin/migration/<network>-<height>.json`: per coin the
+  curve (virtual and real reserve, sold), creator and holders as EVM
+  addresses, balances — scaled from 8 to 18 decimals — plus the LTC to
+  bridge (the sum of the curves' real reserves) and what remains to settle
+  on Litecoin.
+- **The contracts.** `Launchpad.migrateToken` (owner only, once per coin)
+  re-creates the coin with that state: `msg.value` is the bridged reserve,
+  balances are delivered in batches (`migrateBalances`) and trading opens
+  when every holder has theirs, at exactly the ledger's price. A curve that
+  had sold out graduates on delivery into a locked Uniswap v2 pool
+  (`UniV2Migrator`, LitVM has no v4).
+
+```bash
+NOTUS_LTC_FREEZE=<height> node litecoin/indexer.ts     # freeze, publish the frozen snapshot
+node litecoin/payout.ts                                # settle what is due on Litecoin
+node litecoin/migration-snapshot.ts [--vault 0x...]    # the migration file
+# bridge the LTC it says to LitVM, then, from contracts/:
+forge script script/DeployLitVM.s.sol --rpc-url litvm_testnet --private-key "$PRIVATE_KEY" --broadcast
+LAUNCHPAD=0x... MIGRATION_FILE=../litecoin/migration/test-<height>.json \
+  forge script script/MigrateFromLedger.s.sol --rpc-url litvm_testnet --private-key "$PRIVATE_KEY" --broadcast
+```
+
+`forge test --match-contract Migration` runs the contract tests, including
+the demo ledger's file end to end (`test/fixtures/migration-demo.json`).
+
 ## What is custodial
 
 The desk holds the LTC in the curves — there is no escrow script on Litecoin

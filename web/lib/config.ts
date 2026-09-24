@@ -36,15 +36,32 @@ export const robinhood = defineChain({
   },
 });
 
+/** LitVM — Litecoin's EVM layer 2 (Arbitrum Orbit), Liteforge testnet. Gas
+ *  and quote asset is zkLTC (bridged LTC). No multicall3 entry: wagmi falls
+ *  back to single reads until Multicall3 is deployed there. */
+export const litvmTestnet = defineChain({
+  id: 4441,
+  name: "LitVM Liteforge",
+  nativeCurrency: { name: "zkLTC", symbol: "zkLTC", decimals: 18 },
+  rpcUrls: {
+    default: { http: ["https://liteforge.rpc.caldera.xyz/infra-partner-http"] },
+  },
+  blockExplorers: {
+    default: { name: "Liteforge Explorer", url: "https://liteforge.explorer.caldera.xyz" },
+  },
+  testnet: true,
+});
+
 export { sepolia, mainnet };
 
 // Chains the app runs on (shown in the chain switcher).
-export const APP_CHAINS = [giwaSepolia, robinhood] as const;
+export const APP_CHAINS = [giwaSepolia, robinhood, litvmTestnet] as const;
 
 // One address per chain: add future deployments here (multichain).
 export const LAUNCHPAD_ADDRESS: Record<number, `0x${string}` | undefined> = {
   [giwaSepolia.id]: "0x8E1a1308E3b176528Ee9278d7a531F185F9fBeFD",
   [robinhood.id]: "0x4A84c7B0dc45a473eA67f56617BC5903CA2c001c", // v7.4
+  [litvmTestnet.id]: undefined, // contracts/script/DeployLitVM.s.sol, then paste the address here
 };
 
 // Launchpad deployment blocks: where on-chain event scans start.
@@ -81,6 +98,7 @@ export const PRE_IPO_DISCLAIMER =
   "Synthetic community pre-market: price discovery only. No equity, no backing, no affiliation with the company.";
 export const QUOTE_ASSETS: Record<number, QuoteAssetInfo[]> = {
   [giwaSepolia.id]: [{ address: null, symbol: "ETH", decimals: 18, kind: "native" }],
+  [litvmTestnet.id]: [{ address: null, symbol: "zkLTC", decimals: 18, kind: "native" }],
   [robinhood.id]: [
     { address: null, symbol: "ETH", decimals: 18, kind: "native" },
     { address: "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168", symbol: "USDG", name: "Global Dollar", decimals: 6, kind: "stable", zapFees: [500] },
@@ -198,12 +216,13 @@ export const config = createConfig({
   // so selection survives reloads without hydration mismatches.
   ssr: true,
   storage: createStorage({ storage: cookieStorage }),
-  chains: [giwaSepolia, robinhood, sepolia, mainnet],
+  chains: [giwaSepolia, robinhood, litvmTestnet, sepolia, mainnet],
   connectors: [injected()],
   batch: { multicall: { wait: 16 } },
   transports: {
     [giwaSepolia.id]: transport(),
     [robinhood.id]: transport(),
+    [litvmTestnet.id]: transport(),
     [sepolia.id]: transport(),
     [mainnet.id]: transport(),
   },

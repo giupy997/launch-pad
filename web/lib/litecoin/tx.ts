@@ -10,6 +10,7 @@
 import * as btc from "@scure/btc-signer";
 import { hex, utf8 } from "@scure/base";
 import { secp256k1 } from "@noble/curves/secp256k1";
+import { keccak_256 } from "@noble/hashes/sha3";
 import { MEMO_MAX_BYTES, memoBytes, type Network } from "./ledger.ts";
 
 export type BtcNetwork = { bech32: string; pubKeyHash: number; scriptHash: number; wif: number };
@@ -57,6 +58,36 @@ export function secretFromWif(wif: string, network: Network): string | null {
   } catch {
     return null;
   }
+}
+
+/** The address a compressed public key spends from, per input script type
+ *  (Esplora's names): native segwit, legacy, or segwit wrapped in P2SH. */
+export function addressOfPubkey(pubkeyHex: string, scriptType: "v0_p2wpkh" | "p2pkh" | "p2sh", network: Network): string | null {
+  try {
+    const pub = hex.decode(pubkeyHex);
+    const net = NETWORKS[network];
+    if (scriptType === "v0_p2wpkh") return btc.p2wpkh(pub, net).address ?? null;
+    if (scriptType === "p2pkh") return btc.p2pkh(pub, net).address ?? null;
+    return btc.p2sh(btc.p2wpkh(pub, net), net).address ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Litecoin and EVM chains share secp256k1: the same key is an EVM account.
+ *  Its address is the last 20 bytes of keccak256(uncompressed public key),
+ *  EIP-55 checksummed. This is where a holder's coins land on LitVM. */
+export function evmAddressOfPubkey(pubkeyHex: string): string {
+  const raw = secp256k1.ProjectivePoint.fromHex(pubkeyHex).toRawBytes(false).slice(1); // x || y
+  const addr = hex.encode(keccak_256(raw).slice(-20));
+  const check = hex.encode(keccak_256(utf8.decode(addr)));
+  let out = "0x";
+  for (let i = 0; i < addr.length; i++) out += parseInt(check[i], 16) >= 8 ? addr[i].toUpperCase() : addr[i];
+  return out;
+}
+
+export function evmAddressOfSecret(secret: string): string {
+  return evmAddressOfPubkey(hex.encode(secp256k1.getPublicKey(hex.decode(secret), true)));
 }
 
 export function isAddress(address: string, network: Network): boolean {
@@ -180,12 +211,12 @@ export function buildTx(opts: {
 }
 
 /** A parsed transaction's outputs, for checks and displays. */
-export function parseTx(rawHex: string, network: Network): { txid: string; inputs: { txid: string; vout: number }[]; outputs: { address: string | null; lit: bigint; memo: string | null; script: string }[] } {
+export function parseTx(rawHex: string, network: Network): { txid: string; inputs: { txid: string; vout: number; witness: string[] }[]; outputs: { address: string | null; lit: bigint; memo: string | null; script: string }[] } {
   const raw = btc.RawTx.decode(hex.decode(rawHex));
   const tx = btc.Transaction.fromRaw(hex.decode(rawHex), { allowUnknownOutputs: true, allowUnknownInputs: true, disableScriptCheck: true });
   return {
     txid: tx.id,
-    inputs: raw.inputs.map((i) => ({ txid: hex.encode(i.txid), vout: i.index })),
+    inputs: raw.inputs.map((i, n) => ({ txid: hex.encode(i.txid), vout: i.index, witness: (raw.witnesses?.[n] ?? []).map((w) => hex.encode(w)) })),
     outputs: raw.outputs.map((o) => {
       const script = hex.encode(o.script);
       return { address: addressOfScript(script, network), lit: o.amount, memo: opReturnPayload(script), script };

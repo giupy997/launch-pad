@@ -7,13 +7,17 @@
 // through the site's /api/ltc proxy. The same events could be produced from
 // a Litecoin Core node — the ledger does not care where they come from.
 
-import { addressOfScript, opReturnPayload, DEFAULT_FEE_RATE, type Utxo } from "./tx.ts";
+import * as btc from "@scure/btc-signer";
+import { hex } from "@scure/base";
+import { addressOfPubkey, addressOfScript, opReturnPayload, DEFAULT_FEE_RATE, type Utxo } from "./tx.ts";
 import type { Network, TxEvent } from "./ledger.ts";
 
 export type EsploraVin = {
   txid: string;
   vout: number;
   prevout: { scriptpubkey: string; scriptpubkey_type: string; scriptpubkey_address?: string; value: number } | null;
+  scriptsig?: string;
+  witness?: string[];
   is_coinbase: boolean;
   sequence: number;
 };
@@ -108,12 +112,32 @@ export class Esplora {
   }
 }
 
+const PUBKEY = /^0[23][0-9a-f]{64}$/;
+
+/** The compressed public key that signed an input, if it is a single-key
+ *  script we understand and it really hashes to `sender`. Native segwit and
+ *  P2SH-wrapped segwit carry it in the witness, legacy P2PKH in the scriptSig. */
+export function senderPubkey(vin: EsploraVin, sender: string, network: Network): string | null {
+  const type = vin.prevout?.scriptpubkey_type;
+  let pub: string | undefined;
+  if (type === "v0_p2wpkh" || type === "p2sh") pub = vin.witness?.[1];
+  else if (type === "p2pkh" && vin.scriptsig) {
+    try {
+      const last = btc.Script.decode(hex.decode(vin.scriptsig)).at(-1);
+      if (last instanceof Uint8Array) pub = hex.encode(last);
+    } catch {}
+  } else return null;
+  if (!pub || !PUBKEY.test(pub)) return null;
+  return addressOfPubkey(pub, type, network) === sender ? pub : null;
+}
+
 /** The ledger event for a confirmed transaction that involves the desk. */
 export function eventFromTx(tx: EsploraTx, desk: string, network: Network, txIndex: number): TxEvent {
   if (!tx.status.confirmed || tx.status.block_height === undefined) throw new Error(`${tx.txid} is not confirmed`);
   const addr = (o: { scriptpubkey: string; scriptpubkey_address?: string }) => o.scriptpubkey_address ?? addressOfScript(o.scriptpubkey, network);
   const first = tx.vin[0];
   const sender = first && !first.is_coinbase && first.prevout ? addr(first.prevout) : null;
+  const pubkey = sender ? senderPubkey(first, sender, network) : null;
   const fromDesk = tx.vin.some((i) => i.prevout && addr(i.prevout) === desk);
   const outputs = tx.vout.map((o) => {
     const address = o.scriptpubkey_type === "op_return" ? null : addr(o);
@@ -128,6 +152,7 @@ export function eventFromTx(tx: EsploraTx, desk: string, network: Network, txInd
     txid: tx.txid,
     time: tx.status.block_time ?? 0,
     sender,
+    senderPubkey: pubkey,
     outputs,
     valueLit,
     memo: memoOut ? opReturnPayload(memoOut.scriptpubkey) : null,

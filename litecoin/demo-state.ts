@@ -6,15 +6,17 @@ import { dirname, join } from "node:path";
 import { PARAMS, memo, replay, snapshot, type TxEvent } from "../web/lib/litecoin/ledger.ts";
 import { CARRY_LIT, newSecret, walletFromSecret } from "../web/lib/litecoin/tx.ts";
 
-const OUT = join(import.meta.dirname, "../web/public/litecoin/state.json");
+const OUT = process.env.NOTUS_LTC_STATE ?? join(import.meta.dirname, "../web/public/litecoin/state.json");
 const DESK = walletFromSecret(newSecret(), "test").address;
-const people = Array.from({ length: 6 }, () => walletFromSecret(newSecret(), "test").address);
+const wallets = Array.from({ length: 6 }, () => walletFromSecret(newSecret(), "test"));
+const people = wallets.map((w) => w.address);
+const pubkeyOf = new Map(wallets.map((w) => [w.address, Array.from(w.publicKey, (b) => b.toString(16).padStart(2, "0")).join("")]));
 const events: TxEvent[] = [];
 let h = 3_600_000;
 const ev = (sender: string, m: string, lit: bigint) =>
   events.push({
     height: (h += 1 + (events.length % 3)), txIndex: 1 + (events.length % 5), txid: (events.length + 1).toString(16).padStart(64, "0"),
-    time: 1_789_990_000 + events.length * 150, sender, valueLit: lit, memo: m, fromDesk: false,
+    time: 1_789_990_000 + events.length * 150, sender, senderPubkey: pubkeyOf.get(sender) ?? null, valueLit: lit, memo: m, fromDesk: false,
     outputs: [{ address: DESK, lit, toDesk: true }, { address: null, lit: 0n, toDesk: false }, { address: sender, lit: 50_000n, toDesk: false }],
   });
 

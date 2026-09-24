@@ -12,10 +12,11 @@
 //
 // Environment: NOTUS_LTC_DESK (address; or litecoin/desk/key.json),
 // NOTUS_LTC_NETWORK (test|main), NOTUS_LTC_API, NOTUS_LTC_STATE,
-// NOTUS_LTC_CACHE, NOTUS_LTC_CONFIRMATIONS (default 2).
+// NOTUS_LTC_CACHE, NOTUS_LTC_CONFIRMATIONS (default 2), NOTUS_LTC_FREEZE
+// (block height at which the ledger froze for the LitVM migration).
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { replay, snapshot, type Network, type TxEvent } from "../web/lib/litecoin/ledger.ts";
+import { PARAMS, replay, snapshot, type Network, type TxEvent } from "../web/lib/litecoin/ledger.ts";
 import { Esplora, PUBLIC_API, eventFromTx, type EsploraTx } from "../web/lib/litecoin/esplora.ts";
 import { walletFromSecret } from "../web/lib/litecoin/tx.ts";
 
@@ -26,6 +27,8 @@ const OUT = process.env.NOTUS_LTC_STATE ?? join(ROOT, "../web/public/litecoin/st
 const CACHE = process.env.NOTUS_LTC_CACHE ?? join(ROOT, "cache", `${NETWORK}.json`);
 /** Transactions fold into the ledger once this deep, so a reorg cannot unwind them. */
 const CONFIRMATIONS = Number(process.env.NOTUS_LTC_CONFIRMATIONS ?? 2);
+/** Migration freeze height (see Params.freezeHeight); unset = the ledger is live. */
+const FREEZE = process.env.NOTUS_LTC_FREEZE ? Number(process.env.NOTUS_LTC_FREEZE) : null;
 /** Deeper than this, a cached transaction is taken as final and not re-fetched. */
 const SETTLED = 12;
 const PAGE = 25; // Esplora's page size for /address/:addr/txs/chain
@@ -122,7 +125,7 @@ async function pass(sync: boolean) {
   }
   const maxHeight = tip === null ? Number.MAX_SAFE_INTEGER : tip - (CONFIRMATIONS - 1);
   const events = eventsFromCache(cache, desk, maxHeight);
-  const state = replay(NETWORK, events);
+  const state = replay(NETWORK, events, { ...PARAMS[NETWORK], freezeHeight: FREEZE });
   const out = {
     ...snapshot(state),
     desk: { address: desk, network: NETWORK },

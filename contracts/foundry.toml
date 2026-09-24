@@ -10,15 +10,20 @@ remappings = [
   "openzeppelin-contracts/=lib/openzeppelin-contracts/",
   "v4-core/=lib/v4-core/",
 ]
+# the ledger migration script and its test read the migration file
+fs_permissions = [{ access = "read", path = "./" }, { access = "read", path = "../litecoin/migration" }]
 
 # Chain-agnostic by design: add one endpoint per chain as we go multichain.
 [rpc_endpoints]
 giwa_sepolia = "https://sepolia-rpc.giwa.io/"
 robinhood = "https://rpc.mainnet.chain.robinhood.com"
 robinhood_testnet = "https://rpc.testnet.chain.robinhood.com"
+# LitVM Liteforge (Litecoin's EVM L2 testnet, chain 4441, gas in zkLTC)
+litvm_testnet = "https://liteforge.rpc.caldera.xyz/infra-partner-http"
 
 [etherscan]
 # Blockscout-based explorers; no API key required.
 giwa_sepolia = { key = "verifyContract", chain = 91342, url = "https://sepolia-explorer.giwa.io/api" }
 robinhood = { key = "verifyContract", chain = 4663, url = "https://robinhoodchain.blockscout.com/api" }
 robinhood_testnet = { key = "verifyContract", chain = 46630, url = "https://explorer.testnet.chain.robinhood.com/api" }
+litvm_testnet = { key = "verifyContract", chain = 4441, url = "https://liteforge.explorer.caldera.xyz/api" }

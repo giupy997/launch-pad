@@ -16,6 +16,7 @@ const SECTIONS = [
 const CHAIN_LOGOS: Record<number, string> = {
   91342: "/chains/giwa.png",
   4663: "/chains/robinhood.png",
+  4441: "/chains/litvm.svg",
   [-1]: "/chains/zcash.svg",
   [-2]: "/chains/litecoin.svg",
 };

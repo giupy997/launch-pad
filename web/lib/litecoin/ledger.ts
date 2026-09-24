@@ -51,11 +51,16 @@ export type Params = {
   deployFeeLit: bigint;
   /** Smallest payout the desk will send — below this a network fee eats it. */
   minPayoutLit: bigint;
+  /** Migration freeze: past this block height the ledger takes no new deploy,
+   *  buy, sell, send or logo (the LTC they carry is credited back); claims
+   *  and the desk's payouts keep working so everyone can be paid out. null =
+   *  not frozen. The frozen state is what gets re-created on LitVM. */
+  freezeHeight: number | null;
 };
 
 export const PARAMS: Record<Network, Params> = {
-  test: { network: "test", virtualLit: 20_000_000n, deployFeeLit: 100_000n, minPayoutLit: 50_000n },
-  main: { network: "main", virtualLit: 2_000_000_000n, deployFeeLit: 1_000_000n, minPayoutLit: 50_000n },
+  test: { network: "test", virtualLit: 20_000_000n, deployFeeLit: 100_000n, minPayoutLit: 50_000n, freezeHeight: null },
+  main: { network: "main", virtualLit: 2_000_000_000n, deployFeeLit: 1_000_000n, minPayoutLit: 50_000n, freezeHeight: null },
 };
 
 /** One output of a transaction, as the ledger needs to see it. */
@@ -77,6 +82,10 @@ export type TxEvent = {
   /** Address that funded the first input: the actor of the instruction.
    *  null when it is not a standard single-address script (or a coinbase). */
   sender: string | null;
+  /** The sender's compressed secp256k1 public key, revealed by its signature
+   *  (witness or scriptSig). Litecoin and EVM chains share the curve, so it
+   *  also names the sender's address on LitVM for the migration. */
+  senderPubkey?: string | null;
   outputs: TxOutput[];
   /** LTC paid to the desk by this transaction (0 for the desk's own). */
   valueLit: bigint;
@@ -138,6 +147,10 @@ export type State = {
   pending: Map<string, Map<string, bigint>>; // settled, unclaimed cashback
   /** Claimable LTC per address: creator fees, refunds, surplus, carried dust. */
   credit: Map<string, bigint>;
+  /** Public key of every address that ever signed a transaction to the desk
+   *  (not part of the state root: it is chain data, not ownership). */
+  pubkeys: Map<string, string>;
+  freezeHeight: number | null;
   treasuryLit: bigint;
   payouts: Payout[];
   trades: Trade[];
@@ -155,6 +168,8 @@ export function emptyState(network: Network): State {
     debts: new Map(),
     pending: new Map(),
     credit: new Map(),
+    pubkeys: new Map(),
+    freezeHeight: null,
     treasuryLit: 0n,
     payouts: [],
     trades: [],
@@ -365,6 +380,7 @@ function apply(s: State, p: Params, e: TxEvent): string | null {
     s.treasuryLit += e.valueLit; // nobody to credit — a non-standard first input
     return "no recognisable sender";
   }
+  if (e.senderPubkey) s.pubkeys.set(sender, e.senderPubkey);
   if (!isNotus) {
     addCredit(s, sender, e.valueLit);
     return e.memo === null ? "no memo — credited" : memoBytes(m) > MEMO_MAX_BYTES ? "memo over 80 bytes — credited" : "not a Notus memo — credited";
@@ -372,6 +388,9 @@ function apply(s: State, p: Params, e: TxEvent): string | null {
   if (cmd === "paid") {
     addCredit(s, sender, e.valueLit);
     return "only the desk confirms payouts — credited";
+  }
+  if (p.freezeHeight !== null && e.height > p.freezeHeight && cmd !== "claim") {
+    return credited(s, sender, e, "ledger frozen for migration");
   }
 
   if (cmd === "deploy") {
@@ -507,6 +526,7 @@ export function liabilitiesLit(s: State): bigint {
 
 export function replay(network: Network, events: TxEvent[], params: Params = PARAMS[network]): State {
   const s = emptyState(network);
+  s.freezeHeight = params.freezeHeight;
   const seen = new Set<string>();
   const ordered = [...events]
     .filter((e) => (seen.has(e.txid) ? false : (seen.add(e.txid), true)))
@@ -568,6 +588,7 @@ export function snapshot(s: State) {
         network: s.network,
         height: s.height,
         stateRoot: s.roots.at(-1)?.root ?? null,
+        freezeHeight: s.freezeHeight,
         txsRead: s.txsRead,
         treasuryLit: s.treasuryLit,
         liabilitiesLit: liabilitiesLit(s),
@@ -579,6 +600,7 @@ export function snapshot(s: State) {
             .map((h) => [h, claimableLit(s, h).toString()])
             .filter(([, v]) => v !== "0")
         ),
+        pubkeys: Object.fromEntries(sortedEntries(s.pubkeys)),
         payouts: s.payouts,
         trades: s.trades.slice(-500),
         rejected: s.rejected.slice(-100),

@@ -1,0 +1,67 @@
+{
+ "network": "test",
+ "height": 3600085,
+ "freezeHeight": null,
+ "stateRoot": "1bc7d3314ab9bbc1aab50cdb3a43b9693dcbe50420aa3277178802feeba8c25c",
+ "generatedAt": "2026-09-24T17:01:53.666Z",
+ "totals": {
+  "coins": 3,
+  "holders": 4,
+  "bridgeWei": "319783750000000000",
+  "bridgeLtc": "0.31978375",
+  "settleOnLitecoinLit": "136858118",
+  "unresolved": 0,
+  "vault": null
+ },
+ "unresolved": [],
+ "coins": [
+  {
+   "name": "Chikun",
+   "symbol": "CHIKUN",
+   "logo": "",
+   "creator": "0xddf33bAc82FDC189eeBD6ab8c948AE5d5649F065",
+   "feesToHolders": false,
+   "virtualQuote": 200000000000000000,
+   "realQuote": 0,
+   "sold": 0,
+   "holders": [],
+   "balances": []
+  },
+  {
+   "name": "Lite Cat",
+   "symbol": "LCAT",
+   "logo": "https://i.imgur.com/1Q9Z1Zm.png",
+   "creator": "0x5814E1e7C6531aC113C9C457f8D845ba3ea844FC",
+   "feesToHolders": true,
+   "virtualQuote": 200000000000000000,
+   "realQuote": 314833750000000000,
+   "sold": 642101372849899260000000000,
+   "holders": [
+    "0x6a82B788e315f92142D2A0d48E07A77b28A530aA",
+    "0x5814E1e7C6531aC113C9C457f8D845ba3ea844FC",
+    "0x3036765D0Fd48F567ca0c07cBCb31cE48c34905C"
+   ],
+   "balances": [
+    244740769276616880000000000,
+    215425553619570150000000000,
+    181935049953712230000000000
+   ]
+  },
+  {
+   "name": "Mimble",
+   "symbol": "MWEB",
+   "logo": "",
+   "creator": "0x6a82B788e315f92142D2A0d48E07A77b28A530aA",
+   "feesToHolders": true,
+   "virtualQuote": 200000000000000000,
+   "realQuote": 4950000000000000,
+   "sold": 25359843864357170000000000,
+   "holders": [
+    "0x6a82B788e315f92142D2A0d48E07A77b28A530aA"
+   ],
+   "balances": [
+    25359843864357170000000000
+   ]
+  }
+ ]
+}
