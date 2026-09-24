@@ -1,0 +1,23 @@
+{
+ "protocol": "NOTUS1",
+ "network": "test",
+ "height": 0,
+ "stateRoot": null,
+ "txsRead": 0,
+ "treasuryLit": "0",
+ "liabilitiesLit": "0",
+ "coins": [],
+ "balances": {},
+ "claimable": {},
+ "payouts": [],
+ "trades": [],
+ "rejected": [],
+ "roots": [],
+ "desk": {
+  "address": null,
+  "network": "test"
+ },
+ "chainTip": null,
+ "confirmations": 2,
+ "updatedAt": 0
+}

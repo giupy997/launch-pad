@@ -68,7 +68,7 @@ export default function RootLayout({
               <p className="mt-2 normal-case tracking-normal font-sans text-zinc-700">
                 Notus is an independent, open-source token launchpad. It is not
                 affiliated with, endorsed by, or operated by Robinhood Markets,
-                GIWA, Dunamu, Uniswap, Zcash or the Electric Coin Company — their names identify the public
+                GIWA, Dunamu, Uniswap, Zcash, the Electric Coin Company, Litecoin or the Litecoin Foundation — their names identify the public
                 blockchain networks and protocols this app connects to.
                 Cryptoassets are highly volatile; nothing here is financial advice.
               </p>

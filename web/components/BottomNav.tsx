@@ -11,26 +11,27 @@ const ITEMS = [
   { href: "/profile", label: "Profile", icon: "◉" },
 ];
 
-const ZCASH_ITEMS = [
-  { href: "/zcash", label: "Explore", icon: "◎" },
-  { href: "/zcash/create", label: "Deploy", icon: "＋" },
-  { href: "/zcash/wallet", label: "Wallet", icon: "◉" },
-  { href: "/zcash/ledger", label: "Ledger", icon: "≡" },
+const sectionItems = (root: string) => [
+  { href: root, label: "Explore", icon: "◎" },
+  { href: `${root}/create`, label: "Deploy", icon: "＋" },
+  { href: `${root}/wallet`, label: "Wallet", icon: "◉" },
+  { href: `${root}/ledger`, label: "Ledger", icon: "≡" },
 ];
+const SECTIONS = ["/zcash", "/litecoin"];
 
 /** Mobile-only bottom navigation (the top nav is hidden below md). */
 export function BottomNav() {
   const pathname = usePathname();
-  const onZcash = pathname.startsWith("/zcash");
-  const items = onZcash ? ZCASH_ITEMS : ITEMS;
-  const root = onZcash ? "/zcash" : "/";
+  const section = SECTIONS.find((p) => pathname.startsWith(p));
+  const items = section ? sectionItems(section) : ITEMS;
+  const root = section ?? "/";
   return (
     <nav className="fixed bottom-0 inset-x-0 z-20 md:hidden border-t border-zinc-800 bg-black/95 backdrop-blur pb-[env(safe-area-inset-bottom)]">
       <div className="flex justify-around">
         {items.map((it) => {
           const active =
             it.href === root
-              ? pathname === root || pathname.startsWith("/zcash/c/")
+              ? pathname === root || pathname.startsWith(`${root}/c/`)
               : pathname.startsWith(it.href);
           return (
             <Link

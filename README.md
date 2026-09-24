@@ -43,6 +43,10 @@ future multichain deployments (Monad, MegaETH, ...).
 - `zcash/` — **Notus on Zcash** (testnet): a launchpad with no contracts — one
   shielded address, a published viewing key and a bonding-curve ledger
   replayed from encrypted memos. See [zcash/README.md](zcash/README.md)
+- `litecoin/` — **Notus on Litecoin** (testnet): the same idea on a
+  transparent chain — one desk address, instructions in OP_RETURN, balances
+  owned by the paying address, an in-browser Litecoin wallet that signs
+  every transaction. See [litecoin/README.md](litecoin/README.md)
 - `web/` — Next.js 14 + wagmi v2 + viem frontend
   - `/` Explore: on-chain token list (multicall, 5s refresh) with search
     and sorting
@@ -114,7 +118,9 @@ equity, no backing, no affiliation with the companies.
 
 ## Multichain
 
-The app has a chain switcher in the header (GIWA Sepolia · Robinhood Chain).
+The app has a chain switcher in the header (GIWA Sepolia · Robinhood Chain ·
+Zcash Testnet · Litecoin Testnet — the last two are contract-less ledgers
+with their own sections of the site, `/zcash` and `/litecoin`).
 Per-chain launchpad addresses live in `web/lib/config.ts` (`LAUNCHPAD_ADDRESS`);
 chains without a deployment show a notice and disable trading. Robinhood
 Chain (Arbitrum Orbit, chain ID 4663, RPC `https://rpc.mainnet.chain.robinhood.com`,
