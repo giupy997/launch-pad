@@ -10,6 +10,7 @@ import {
   memo,
   memoBytes,
   replay,
+  snapshot,
   spotPrice,
   type TxEvent,
 } from "./ledger.ts";
@@ -287,6 +288,49 @@ test("every instruction fits in 80 bytes at its longest", () => {
   // which is what the separate `logo` instruction is for
   assert.ok(memoBytes(memo.deploy("ABCDEFGH", "a name with lots of spaces in it", true)) <= MEMO_MAX_BYTES);
   assert.ok(memoBytes(memo.deploy("ABCDEFGH", "a name with lots of spaces in it", true, "https://i.example/logo.png")) > MEMO_MAX_BYTES);
+});
+
+test("freeze: after the height only claims and desk payouts work; everything else is refundable", () => {
+  const live = [
+    ev(ALICE, memo.deploy("FRZ", "Frozen", false), PARAMS.test.deployFeeLit),
+    ev(BOB, memo.buy("FRZ"), LTC / 10n),
+  ];
+  const freezeHeight = live[1].height;
+  const after = [
+    ev(CAROL, memo.buy("FRZ"), LTC / 10n),
+    ev(BOB, memo.sell("FRZ", 1n, 0n), CARRY),
+    ev(ALICE, memo.logo("FRZ", "https://x.example/l.png"), CARRY),
+    ev(ALICE, memo.claim(), CARRY), // creator fees earned before the freeze
+  ];
+  const params = { ...PARAMS.test, freezeHeight };
+  const s = replay("test", [...live, ...after], params);
+  assert.equal(s.freezeHeight, freezeHeight);
+  assert.equal(s.coins.get("FRZ")!.holders === undefined, true);
+  assert.equal(s.balances.get("FRZ")!.get(CAROL), undefined, "no buy after the freeze");
+  assert.equal(claimableLit(s, CAROL), LTC / 10n, "her LTC is credited back");
+  assert.equal(s.rejected.filter((r) => r.reason === "ledger frozen for migration — credited").length, 3);
+  assert.equal(s.payouts.length, 1, "the claim went through");
+  assert.equal(s.payouts[0].holder, ALICE);
+  // the desk can still settle it
+  const settle = deskPays([{ to: ALICE, lit: s.payouts[0].lit }], [0]);
+  assert.ok(replay("test", [...live, ...after, settle], params).payouts[0].paidTxid);
+  // the frozen state is what the chain still says without the freeze, minus the late transactions
+  assert.equal(replay("test", live).roots.at(-1)!.root, replay("test", live, params).roots.at(-1)!.root);
+});
+
+test("public keys: recorded from every signed transaction, ready for the EVM side", () => {
+  const events = [
+    ev(ALICE, memo.deploy("PUB", "Pub", false), PARAMS.test.deployFeeLit, [], { senderPubkey: "02" + "ab".repeat(32) }),
+    ev(BOB, memo.buy("PUB"), LTC / 10n, [], { senderPubkey: "03" + "cd".repeat(32) }),
+    ev(BOB, "garbage", 1_000n, [], { senderPubkey: "03" + "cd".repeat(32) }),
+    ev(CAROL, memo.buy("PUB"), LTC / 10n), // an explorer that gave no witness
+  ];
+  const s = replay("test", events);
+  assert.deepEqual([...s.pubkeys.entries()], [[ALICE, "02" + "ab".repeat(32)], [BOB, "03" + "cd".repeat(32)]]);
+  assert.deepEqual(Object.keys(snapshot(s).pubkeys), [ALICE, BOB].sort());
+  // chain data, not ownership: the root does not depend on it
+  const bare = events.map((e) => ({ ...e, senderPubkey: null }));
+  assert.equal(replay("test", bare).roots.at(-1)!.root, s.roots.at(-1)!.root);
 });
 
 test("fuzz: solvent after every transaction", () => {

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { PARAMS, memo, spotPrice } from "@/lib/litecoin/ledger";
-import { CARRY_LIT, DUST_LIT, isAddress } from "@/lib/litecoin/tx";
+import { CARRY_LIT, DUST_LIT, evmAddressOfSecret, isAddress } from "@/lib/litecoin/tx";
 import { LTC_NETWORK, fmtCoins, fmtLtc, parseLtc, txLink, useLitecoinState, useLtcWallet, useUtxos } from "@/lib/litecoin/client";
 import { FundPanel, NeedsLtcWallet } from "@/components/litecoin/Wallet";
 import { SendPanel } from "@/components/litecoin/SendPanel";
@@ -139,6 +139,11 @@ export default function LitecoinWallet() {
             <Copyable value={secret} />
             <Label>WIF (import into Electrum-LTC as p2wpkh:…)</Label>
             <Copyable value={`p2wpkh:${wallet.wif}`} />
+            <Label>The same key on LitVM (EVM) — where these coins land if the ledger migrates</Label>
+            <Copyable value={evmAddressOfSecret(secret)} />
+            <p className="text-[11px] text-zinc-600">
+              Litecoin and EVM chains share the same curve: import the secret above into MetaMask as a private key and this is your address there.
+            </p>
           </>
         ) : (
           <button type="button" onClick={() => setReveal(true)} className="rounded-full border border-zinc-700 px-4 py-1.5 text-xs text-zinc-300 hover:border-white">

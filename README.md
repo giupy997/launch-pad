@@ -40,6 +40,14 @@ future multichain deployments (Monad, MegaETH, ...).
     create pools bound to the hook. Fork-tested against the live PoolManager,
     V4Quoter and Universal Router, including a real Robinhood NVDA pair.
   - `src/UniV3Migrator.sol` — legacy v3 graduation adapter (v7.3 and earlier)
+  - `src/UniV2Migrator.sol` — graduation adapter for chains whose DEX is
+    Uniswap v2 (LitVM): seeds the pool at the curve's final price and keeps
+    the LP tokens forever
+  - `Launchpad.migrateToken` / `migrateBalances` — owner-only, once per coin:
+    re-creates a coin from a frozen contract-less ledger (Notus on Litecoin)
+    with its curve state and holder balances, so trading continues at the
+    same price; `script/MigrateFromLedger.s.sol` drives it from the file
+    `litecoin/migration-snapshot.ts` writes
 - `zcash/` — **Notus on Zcash** (testnet): a launchpad with no contracts — one
   shielded address, a published viewing key and a bonding-curve ledger
   replayed from encrypted memos. See [zcash/README.md](zcash/README.md)
@@ -91,6 +99,7 @@ future multichain deployments (Monad, MegaETH, ...).
 | Robinhood Chain (4663) | Launchpad | [`0x4A84c7B0dc45a473eA67f56617BC5903CA2c001c`](https://robinhoodchain.blockscout.com/address/0x4A84c7B0dc45a473eA67f56617BC5903CA2c001c) — v7.4, 64 quote assets |
 | Robinhood Chain (4663) | NotusV4Hook | [`0x11E98A9d691B8730990d9bE1da9CD012f4e320cC`](https://robinhoodchain.blockscout.com/address/0x11E98A9d691B8730990d9bE1da9CD012f4e320cC) — v4 graduation + pool fees |
 | Robinhood Chain (4663) | ZapRouter | [`0xfd0C942E3DB34672715B862A8e19838bC9EDa7B5`](https://robinhoodchain.blockscout.com/address/0xfd0C942E3DB34672715B862A8e19838bC9EDa7B5) — ETH zap buys |
+| LitVM Liteforge (4441) | Launchpad | pending — `script/DeployLitVM.s.sol` (quoted in zkLTC; Uniswap v2 graduation via `UniV2Migrator`) |
 
 ### Pair assets (Robinhood Chain)
 
@@ -119,8 +128,12 @@ equity, no backing, no affiliation with the companies.
 ## Multichain
 
 The app has a chain switcher in the header (GIWA Sepolia · Robinhood Chain ·
-Zcash Testnet · Litecoin Testnet — the last two are contract-less ledgers
-with their own sections of the site, `/zcash` and `/litecoin`).
+LitVM Liteforge · Zcash Testnet · Litecoin Testnet — the last two are
+contract-less ledgers with their own sections of the site, `/zcash` and
+`/litecoin`). LitVM (chain 4441, RPC `https://liteforge.rpc.caldera.xyz/infra-partner-http`,
+explorer `https://liteforge.explorer.caldera.xyz`, gas in zkLTC) is Litecoin's
+EVM layer 2: the Litecoin ledger is designed to migrate there — same holders,
+same price — see [litecoin/README.md](litecoin/README.md#the-road-to-litvm).
 Per-chain launchpad addresses live in `web/lib/config.ts` (`LAUNCHPAD_ADDRESS`);
 chains without a deployment show a notice and disable trading. Robinhood
 Chain (Arbitrum Orbit, chain ID 4663, RPC `https://rpc.mainnet.chain.robinhood.com`,
@@ -141,7 +154,7 @@ costs real ETH, and the contracts are unaudited — trade accordingly.
 
 ```bash
 cd contracts
-forge test                       # 67 tests incl. a cashback-solvency fuzz
+forge test                       # incl. a cashback-solvency fuzz and the ledger-migration suite
 # v4 hook against the live Robinhood v4 stack: RUN_FORK=true forge test --match-contract NotusV4Hook
 # fork tests against live contracts: RUN_FORK_LIVE=true forge test --match-contract Live
 ```

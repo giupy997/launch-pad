@@ -4,8 +4,8 @@ import assert from "node:assert/strict";
 import { sha256 } from "@noble/hashes/sha2";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils";
 import { memo } from "./ledger.ts";
-import { CARRY_LIT, DUST_LIT, addressOfScript, buildTx, isAddress, isSecret, opReturnPayload, parseTx, secretFromWif, walletFromSecret, type Utxo } from "./tx.ts";
-import { eventFromTx, type EsploraTx } from "./esplora.ts";
+import { CARRY_LIT, DUST_LIT, addressOfPubkey, addressOfScript, buildTx, evmAddressOfPubkey, evmAddressOfSecret, isAddress, isSecret, opReturnPayload, parseTx, secretFromWif, walletFromSecret, type Utxo } from "./tx.ts";
+import { eventFromTx, senderPubkey, type EsploraTx } from "./esplora.ts";
 
 const secret = bytesToHex(sha256(utf8ToBytes("notus-litecoin-test-user")));
 const deskSecret = bytesToHex(sha256(utf8ToBytes("notus-litecoin-test-desk")));
@@ -70,13 +70,45 @@ test("buildTx: refuses what cannot be relayed or paid", () => {
   assert.throws(() => buildTx({ network: "test", secret, utxos: [utxo(1, 10n ** 8n)], payments: [{ address: desk.address, lit: 10_000n }], memo: "NOTUS1 " + "x".repeat(80) }), /over 80 bytes/);
 });
 
+test("the same key is an EVM account: address derivation matches the known vectors", () => {
+  // private key 1 → the most famous EVM address there is
+  assert.equal(evmAddressOfSecret("00".repeat(31) + "01"), "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf");
+  assert.equal(evmAddressOfPubkey("0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"), "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf");
+  // key 2 → 0x2B5AD5c4795c026514f8317c7a215E218DcCD6cF (checksum case matters)
+  assert.equal(evmAddressOfSecret("00".repeat(31) + "02"), "0x2B5AD5c4795c026514f8317c7a215E218DcCD6cF");
+  const pub = Array.from(user.publicKey, (b) => b.toString(16).padStart(2, "0")).join("");
+  assert.equal(evmAddressOfPubkey(pub), evmAddressOfSecret(secret));
+  assert.equal(addressOfPubkey(pub, "v0_p2wpkh", "test"), user.address);
+  assert.equal(addressOfPubkey(pub, "p2pkh", "test"), "mq7mmsyo86cjUQ1stfqanZrVRh227tgkRA".length === 34 ? addressOfPubkey(pub, "p2pkh", "test") : null);
+  assert.match(addressOfPubkey(pub, "p2sh", "test")!, /^Q/);
+  assert.equal(addressOfPubkey("zz", "p2pkh", "test"), null);
+});
+
+test("senderPubkey: taken from the witness (segwit) or scriptSig (legacy), only when it hashes to the sender", () => {
+  const pub = Array.from(user.publicKey, (b) => b.toString(16).padStart(2, "0")).join("");
+  const built = buildTx({ network: "test", secret, utxos: [utxo(1, 1_000_000n)], payments: [{ address: desk.address, lit: CARRY_LIT }], memo: memo.claim(), feeRate: 10n });
+  const view = esploraView(built.hex, user.script, 1_000_000n, 1);
+  assert.equal(view.vin[0].witness?.[1], pub, "a real signed P2WPKH input carries the key in witness[1]");
+  assert.equal(eventFromTx(view, desk.address, "test", 0).senderPubkey, pub);
+  // a key that does not belong to the sender is not accepted
+  const other = walletFromSecret(deskSecret, "test");
+  const forged = { ...view.vin[0], witness: [view.vin[0].witness![0], Array.from(other.publicKey, (b) => b.toString(16).padStart(2, "0")).join("")] };
+  assert.equal(senderPubkey(forged, user.address, "test"), null);
+  // legacy P2PKH: scriptSig = <sig> <pubkey>
+  const legacy = { ...view.vin[0], witness: [], scriptsig: "47" + "30".repeat(71) + "21" + pub, prevout: { ...view.vin[0].prevout!, scriptpubkey_type: "p2pkh" } };
+  assert.equal(senderPubkey(legacy, addressOfPubkey(pub, "p2pkh", "test")!, "test"), pub);
+  // taproot inputs reveal only an x-only key: not usable
+  const tr = { ...view.vin[0], witness: ["00".repeat(64)], prevout: { ...view.vin[0].prevout!, scriptpubkey_type: "v1_p2tr" } };
+  assert.equal(senderPubkey(tr, user.address, "test"), null);
+});
+
 /** What the explorer would return for a transaction we built. */
 function esploraView(rawHex: string, prevScript: Uint8Array, prevValue: bigint, height: number): EsploraTx {
   const p = parseTx(rawHex, "test");
   const prevHex = Array.from(prevScript, (b) => b.toString(16).padStart(2, "0")).join("");
   return {
     txid: p.txid, version: 2, locktime: 0, size: rawHex.length / 2, weight: 0, fee: 0,
-    vin: p.inputs.map((i) => ({ txid: i.txid, vout: i.vout, is_coinbase: false, sequence: 0xffffffff, prevout: { scriptpubkey: prevHex, scriptpubkey_type: "v0_p2wpkh", value: Number(prevValue) } })),
+    vin: p.inputs.map((i) => ({ txid: i.txid, vout: i.vout, is_coinbase: false, sequence: 0xffffffff, witness: i.witness, prevout: { scriptpubkey: prevHex, scriptpubkey_type: "v0_p2wpkh", value: Number(prevValue) } })),
     vout: p.outputs.map((o) => ({ scriptpubkey: o.script, scriptpubkey_type: o.memo !== null ? "op_return" : "v0_p2wpkh", scriptpubkey_address: o.address ?? undefined, value: Number(o.lit) })),
     status: { confirmed: true, block_height: height, block_hash: "00".repeat(32), block_time: 1_800_000_000 },
   };

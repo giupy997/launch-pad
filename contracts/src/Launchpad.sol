@@ -107,8 +107,24 @@ contract Launchpad is Ownable, ReentrancyGuard {
         string description;
     }
 
+    /// A coin as a frozen contract-less Notus ledger (Notus on Litecoin)
+    /// recorded it, for migrateToken. Ledger amounts have 8 decimals: scale
+    /// them by 1e10 into wei and 1e18-unit tokens.
+    struct LedgerCoin {
+        string name;
+        string symbol;
+        TokenMetadata meta;
+        address creator;
+        bool feesToHolders;
+        uint256 virtualQuote; // the ledger's virtual quote reserve
+        uint256 sold; //         tokens its holders own, delivered by migrateToken/migrateBalances
+    }
+
     mapping(address token => Curve) public curves;
     mapping(address token => TokenMetadata) public tokenMetadata;
+    /// Coins migrated from a ledger: tokens still to be handed to their
+    /// holders. Trading waits for zero.
+    mapping(address token => uint256) public migrationPending;
     /// Per-token override for where the creator share of fees accrues.
     /// address(0) = the token's creator.
     mapping(address token => address) public feeRecipient;
@@ -120,9 +136,7 @@ contract Launchpad is Ownable, ReentrancyGuard {
 
     // ---------------------------------------------------------------- events
 
-    event TokenCreated(
-        address indexed token, address indexed creator, string name, string symbol, bool feesToHolders
-    );
+    event TokenCreated(address indexed token, address indexed creator, string name, string symbol, bool feesToHolders);
     event MetadataUpdated(
         address indexed token, string logoURI, string website, string twitter, string telegram, string livestream
     );
@@ -142,6 +156,10 @@ contract Launchpad is Ownable, ReentrancyGuard {
     event QuoteAssetUpdated(address indexed asset, uint256 virtualReserve);
     event PoolFeeHookAuthorized(address indexed hook);
     event PoolFeeDistributed(address indexed token, uint256 amount);
+    event TokenMigrated(
+        address indexed token, address indexed creator, uint256 virtualQuote, uint256 realQuote, uint256 sold
+    );
+    event MigrationBalances(address indexed token, uint256 holders, uint256 pending);
 
     // ---------------------------------------------------------------- errors
 
@@ -157,6 +175,8 @@ contract Launchpad is Ownable, ReentrancyGuard {
     error QuoteAssetNotEnabled();
     error WrongPayment();
     error NotPoolFeeHook();
+    error MigrationPending();
+    error BadMigration();
 
     constructor(address treasury_, address poolManager_) Ownable(msg.sender) {
         treasury = treasury_;
@@ -289,6 +309,7 @@ contract Launchpad is Ownable, ReentrancyGuard {
         Curve storage c = curves[token];
         if (c.vEth == 0) revert UnknownToken();
         if (c.graduated) revert AlreadyGraduated();
+        if (migrationPending[token] != 0) revert MigrationPending();
 
         uint256 fee = (ethIn * feeBps) / FEE_DENOMINATOR;
         uint256 ethForCurve = ethIn - fee;
@@ -327,19 +348,22 @@ contract Launchpad is Ownable, ReentrancyGuard {
 
         emit Bought(token, buyer, ethIn - refund, tokensOut, fee);
 
-        if (c.sold == CURVE_SUPPLY) {
-            c.graduated = true;
-            LaunchToken(token).setGraduated();
-            emit Graduated(token, c.realEth);
-            // Auto-migrate to the DEX in the same transaction. The external
-            // self-call isolates state: if the DEX leg reverts for any reason
-            // the graduation itself still succeeds and migrate() stays
-            // available as a manual fallback.
-            if (address(migrator) != address(0)) {
-                try this.autoMigrate(token) {}
-                catch {
-                    emit AutoMigrationFailed(token);
-                }
+        if (c.sold == CURVE_SUPPLY) _graduate(token, c);
+    }
+
+    /// @notice The curve sold out: close it and hand the reserve to the DEX.
+    function _graduate(address token, Curve storage c) internal {
+        c.graduated = true;
+        LaunchToken(token).setGraduated();
+        emit Graduated(token, c.realEth);
+        // Auto-migrate to the DEX in the same transaction. The external
+        // self-call isolates state: if the DEX leg reverts for any reason
+        // the graduation itself still succeeds and migrate() stays
+        // available as a manual fallback.
+        if (address(migrator) != address(0)) {
+            try this.autoMigrate(token) {}
+            catch {
+                emit AutoMigrationFailed(token);
             }
         }
     }
@@ -355,6 +379,7 @@ contract Launchpad is Ownable, ReentrancyGuard {
         Curve storage c = curves[token];
         if (c.vEth == 0) revert UnknownToken();
         if (c.graduated) revert AlreadyGraduated();
+        if (migrationPending[token] != 0) revert MigrationPending();
 
         uint256 k = c.vEth * c.vToken;
         uint256 ethOut = c.vEth - k / (c.vToken + tokensIn);
@@ -436,6 +461,75 @@ contract Launchpad is Ownable, ReentrancyGuard {
         }
 
         emit Migrated(token, DEX_RESERVE, ethAmount);
+    }
+
+    // ------------------------------------------------- migration from a ledger
+
+    /// @notice Owner only, once per coin: re-create a coin that lived on a
+    ///         contract-less Notus ledger exactly as the frozen ledger
+    ///         recorded it, so trading continues here at the same price.
+    ///         msg.value is the quote actually in its curve (the LTC bridged
+    ///         over); `holders`/`balances` deliver what the ledger sold, here
+    ///         and, for large holder sets, in further migrateBalances calls.
+    ///         Buys and sells open once every token is delivered. Cashback
+    ///         and creator fees accrued on the ledger are paid out there.
+    function migrateToken(LedgerCoin calldata coin, address[] calldata holders, uint256[] calldata balances)
+        external
+        payable
+        onlyOwner
+        nonReentrant
+        returns (address token)
+    {
+        if (coin.creator == address(0) || coin.virtualQuote == 0 || coin.sold > CURVE_SUPPLY) {
+            revert BadMigration();
+        }
+        if (coin.sold == 0 && (msg.value != 0 || holders.length != 0)) revert BadMigration(); // an untraded coin
+        token = address(new LaunchToken(coin.name, coin.symbol, TOTAL_SUPPLY, false));
+        curves[token] = Curve({
+            vEth: coin.virtualQuote + msg.value,
+            vToken: VIRTUAL_TOKEN - coin.sold,
+            realEth: msg.value,
+            sold: coin.sold,
+            graduated: false,
+            creator: coin.creator,
+            quoteAsset: address(0)
+        });
+        tokenMetadata[token] = coin.meta;
+        if (coin.feesToHolders) feesToHolders[token] = true;
+        allTokens.push(token);
+        migrationPending[token] = coin.sold;
+        emit TokenCreated(token, coin.creator, coin.name, coin.symbol, coin.feesToHolders);
+        emit MetadataUpdated(
+            token, coin.meta.logoURI, coin.meta.website, coin.meta.twitter, coin.meta.telegram, coin.meta.livestream
+        );
+        emit TokenMigrated(token, coin.creator, coin.virtualQuote, msg.value, coin.sold);
+        if (coin.sold != 0) _migrateBalances(token, holders, balances);
+    }
+
+    /// @notice Deliver more of a migrated coin's balances (owner only).
+    function migrateBalances(address token, address[] calldata holders, uint256[] calldata balances)
+        external
+        onlyOwner
+        nonReentrant
+    {
+        if (curves[token].vEth == 0) revert UnknownToken();
+        _migrateBalances(token, holders, balances);
+    }
+
+    function _migrateBalances(address token, address[] calldata holders, uint256[] calldata balances) internal {
+        if (holders.length != balances.length) revert BadMigration();
+        uint256 pending = migrationPending[token];
+        if (pending == 0) revert BadMigration(); // not migrating (any more)
+        for (uint256 i = 0; i < holders.length; i++) {
+            if (balances[i] > pending) revert BadMigration(); // more than the ledger sold
+            pending -= balances[i];
+            IERC20(token).safeTransfer(holders[i], balances[i]);
+        }
+        migrationPending[token] = pending;
+        emit MigrationBalances(token, holders.length, pending);
+        // a coin whose curve had sold out on the ledger graduates as soon as
+        // its holders have their tokens
+        if (pending == 0 && curves[token].sold == CURVE_SUPPLY) _graduate(token, curves[token]);
     }
 
     // ---------------------------------------------------------------- fees
