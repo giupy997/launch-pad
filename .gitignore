@@ -18,3 +18,8 @@ node_modules/
 zcash/desk/
 zcash/user/
 zcash/tool/
+
+# Notus on Litecoin: desk and test-user keys, explorer cache
+litecoin/desk/
+litecoin/user/
+litecoin/cache/

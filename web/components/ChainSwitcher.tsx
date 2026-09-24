@@ -6,15 +6,18 @@ import { useSwitchChain } from "wagmi";
 import { APP_CHAINS } from "@/lib/config";
 import { useAppChain } from "@/lib/hooks";
 
-// Zcash is not an EVM chain: it has no wagmi chain, only its own section of
-// the site under /zcash. The switcher treats it as one more network.
-const ZCASH_ID = -1;
-const ZCASH_NAME = "Zcash Testnet";
+// Zcash and Litecoin are not EVM chains: they have no wagmi chain, only their
+// own section of the site. The switcher treats each as one more network.
+const SECTIONS = [
+  { id: -1, path: "/zcash", name: "Zcash", label: "Zcash Testnet" },
+  { id: -2, path: "/litecoin", name: "Litecoin", label: "Litecoin Testnet" },
+];
 
 const CHAIN_LOGOS: Record<number, string> = {
   91342: "/chains/giwa.png",
   4663: "/chains/robinhood.png",
-  [ZCASH_ID]: "/chains/zcash.svg",
+  [-1]: "/chains/zcash.svg",
+  [-2]: "/chains/litecoin.svg",
 };
 
 function ChainLogo({ id, size = 18 }: { id: number; size?: number }) {
@@ -38,8 +41,8 @@ export function ChainSwitcher() {
   const { switchChain, isPending } = useSwitchChain();
   const pathname = usePathname();
   const router = useRouter();
-  const onZcash = pathname.startsWith("/zcash");
-  const chain = onZcash ? { id: ZCASH_ID, name: ZCASH_NAME } : evmChain;
+  const section = SECTIONS.find((s) => pathname.startsWith(s.path));
+  const chain = section ? { id: section.id, name: section.label } : evmChain;
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -78,7 +81,7 @@ export function ChainSwitcher() {
                 onClick={() => {
                   setOpen(false);
                   if (c.id !== evmChain.id) switchChain({ chainId: c.id });
-                  if (onZcash) router.push("/");
+                  if (section) router.push("/");
                 }}
                 className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm ${
                   active ? "bg-zinc-900 text-white" : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
@@ -97,23 +100,29 @@ export function ChainSwitcher() {
               </button>
             );
           })}
-          <button
-            type="button"
-            onClick={() => {
-              setOpen(false);
-              if (!onZcash) router.push("/zcash");
-            }}
-            className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm ${
-              onZcash ? "bg-zinc-900 text-white" : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
-            }`}
-          >
-            <ChainLogo id={ZCASH_ID} size={22} />
-            <span className="flex-1">
-              Zcash
-              <span className="ml-2 font-mono text-[10px] tracking-widest uppercase text-zinc-500">testnet</span>
-            </span>
-            {onZcash && <span className="text-xs">●</span>}
-          </button>
+          {SECTIONS.map((sec) => {
+            const active = section?.path === sec.path;
+            return (
+              <button
+                key={sec.path}
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  if (!active) router.push(sec.path);
+                }}
+                className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm ${
+                  active ? "bg-zinc-900 text-white" : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
+                }`}
+              >
+                <ChainLogo id={sec.id} size={22} />
+                <span className="flex-1">
+                  {sec.name}
+                  <span className="ml-2 font-mono text-[10px] tracking-widest uppercase text-zinc-500">testnet</span>
+                </span>
+                {active && <span className="text-xs">●</span>}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>

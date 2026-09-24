@@ -11,6 +11,8 @@
   "dependencies": {
     "@noble/curves": "^1.9.1",
     "@noble/hashes": "^1.8.0",
+    "@scure/base": "^2.4.0",
+    "@scure/btc-signer": "^2.4.1",
     "@tanstack/react-query": "^5.101.4",
     "next": "14.2.35",
     "qrcode": "^1.5.3",
