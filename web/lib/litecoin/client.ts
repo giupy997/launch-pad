@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { CurveView, Network } from "./ledger.ts";
+import { spotPrice, type CurveView, type Network } from "./ledger.ts";
 import { Esplora, PUBLIC_EXPLORER } from "./esplora.ts";
 import { isSecret, newSecret, secretFromWif, walletFromSecret, type BuiltTx, type Utxo, type Wallet } from "./tx.ts";
 
@@ -224,6 +224,42 @@ export function fmtCoins(units: bigint | string): string {
   if (n >= 1e6) return (n / 1e6).toFixed(2) + "M";
   if (n >= 1e3) return (n / 1e3).toFixed(2) + "k";
   return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
+}
+
+/** LTC in fiat, from the site (five-minute cache); null while unknown. */
+export function useLtcPrice() {
+  return useQuery({
+    queryKey: ["ltc-price"],
+    queryFn: async (): Promise<{ usd: number | null; eur: number | null }> => {
+      try {
+        const r = await fetch("/api/ltc-price");
+        if (r.ok) return (await r.json()) as { usd: number | null; eur: number | null };
+      } catch {}
+      return { usd: null, eur: null };
+    },
+    staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
+  });
+}
+
+/** Fully diluted market cap in LTC: the spot price times the 1B supply. */
+export function marketCapLtc(c: Parameters<typeof spotPrice>[0]): number {
+  return spotPrice(c) * 1_000_000_000;
+}
+
+/** "$12.3K" — the way meme-coin caps are read. */
+export function fmtUsd(n: number): string {
+  if (!(n > 0)) return "$0";
+  if (n < 1_000) return `$${n.toFixed(n < 10 ? 2 : 0)}`;
+  if (n < 1_000_000) return `$${(n / 1_000).toFixed(1)}K`;
+  if (n < 1_000_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
+  return `$${(n / 1_000_000_000).toFixed(2)}B`;
+}
+
+/** Market cap as the pages show it: in dollars when the price is known, else in LTC. */
+export function fmtMcap(ltc: number, usd: number | null | undefined): string {
+  if (usd) return fmtUsd(ltc * usd);
+  return `${ltc >= 100 ? ltc.toFixed(0) : ltc.toFixed(2)} LTC`;
 }
 
 export function fmtPrice(ltcPerCoin: number): string {

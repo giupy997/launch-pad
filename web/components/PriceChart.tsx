@@ -4,9 +4,22 @@ import { fmtNum } from "@/lib/format";
 import { useNativeSymbol } from "@/lib/hooks";
 
 /** Minimal monochrome SVG line chart of trade-implied prices. */
-export function PriceChart({ points, quoteSymbol: quoteSymbolProp }: { points: number[]; quoteSymbol?: string }) {
+export function PriceChart({
+  points,
+  quoteSymbol: quoteSymbolProp,
+  label = "Price",
+  format,
+}: {
+  points: number[];
+  quoteSymbol?: string;
+  /** What the points are ("Price", "Market cap"). */
+  label?: string;
+  /** How to print one; default: the number and the quote symbol. */
+  format?: (v: number) => string;
+}) {
   const native = useNativeSymbol();
   const quoteSymbol = quoteSymbolProp ?? native;
+  const show = format ?? ((v: number) => `${fmt(v)} ${quoteSymbol}`);
   if (points.length < 2) {
     return (
       <div className="rounded-xl border border-zinc-800 p-6 text-center text-sm text-zinc-600">
@@ -32,10 +45,10 @@ export function PriceChart({ points, quoteSymbol: quoteSymbolProp }: { points: n
     <div className="rounded-xl border border-zinc-800 bg-black p-4">
       <div className="flex items-baseline justify-between mb-2">
         <span className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">
-          Price · last {points.length} trades
+          {label} · last {points.length} trades
         </span>
         <span className="font-mono text-xs text-zinc-300">
-          {fmt(last)} {quoteSymbol} {up ? "↗" : "↘"}
+          {show(last)} {up ? "↗" : "↘"}
         </span>
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" preserveAspectRatio="none">
@@ -43,8 +56,8 @@ export function PriceChart({ points, quoteSymbol: quoteSymbolProp }: { points: n
         <path d={d} fill="none" stroke="white" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
       </svg>
       <div className="flex justify-between font-mono text-[10px] text-zinc-600 mt-1">
-        <span>min {fmt(min)}</span>
-        <span>max {fmt(max)}</span>
+        <span>min {show(min)}</span>
+        <span>max {show(max)}</span>
       </div>
     </div>
   );

@@ -15,7 +15,7 @@ const store = new Map<string, string>();
   length: 0,
 } as Storage;
 
-const { noteSpend, withPendingSpends } = await import("./client.ts");
+const { noteSpend, withPendingSpends, fmtUsd, fmtMcap, marketCapLtc } = await import("./client.ts");
 
 const coin = (n: number, value: bigint, confirmed = true) => ({ txid: n.toString(16).padStart(64, "0"), vout: 0, value, confirmed });
 
@@ -34,4 +34,18 @@ test("coins just spent disappear, the change appears, until the explorer catches
   // spending the change in turn
   noteSpend({ txid: "cd".repeat(32), inputs: [change], outputs: [{ address: "desk", lit: 10_000n }], change: 0n });
   assert.deepEqual(withPendingSpends([b, change]), [b]);
+});
+
+test("market caps read like meme-coin caps: $982, $1.0K, $12.3M — or LTC when the price is unknown", () => {
+  assert.equal(fmtUsd(982), "$982");
+  assert.equal(fmtUsd(9.5), "$9.50");
+  assert.equal(fmtUsd(1_020), "$1.0K");
+  assert.equal(fmtUsd(12_345_678), "$12.35M");
+  assert.equal(fmtUsd(2.5e9), "$2.50B");
+  // 0.0₈982 LTC per coin × 1B coins = 9.82 LTC; at $100 that is $982
+  const coin = { vLit: "1019800000", vToken: "103860000000000000" }; // 10.198 LTC / 1.0386B units
+  const cap = marketCapLtc(coin);
+  assert.ok(cap > 9.8 && cap < 9.9, `${cap}`);
+  assert.equal(fmtMcap(cap, 100), "$982");
+  assert.equal(fmtMcap(cap, null), "9.82 LTC");
 });

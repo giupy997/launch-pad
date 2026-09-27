@@ -13,9 +13,14 @@ export async function GET() {
   try {
     const r = await fetch(URL_, { cache: "no-store", signal: AbortSignal.timeout(10_000) });
     if (!r.ok) return NextResponse.json({ error: `desk answered ${r.status}` }, { status: 502 });
+    // a pass every minute: a few seconds at the edge spare the desk a round trip per visitor
     return new NextResponse(await r.text(), {
       status: 200,
-      headers: { "content-type": "application/json", "cache-control": "no-store" },
+      headers: {
+        "content-type": "application/json",
+        "cache-control": "public, max-age=5, s-maxage=15, stale-while-revalidate=60",
+        "netlify-cdn-cache-control": "public, s-maxage=15, stale-while-revalidate=60",
+      },
     });
   } catch (e) {
     return NextResponse.json({ error: `desk unreachable: ${(e as Error).message}` }, { status: 502 });

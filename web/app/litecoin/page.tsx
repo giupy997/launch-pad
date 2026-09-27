@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { CURVE_SUPPLY, spotPrice } from "@/lib/litecoin/ledger";
-import { LTC_NETWORK, fmtLtc, fmtPrice, shortAddr, txLink, useLitecoinState, type LCoin } from "@/lib/litecoin/client";
+import { CURVE_SUPPLY } from "@/lib/litecoin/ledger";
+import { LTC_NETWORK, fmtLtc, fmtMcap, marketCapLtc, shortAddr, txLink, useLitecoinState, useLtcPrice, type LCoin } from "@/lib/litecoin/client";
 import { TokenLogo } from "@/components/TokenLogo";
 
 export default function LitecoinExplore() {
   const { data: state, isLoading } = useLitecoinState();
+  const usd = useLtcPrice().data?.usd ?? null;
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
   const coins = [...(state?.coins ?? [])]
@@ -94,7 +95,7 @@ export default function LitecoinExplore() {
         )}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {coins.map((c) => (
-            <CoinCard key={c.ticker} coin={c} />
+            <CoinCard key={c.ticker} coin={c} usd={usd} />
           ))}
         </div>
       </section>
@@ -102,7 +103,7 @@ export default function LitecoinExplore() {
   );
 }
 
-function CoinCard({ coin: c }: { coin: LCoin }) {
+function CoinCard({ coin: c, usd }: { coin: LCoin; usd: number | null }) {
   const progress = Number((BigInt(c.sold) * 10_000n) / CURVE_SUPPLY) / 100;
   return (
     <Link
@@ -125,7 +126,7 @@ function CoinCard({ coin: c }: { coin: LCoin }) {
       </div>
       <div className="mt-3 text-xs text-zinc-500">creator {shortAddr(c.creator)}</div>
       <div className="mt-3 flex justify-between text-sm">
-        <span className="text-zinc-300">{fmtPrice(spotPrice(c))} LTC</span>
+        <span className="text-zinc-300">{fmtMcap(marketCapLtc(c), usd)} <span className="text-zinc-600">mcap</span></span>
         <span className="text-zinc-500">{c.graduated ? `pool ${fmtLtc(c.poolLit)} LTC` : `raised ${fmtLtc(c.realLit)} LTC`}</span>
       </div>
       <div className="mt-3 h-1 rounded bg-zinc-800 overflow-hidden">

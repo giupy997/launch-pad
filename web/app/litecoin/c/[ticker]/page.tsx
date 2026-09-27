@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { CURVE_SUPPLY, MEMO_MAX_BYTES, PARAMS, TOTAL_SUPPLY, memo, memoBytes, quoteBuy, quoteSell, spotPrice } from "@/lib/litecoin/ledger";
 import { CARRY_LIT } from "@/lib/litecoin/tx";
-import { LTC_NETWORK, addressLink, curveOf, fmtCoins, fmtLtc, fmtPrice, parseLtc, shortAddr, txLink, useLitecoinState, useLtcWallet, type LCoin, type LState } from "@/lib/litecoin/client";
+import { LTC_NETWORK, addressLink, curveOf, fmtCoins, fmtLtc, fmtMcap, fmtPrice, marketCapLtc, parseLtc, shortAddr, txLink, useLitecoinState, useLtcPrice, useLtcWallet, type LCoin, type LState } from "@/lib/litecoin/client";
 import { SendPanel } from "@/components/litecoin/SendPanel";
 import { NeedsLtcWallet } from "@/components/litecoin/Wallet";
 import { TokenLogo } from "@/components/TokenLogo";
@@ -16,6 +16,7 @@ const URL_OK = /^(https?:\/\/|ipfs:\/\/)\S{1,300}$/;
 export default function LitecoinCoinPage({ params }: { params: { ticker: string } }) {
   const ticker = decodeURIComponent(params.ticker).toUpperCase();
   const { data: state, isLoading } = useLitecoinState();
+  const usd = useLtcPrice().data?.usd ?? null;
   const coin = state?.coins.find((c) => c.ticker === ticker);
 
   if (isLoading && !state) return <div className="h-64 rounded-xl bg-zinc-900 animate-pulse" />;
@@ -30,7 +31,10 @@ export default function LitecoinCoinPage({ params }: { params: { ticker: string 
   const progress = Number((BigInt(coin.sold) * 10_000n) / CURVE_SUPPLY) / 100;
   const held = coin.graduated ? TOTAL_SUPPLY - BigInt(coin.poolToken) : BigInt(coin.sold);
   const trades = state.trades.filter((t) => t.ticker === ticker);
-  const points = trades.filter((t) => t.tokens !== "0").map((t) => Number(t.lit) / Number(t.tokens));
+  // each trade's average price, as a market cap: LTC per coin × 1B, in dollars when the LTC price is known
+  const mcapOf = (ltcPerCoin: number) => ltcPerCoin * 1_000_000_000 * (usd ?? 1);
+  const points = trades.filter((t) => t.tokens !== "0").map((t) => mcapOf(Number(t.lit) / Number(t.tokens)));
+  const mcap = marketCapLtc(coin);
   const holders = Object.entries(state.balances[ticker] ?? {}).sort((a, b) => (BigInt(b[1]) > BigInt(a[1]) ? 1 : -1));
 
   return (
@@ -67,7 +71,7 @@ export default function LitecoinCoinPage({ params }: { params: { ticker: string 
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <Stat label="Price" value={`${fmtPrice(spotPrice(coin))} LTC`} />
+          <Stat label="Market cap" value={fmtMcap(mcap, usd)} sub={`${usd ? `${mcap.toFixed(2)} LTC · ` : ""}${fmtPrice(spotPrice(coin))} LTC per coin`} />
           <Stat label={coin.graduated ? "In the pool" : "In the curve"} value={`${fmtLtc(coin.graduated ? coin.poolLit : coin.realLit)} LTC`} />
           <Stat label={coin.graduated ? "Held" : "Sold"} value={fmtCoins(held)} />
           <Stat label="Holders" value={String(coin.holders)} />
@@ -93,7 +97,7 @@ export default function LitecoinCoinPage({ params }: { params: { ticker: string 
           </p>
         </div>
 
-        <PriceChart points={points} quoteSymbol="LTC" />
+        <PriceChart points={points} label="Market cap" format={(v) => (usd ? fmtMcap(v / usd, usd) : fmtMcap(v, null))} />
 
         <div className="rounded-xl border border-zinc-800 bg-black p-4">
           <h2 className="font-mono text-[10px] tracking-widest uppercase text-zinc-500 mb-3">Trades</h2>
@@ -292,11 +296,12 @@ function CreatorPanel({ coin, state }: { coin: LCoin; state: LState }) {
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div className="rounded-lg border border-zinc-800 bg-black p-3">
       <div className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">{label}</div>
       <div className="mt-1 font-semibold text-sm">{value}</div>
+      {sub && <div className="mt-0.5 font-mono text-[10px] text-zinc-600 truncate" title={sub}>{sub}</div>}
     </div>
   );
 }

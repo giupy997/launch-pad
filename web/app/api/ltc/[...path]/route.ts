@@ -16,9 +16,18 @@ const api = chainApi(process.env.LTC_API_UPSTREAM ?? PUBLIC_API[NETWORK], NETWOR
 
 const ADDRESS = "([a-zA-Z0-9]{20,90})";
 const HASH = "([0-9a-f]{64})";
-const text = (body: string, status = 200) =>
-  new NextResponse(body, { status, headers: { "content-type": "text/plain", "cache-control": "no-store" } });
-const json = (body: unknown) => NextResponse.json(body, { headers: { "cache-control": "no-store" } });
+/** Seconds an answer may be served from the edge: coins and histories move
+ *  with the mempool, tips and fees with blocks, a block's hash never. */
+const cache = (seconds: number): Record<string, string> =>
+  seconds === 0
+    ? { "cache-control": "no-store" }
+    : {
+        "cache-control": `public, max-age=${seconds}, s-maxage=${seconds}, stale-while-revalidate=${seconds * 4}`,
+        "netlify-cdn-cache-control": `public, s-maxage=${seconds}, stale-while-revalidate=${seconds * 4}`,
+      };
+const text = (body: string, status = 200, seconds = 0) =>
+  new NextResponse(body, { status, headers: { "content-type": "text/plain", ...cache(status === 200 ? seconds : 0) } });
+const json = (body: unknown, seconds = 0) => NextResponse.json(body, { headers: cache(seconds) });
 
 /** Only what the pages use: address history and coins, transactions, fees, tips. */
 async function answer(method: string, p: string, body: string): Promise<NextResponse> {
@@ -28,15 +37,15 @@ async function answer(method: string, p: string, body: string): Promise<NextResp
     if (!/^[0-9a-f]{20,200000}$/.test(body)) return text("not a raw transaction", 400);
     return text(await api.broadcast(body));
   }
-  if (p === "blocks/tip/height") return text(String(await api.tipHeight()));
-  if ((m = p.match(/^block-height\/(\d{1,9})$/))) return text(await api.blockHash(Number(m[1])));
-  if ((m = p.match(new RegExp(`^address/${ADDRESS}/utxo$`)))) return json(await api.rawUtxos(m[1]));
-  if ((m = p.match(new RegExp(`^address/${ADDRESS}/txs/mempool$`)))) return json(await api.addressTxsMempool(m[1]));
-  if ((m = p.match(new RegExp(`^address/${ADDRESS}/txs/chain(?:/${HASH})?$`)))) return json(await api.addressTxsChain(m[1], m[2]));
-  if ((m = p.match(new RegExp(`^tx/${HASH}$`)))) return json(await api.tx(m[1]));
-  if ((m = p.match(new RegExp(`^tx/${HASH}/status$`)))) return json(await api.txStatus(m[1]));
-  if ((m = p.match(new RegExp(`^block/${HASH}/txids$`)))) return json(await api.blockTxids(m[1]));
-  if (p === "v1/fees/recommended") return json(await api.fees());
+  if (p === "blocks/tip/height") return text(String(await api.tipHeight()), 200, 20);
+  if ((m = p.match(/^block-height\/(\d{1,9})$/))) return text(await api.blockHash(Number(m[1])), 200, 3600);
+  if ((m = p.match(new RegExp(`^address/${ADDRESS}/utxo$`)))) return json(await api.rawUtxos(m[1]), 5);
+  if ((m = p.match(new RegExp(`^address/${ADDRESS}/txs/mempool$`)))) return json(await api.addressTxsMempool(m[1]), 5);
+  if ((m = p.match(new RegExp(`^address/${ADDRESS}/txs/chain(?:/${HASH})?$`)))) return json(await api.addressTxsChain(m[1], m[2]), 5);
+  if ((m = p.match(new RegExp(`^tx/${HASH}$`)))) return json(await api.tx(m[1]), 10);
+  if ((m = p.match(new RegExp(`^tx/${HASH}/status$`)))) return json(await api.txStatus(m[1]), 5);
+  if ((m = p.match(new RegExp(`^block/${HASH}/txids$`)))) return json(await api.blockTxids(m[1]), 600);
+  if (p === "v1/fees/recommended") return json(await api.fees(), 60);
   return text("not found", 404);
 }
 
