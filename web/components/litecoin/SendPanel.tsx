@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { MEMO_MAX_BYTES, memoBytes } from "@/lib/litecoin/ledger";
 import { buildTx, type BuiltTx, type Payment } from "@/lib/litecoin/tx";
-import { LTC_NETWORK, api, fmtLtc, txLink, useFeeRate, useLtcWallet, useUtxos } from "@/lib/litecoin/client";
+import { LTC_NETWORK, api, fmtLtc, noteSpend, txLink, useFeeRate, useLtcWallet, useUtxos } from "@/lib/litecoin/client";
 import { FundPanel, NeedsLtcWallet } from "./Wallet";
 
 /** Litecoin has no "connect wallet" and no memo field in most wallets, so
@@ -73,13 +73,29 @@ export function SendPanel({
     if (!built.tx) return;
     setBusy(true);
     setError(null);
+    const refresh = () => queryClient.invalidateQueries({ queryKey: ["ltc-utxos", address] });
     try {
       const txid = await api.broadcast(built.tx.hex);
+      noteSpend(built.tx); // the next transaction spends the change, not these coins again
       setSent(txid);
       onSent?.(txid);
-      setTimeout(() => queryClient.invalidateQueries({ queryKey: ["ltc-utxos", address] }), 1_500);
+      refresh();
+      setTimeout(refresh, 5_000);
     } catch (e) {
-      setError((e as Error).message);
+      const msg = (e as Error).message;
+      if (/mempool-conflict|missingorspent|missing inputs|already spent/i.test(msg)) {
+        setError(
+          "These coins are already being spent by a transaction that is still waiting for a block — an earlier click that did go through? " +
+            "Check your address on the explorer. After the next block (~2.5 min) the wallet spends the change instead."
+        );
+      } else if (/timeout|aborted|HTTP 5\d\d|fetch failed|unreachable/i.test(msg)) {
+        // the explorer did not answer: it may still have relayed the transaction
+        noteSpend(built.tx);
+        refresh();
+        setError(`${msg} — the transaction may have gone through anyway: check your address on the explorer before sending again.`);
+      } else {
+        setError(msg);
+      }
     } finally {
       setBusy(false);
     }

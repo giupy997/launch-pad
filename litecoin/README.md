@@ -217,7 +217,11 @@ skipped), `NOTUS_LTC_DESK`
 `LTC_API_UPSTREAM` (what `/api/ltc` reads the chain through, same syntax as
 `NOTUS_LTC_API`: Esplora, Blockbook or several in fallback — the proxy
 speaks Esplora to the browser whatever answers it; `LTC_API_KEY` for a
-Blockbook that wants one), `NEXT_PUBLIC_LTC_API` (to bypass the proxy).
+Blockbook that wants one), `NEXT_PUBLIC_LTC_API` (to bypass the proxy),
+`PINATA_JWT` (a Pinata API key: with it the deploy and coin pages offer a
+logo upload — squared and compressed in the browser, pinned to IPFS by the
+site, carried by the instruction as `ipfs://Qm…`; without it creators paste
+an image URL).
 
 To verify the published ledger you need no key at all:
 

@@ -8,6 +8,7 @@ import { SendPanel } from "@/components/litecoin/SendPanel";
 import { NeedsLtcWallet } from "@/components/litecoin/Wallet";
 import { TokenLogo } from "@/components/TokenLogo";
 import { Copyable } from "@/components/litecoin/Copyable";
+import { LogoUpload } from "@/components/litecoin/LogoUpload";
 import { PriceChart } from "@/components/PriceChart";
 
 const URL_OK = /^(https?:\/\/|ipfs:\/\/)\S{1,300}$/;
@@ -274,7 +275,8 @@ function CreatorPanel({ coin, state }: { coin: LCoin; state: LState }) {
       </div>
       {open && (
         <>
-          <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://… or ipfs://… (square image)" type="url"
+          <LogoUpload name={coin.ticker} onUploaded={setUrl} />
+          <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="…or paste an image URL: https://… or ipfs://… (square image)" type="url"
             className="w-full rounded-lg bg-black border border-zinc-700 px-3 py-2 text-xs font-mono focus:border-white outline-none placeholder:text-zinc-600" />
           {u && !URL_OK.test(u) && <p className="text-[11px] text-zinc-500">⚠ http(s) or ipfs URL, no spaces.</p>}
           {u && URL_OK.test(u) && memoBytes(m) > MEMO_MAX_BYTES && (

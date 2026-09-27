@@ -4,7 +4,7 @@ import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { CurveView, Network } from "./ledger.ts";
 import { Esplora, PUBLIC_EXPLORER } from "./esplora.ts";
-import { isSecret, newSecret, secretFromWif, walletFromSecret, type Wallet } from "./tx.ts";
+import { isSecret, newSecret, secretFromWif, walletFromSecret, type BuiltTx, type Utxo, type Wallet } from "./tx.ts";
 
 export const LTC_NETWORK: Network = process.env.NEXT_PUBLIC_LTC_NETWORK === "main" ? "main" : "test";
 export const LTC_LABEL = LTC_NETWORK === "main" ? "Litecoin" : "Litecoin Testnet";
@@ -139,10 +139,59 @@ export function useLtcWallet() {
 }
 
 /** The wallet's coins, straight from the explorer (unconfirmed included). */
+// ------------------------------------------------------ pending spends
+// The explorer learns of a transaction a little after we broadcast it (and
+// with several explorers in fallback, one may hear of it later than another).
+// Until it does, the coins it spent still look unspent and its change does
+// not exist yet: a second transaction built from that picture would conflict
+// with the first in the mempool. So the browser remembers what it spent and
+// what change it made, for a while, and reads its coins through that memory.
+const PENDING_TTL_MS = 30 * 60_000;
+const PENDING_STORAGE = `notus.litecoin.pending.${LTC_NETWORK}`;
+type PendingSpends = { spent: Record<string, number>; made: { txid: string; vout: number; value: string; until: number }[] };
+
+function loadPending(): PendingSpends {
+  try {
+    const v = JSON.parse(localStorage.getItem(PENDING_STORAGE) ?? "");
+    if (v && typeof v === "object" && v.spent && Array.isArray(v.made)) return v as PendingSpends;
+  } catch {}
+  return { spent: {}, made: [] };
+}
+
+function savePending(p: PendingSpends) {
+  const now = Date.now();
+  for (const [k, until] of Object.entries(p.spent)) if (until < now) delete p.spent[k];
+  p.made = p.made.filter((m) => m.until >= now);
+  try {
+    localStorage.setItem(PENDING_STORAGE, JSON.stringify(p));
+  } catch {}
+}
+
+/** Remember a transaction this wallet just broadcast (or may have: an
+ *  explorer that timed out could still have relayed it). */
+export function noteSpend(built: Pick<BuiltTx, "txid" | "inputs" | "outputs" | "change">) {
+  const p = loadPending();
+  const until = Date.now() + PENDING_TTL_MS;
+  for (const i of built.inputs) p.spent[`${i.txid}:${i.vout}`] = until;
+  if (built.change > 0n) p.made.push({ txid: built.txid, vout: built.outputs.length - 1, value: built.change.toString(), until });
+  savePending(p);
+}
+
+/** The explorer's list of coins, seen through what this wallet knows it did. */
+export function withPendingSpends(list: Utxo[]): Utxo[] {
+  const p = loadPending();
+  const now = Date.now();
+  const listed = new Set(list.map((u) => `${u.txid}:${u.vout}`));
+  const made = p.made
+    .filter((m) => m.until >= now && !listed.has(`${m.txid}:${m.vout}`))
+    .map((m) => ({ txid: m.txid, vout: m.vout, value: BigInt(m.value), confirmed: false }));
+  return [...list, ...made].filter((u) => (p.spent[`${u.txid}:${u.vout}`] ?? 0) < now);
+}
+
 export function useUtxos(address: string | null | undefined) {
   const q = useQuery({
     queryKey: ["ltc-utxos", address],
-    queryFn: () => api.utxos(address!),
+    queryFn: async () => withPendingSpends(await api.utxos(address!)),
     enabled: !!address,
     refetchInterval: 15_000,
     placeholderData: (prev) => prev,

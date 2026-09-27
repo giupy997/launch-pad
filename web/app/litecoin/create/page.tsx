@@ -8,6 +8,7 @@ import { SendPanel } from "@/components/litecoin/SendPanel";
 import { NeedsLtcWallet } from "@/components/litecoin/Wallet";
 import { TokenLogo } from "@/components/TokenLogo";
 import { Copyable } from "@/components/litecoin/Copyable";
+import { LogoUpload } from "@/components/litecoin/LogoUpload";
 
 const inputCls =
   "w-full rounded-lg bg-black border border-zinc-700 px-3 py-2 text-sm focus:border-white outline-none placeholder:text-zinc-600";
@@ -83,7 +84,8 @@ export default function LitecoinCreate() {
           <Label>
             Logo URL <span className="normal-case text-zinc-600">optional · square image · shares the 80 bytes with the name</span>
           </Label>
-          <input value={logo} onChange={(e) => setLogo(e.target.value)} placeholder="https://… or ipfs://…" type="url" className={inputCls} />
+          <LogoUpload name={ticker || "coin"} onUploaded={setLogo} />
+          <input value={logo} onChange={(e) => setLogo(e.target.value)} placeholder="…or paste an image URL: https://… or ipfs://…" type="url" className={`${inputCls} mt-2`} />
           {logoUrl && !logoOk && <Hint>⚠ http(s) or ipfs URL, no spaces.</Hint>}
           {logoUrl && logoOk && !logoFits && (
             <Hint>
