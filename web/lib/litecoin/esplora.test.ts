@@ -64,9 +64,9 @@ test("fallback: the next endpoint on a 5xx or an unreachable one, never on a 4xx
   });
   const api = chainApi("https://a/api, https://b/api/", "main") as Fallback;
   assert.deepEqual(api.backends.map((b) => (b as Esplora).base), ["https://a/api", "https://b/api"]);
-  assert.equal(await api.tipHeight(), 3185373, "a answered 522: b's answer");
   await assert.rejects(api.tx("aa"), /tx\/aa: HTTP 404/, "a 4xx is an answer, not an outage");
   assert.ok(!calls.includes("https://b/api/tx/aa"), "b was not asked");
+  assert.equal(await api.tipHeight(), 3185373, "a answered 522: b's answer");
   assert.deepEqual(await api.utxos("x"), [], "a unreachable (no route at all): b");
   assert.equal(calls.filter((c) => c.endsWith("/block-height/0")).length, 2, "each endpoint's chain is checked once");
 });
