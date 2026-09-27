@@ -71,6 +71,28 @@ test("fallback: the next endpoint on a 5xx or an unreachable one, never on a 4xx
   assert.equal(calls.filter((c) => c.endsWith("/block-height/0")).length, 2, "each endpoint's chain is checked once");
 });
 
+test("fallback: an endpoint that failed is left alone for a while, then retried", async () => {
+  const calls = fakeFetch({
+    "https://a/api/block-height/0": text(GENESIS.main),
+    "https://b/api/block-height/0": text(GENESIS.main),
+    "https://a/api/blocks/tip/height": cloudflare(522),
+    "https://b/api/blocks/tip/height": text("3185373"),
+    "https://b/api/tx/aa/status": text('{"confirmed":true,"block_height":1}'),
+  });
+  const api = chainApi("https://a/api,https://b/api", "main", undefined, 1000, 200);
+  await api.tipHeight();
+  await api.txStatus("aa");
+  assert.equal(calls.filter((c) => c === "https://a/api/tx/aa/status").length, 0, "a is cooling down: b is asked first");
+  await new Promise((r) => setTimeout(r, 250));
+  await api.txStatus("aa");
+  assert.equal(calls.filter((c) => c === "https://a/api/tx/aa/status").length, 1, "…and retried once the cooldown is over");
+  // every endpoint down: they are all tried again rather than none
+  fakeFetch({ "https://a/api/block-height/0": text(GENESIS.main), "https://b/api/block-height/0": text(GENESIS.main) });
+  const dead = chainApi("https://a/api,https://b/api", "main", undefined, 1000, 60_000);
+  await assert.rejects(dead.tipHeight(), /fetch failed/);
+  await assert.rejects(dead.tipHeight(), /fetch failed/);
+});
+
 test("fallback: an endpoint on the other chain is skipped, one that cannot say is used", async () => {
   fakeFetch({
     "https://a/api/block-height/0": text(GENESIS.main),
