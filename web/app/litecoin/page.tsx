@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { CURVE_SUPPLY, spotPrice } from "@/lib/litecoin/ledger";
-import { fmtLtc, fmtPrice, shortAddr, useLitecoinState, type LCoin } from "@/lib/litecoin/client";
+import { fmtLtc, fmtPrice, shortAddr, txLink, useLitecoinState, type LCoin } from "@/lib/litecoin/client";
 import { TokenLogo } from "@/components/TokenLogo";
 
 export default function LitecoinExplore() {
@@ -43,6 +43,23 @@ export default function LitecoinExplore() {
         <p className="rounded-xl border border-dashed border-zinc-700 p-3 text-center text-xs text-zinc-400">
           The desk is not live yet: the indexer has not published a desk address. Nothing can be deployed or bought until it does.
         </p>
+      )}
+
+      {!!state?.pending?.length && (
+        <section className="rounded-xl border border-dashed border-zinc-700 p-4">
+          <h2 className="font-mono text-[10px] tracking-widest uppercase text-zinc-500 mb-2">
+            Waiting for a block <span className="text-zinc-600">({state.pending.length})</span>
+          </h2>
+          <div className="space-y-1">
+            {state.pending.slice(0, 10).map((p) => (
+              <a key={p.txid} href={txLink(p.txid)} target="_blank" rel="noreferrer" className="flex justify-between gap-3 font-mono text-xs hover:text-white">
+                <span className="text-zinc-300 truncate">{p.memo ?? "(no memo)"}</span>
+                <span className="text-zinc-500 shrink-0">{p.sender ? shortAddr(p.sender) : "?"} · {fmtLtc(p.valueLit)} LTC</span>
+              </a>
+            ))}
+          </div>
+          <p className="mt-2 text-[11px] text-zinc-600">Seen on the network, not yet in the ledger: a Litecoin testnet block can take a while. Folded in after {state.confirmations} confirmations.</p>
+        </section>
       )}
 
       <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">

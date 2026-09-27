@@ -35,6 +35,7 @@ export default function LitecoinWallet() {
   const claimable = BigInt(state?.claimable[address] ?? "0");
   const minPayout = PARAMS[LTC_NETWORK].minPayoutLit;
   const myPayouts = (state?.payouts ?? []).filter((p) => p.holder === address).reverse();
+  const myPending = (state?.pending ?? []).filter((p) => p.sender === address);
   const desk = state?.desk.address ?? null;
   const withdrawLit = parseLtc(amount);
   const withdrawOk = isAddress(to.trim(), LTC_NETWORK) && withdrawLit >= DUST_LIT;
@@ -99,6 +100,20 @@ export default function LitecoinWallet() {
             note="Goes to the desk's treasury, not to a claimable balance." />
         )}
       </section>
+
+      {myPending.length > 0 && (
+        <section>
+          <Label>Waiting for a block</Label>
+          <div className="space-y-1.5">
+            {myPending.map((p) => (
+              <a key={p.txid} href={txLink(p.txid)} target="_blank" rel="noreferrer" className="flex justify-between gap-3 text-xs font-mono hover:text-white">
+                <span className="text-zinc-300 truncate">{p.memo ?? "(no memo)"}</span>
+                <span className="text-zinc-500 shrink-0">{fmtLtc(p.valueLit)} LTC · pending</span>
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section>
         <Label>Holdings</Label>

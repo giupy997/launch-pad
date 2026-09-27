@@ -17,7 +17,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { PARAMS, replay, snapshot, type Network, type TxEvent } from "../web/lib/litecoin/ledger.ts";
-import { Esplora, PUBLIC_API, eventFromTx, type EsploraTx } from "../web/lib/litecoin/esplora.ts";
+import { Esplora, PUBLIC_API, eventFromTx, pendingFromTx, type EsploraTx, type PendingTx } from "../web/lib/litecoin/esplora.ts";
 import { walletFromSecret } from "../web/lib/litecoin/tx.ts";
 
 const ROOT = import.meta.dirname;
@@ -118,12 +118,17 @@ export async function pass(sync: boolean) {
   const api = new Esplora(API);
   const cache = loadCache(desk);
   let tip: number | null = null;
+  let pending: PendingTx[] = [];
   if (sync) {
     tip = await api.tipHeight();
     await fetchTxs(api, desk, cache, tip, firstPass);
     await placeInBlocks(api, cache);
     saveCache(cache);
     firstPass = false;
+    try {
+      // instructions waiting for a block: shown on the site, never folded in
+      pending = (await api.addressTxsMempool(desk)).map((t) => pendingFromTx(t, desk, NETWORK)).filter((p): p is PendingTx => p !== null);
+    } catch {}
   }
   const maxHeight = tip === null ? Number.MAX_SAFE_INTEGER : tip - (CONFIRMATIONS - 1);
   const events = eventsFromCache(cache, desk, maxHeight);
@@ -131,6 +136,7 @@ export async function pass(sync: boolean) {
   const out = {
     ...snapshot(state),
     desk: { address: desk, network: NETWORK },
+    pending: pending.map((p) => ({ ...p, valueLit: p.valueLit.toString() })),
     chainTip: tip,
     confirmations: CONFIRMATIONS,
     updatedAt: Math.floor(Date.now() / 1000),
@@ -139,13 +145,13 @@ export async function pass(sync: boolean) {
   let changed = true;
   try {
     const prev = JSON.parse(readFileSync(OUT, "utf8"));
-    changed = prev.stateRoot !== out.stateRoot || prev.chainTip !== out.chainTip;
+    changed = prev.stateRoot !== out.stateRoot || prev.chainTip !== out.chainTip || (prev.pending?.length ?? 0) !== pending.length;
   } catch {}
   writeFileSync(OUT, JSON.stringify(out, null, 1));
   if (changed) {
     console.log(
       `[${new Date().toISOString()}] tip ${tip ?? "local"} · ${events.length} txs · ${state.coins.size} coins · ` +
-        `${state.payouts.filter((p) => !p.paidTxid).length} payouts due · root ${out.stateRoot?.slice(0, 16) ?? "-"}`
+        `${state.payouts.filter((p) => !p.paidTxid).length} payouts due · ${pending.length} pending · root ${out.stateRoot?.slice(0, 16) ?? "-"}`
     );
   }
 }
