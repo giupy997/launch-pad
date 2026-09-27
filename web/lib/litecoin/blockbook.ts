@@ -1,6 +1,7 @@
-// Notus on Litecoin — a Blockbook explorer (Trezor's; NowNodes and others
-// run public instances for Litecoin) read through Esplora's dialect, so the
-// ledger has a second kind of backend when litecoinspace.org is down.
+// Notus on Litecoin — a Blockbook explorer (Trezor's software; public
+// Litecoin instances such as litecoinblockexplorer.net, or NowNodes with a
+// key) read through Esplora's dialect, so the ledger has a second kind of
+// backend when litecoinspace.org is down.
 //
 // Blockbook's transactions come with prevout addresses and values and, on
 // the /tx endpoint, the raw hex; the raw hex parsed by our own parser gives

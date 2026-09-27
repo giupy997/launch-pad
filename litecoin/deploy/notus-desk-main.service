@@ -23,8 +23,9 @@ Environment=NOTUS_LTC_CONFIRMATIONS=2
 # litecoinspace.org's mainnet API answered 522 over IPv4 from this host while
 # IPv6 worked: reach it over IPv6 first (IPv4 remains the fallback).
 Environment=NODE_OPTIONS=--dns-result-order=ipv6first
-# …and when it is down altogether, read the chain through Trezor's Blockbook.
-Environment=NOTUS_LTC_API=https://litecoinspace.org/api,https://ltc1.trezor.io/api/v2
+# …and when it is down altogether, read the chain through a public Blockbook
+# (Trezor's own blocks server IPs at Cloudflare; this one answered).
+Environment=NOTUS_LTC_API=https://litecoinspace.org/api,https://litecoinblockexplorer.net/api/v2
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=read-only

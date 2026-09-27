@@ -1,7 +1,7 @@
 // Notus on Litecoin — which explorer(s) to read the chain through.
 //
 //   NOTUS_LTC_API=https://litecoinspace.org/api                       one Esplora endpoint
-//   NOTUS_LTC_API=https://litecoinspace.org/api,https://ltc1.trezor.io/api/v2
+//   NOTUS_LTC_API=https://litecoinspace.org/api,https://litecoinblockexplorer.net/api/v2
 //                                                                      …with a Blockbook one as fallback
 //
 // Several endpoints are tried in order: a timeout or a 5xx moves on to the

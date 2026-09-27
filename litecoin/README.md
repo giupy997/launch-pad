@@ -205,8 +205,9 @@ process exposes only the snapshot, never the key.
 Needs Node ≥ 22.18 (runs the TypeScript directly). Environment variables:
 `NOTUS_LTC_NETWORK` (`test`, default, or `main`), `NOTUS_LTC_API` (the
 explorer: an Esplora endpoint, default `https://litecoinspace.org/testnet/api`,
-or a Blockbook one ending in `/api/v2` — Trezor's `https://ltc1.trezor.io/api/v2`,
-NowNodes with `NOTUS_LTC_API_KEY` — and several, comma separated, tried in
+or a Blockbook one ending in `/api/v2` — `https://litecoinblockexplorer.net/api/v2`
+answers; Trezor's `ltc1.trezor.io` blocks server IPs; NowNodes wants
+`NOTUS_LTC_API_KEY` — and several, comma separated, tried in
 order when one times out or answers 5xx; one serving the other chain is
 skipped), `NOTUS_LTC_DESK`
 (the desk address, for verifiers without the key), `NOTUS_LTC_STATE`,
