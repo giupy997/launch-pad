@@ -9,7 +9,7 @@
 
 import * as btc from "@scure/btc-signer";
 import { hex } from "@scure/base";
-import { addressOfPubkey, addressOfScript, opReturnPayload, DEFAULT_FEE_RATE, type Utxo } from "./tx.ts";
+import { addressOfPubkey, addressOfScript, opReturnPayload, parseTx, DEFAULT_FEE_RATE, type Utxo } from "./tx.ts";
 import type { Network, TxEvent } from "./ledger.ts";
 
 export type EsploraVin = {
@@ -46,16 +46,76 @@ export const PUBLIC_EXPLORER: Record<Network, string> = {
   test: "https://litecoinspace.org/testnet",
 };
 
+/** Genesis block hashes: a fallback endpoint that serves the other chain is skipped. */
+export const GENESIS: Record<Network, string> = {
+  main: "12a765e31ffd4059bada1e25190f6e98c99d9714d334efa41a195a7e7e04bfe2",
+  test: "4966625a4b2851d9fdee139e56211a0d88575f59ed816ff5e6a63deb4e3e29a0",
+};
+/** An explorer behind Cloudflare answers 5xx after up to 100s; give up sooner. */
+const TIMEOUT_MS = 45_000;
+
 export class Esplora {
-  readonly base: string;
-  constructor(base: string) {
-    this.base = base;
+  /** Endpoints in order of preference: `base` may list several, comma
+   *  separated (NOTUS_LTC_API=https://a/api,https://b/api). When one is down
+   *  or unreachable on the way there (a 5xx, a timeout) the next is tried;
+   *  one that turns out to serve the other chain is never used. */
+  readonly bases: string[];
+  readonly network: Network | null;
+  readonly timeoutMs: number;
+  private chain = new Map<string, boolean>();
+  constructor(base: string, network: Network | null = null, timeoutMs = TIMEOUT_MS) {
+    this.bases = base.split(",").map((b) => b.trim().replace(/\/$/, "")).filter(Boolean);
+    if (this.bases.length === 0) throw new Error("no explorer endpoint");
+    this.network = network;
+    this.timeoutMs = timeoutMs;
+  }
+
+  get base(): string {
+    return this.bases[0];
+  }
+
+  /** Whether a fallback endpoint serves this chain: its genesis block says.
+   *  Only a positive match with the other chain rules it out — an endpoint
+   *  that cannot answer that question is left to fail on its own. */
+  private async sameChain(base: string): Promise<boolean> {
+    if (this.bases.length === 1 || !this.network) return true;
+    const known = this.chain.get(base);
+    if (known !== undefined) return known;
+    try {
+      const r = await fetch(`${base}/block-height/0`, { cache: "no-store", signal: AbortSignal.timeout(this.timeoutMs) });
+      const hash = (await r.text()).trim();
+      if (!/^[0-9a-f]{64}$/.test(hash)) return true;
+      const ok = hash !== GENESIS[this.network === "main" ? "test" : "main"];
+      this.chain.set(base, ok);
+      return ok;
+    } catch {
+      return true;
+    }
+  }
+
+  private async request(path: string, init: RequestInit = {}): Promise<Response> {
+    let lastError: Error | null = null;
+    for (const [i, base] of this.bases.entries()) {
+      if (!(await this.sameChain(base))) continue;
+      try {
+        const r = await fetch(`${base}/${path}`, { ...init, cache: "no-store", signal: AbortSignal.timeout(this.timeoutMs) });
+        // the explorer, or the road to it, is down: the next endpoint may do
+        if (r.status >= 500 && i < this.bases.length - 1) {
+          lastError = new Error(`${path}: HTTP ${r.status} ${(await r.text()).slice(0, 120)}`);
+          continue;
+        }
+        return r;
+      } catch (e) {
+        lastError = new Error(`${path}: ${(e as Error).message}`);
+      }
+    }
+    throw lastError ?? new Error(`${path}: no explorer endpoint on this chain`);
   }
 
   private async get<T>(path: string): Promise<T> {
-    const r = await fetch(`${this.base}/${path}`, { cache: "no-store" });
-    if (!r.ok) throw new Error(`${path}: HTTP ${r.status} ${(await r.text()).slice(0, 120)}`);
+    const r = await this.request(path);
     const text = await r.text();
+    if (!r.ok) throw new Error(`${path}: HTTP ${r.status} ${text.slice(0, 120)}`);
     try {
       return JSON.parse(text) as T;
     } catch {
@@ -94,10 +154,12 @@ export class Esplora {
   }
 
   async broadcast(rawHex: string): Promise<string> {
-    const r = await fetch(`${this.base}/tx`, { method: "POST", body: rawHex, headers: { "content-type": "text/plain" } });
+    const r = await this.request("tx", { method: "POST", body: rawHex, headers: { "content-type": "text/plain" } });
     const text = (await r.text()).trim();
-    if (!r.ok) throw new Error(`broadcast rejected: ${text.slice(0, 200)}`);
-    return text.replace(/^"|"$/g, "");
+    if (r.ok) return text.replace(/^"|"$/g, "");
+    // relayed already (by an endpoint that then failed, or by an earlier try): that is a success
+    if (/already/i.test(text)) return parseTx(rawHex, this.network ?? "main").txid;
+    throw new Error(`broadcast rejected: ${text.slice(0, 200)}`);
   }
 
   /** Recommended fee rate in lit/vB, clamped to something sane. */

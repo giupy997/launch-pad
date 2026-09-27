@@ -11,6 +11,7 @@ const UPSTREAM = (process.env.LTC_API_UPSTREAM ?? PUBLIC_API[process.env.NEXT_PU
 /** Only what the pages use: address history and coins, transactions, fees, tips. */
 const ALLOWED = [
   /^blocks\/tip\/height$/,
+  /^block-height\/\d+$/,
   /^address\/[a-zA-Z0-9]{20,90}\/(utxo|txs\/mempool|txs\/chain(\/[0-9a-f]{64})?)$/,
   /^tx\/[0-9a-f]{64}(\/status)?$/,
   /^block\/[0-9a-f]{64}\/txids$/,

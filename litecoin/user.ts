@@ -23,7 +23,7 @@ const STATE = process.env.NOTUS_LTC_STATE ?? join(ROOT, "../web/public/litecoin/
 
 const secret: string = JSON.parse(readFileSync(join(ROOT, "user/key.json"), "utf8")).secret;
 const me = walletFromSecret(secret, NETWORK);
-const api = new Esplora(API);
+const api = new Esplora(API, NETWORK);
 const lit = (ltc: string) => BigInt(Math.round(Number(ltc) * 1e8));
 
 async function send(payments: Payment[], memoText: string | null) {

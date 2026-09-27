@@ -177,6 +177,11 @@ sudo systemctl daemon-reload && sudo systemctl enable --now notus-desk-main
 sudo cp litecoin/deploy/Caddyfile /etc/caddy/Caddyfile && sudo systemctl reload caddy   # adds /main/state.json
 ```
 
+If the mainnet API answers 5xx from the server while it works elsewhere, it
+is the route: the unit reaches litecoinspace.org over IPv6 first
+(`NODE_OPTIONS=--dns-result-order=ipv6first`), since from some hosts only
+one address family gets through Cloudflare to their mainnet backend.
+
 Fund the mainnet desk with a little LTC for payout fees (the `fund`
 instruction, or a plain payment you then leave as the sender's credit). On
 Netlify, the production site becomes the mainnet site with
@@ -197,7 +202,9 @@ process exposes only the snapshot, never the key.
 
 Needs Node ≥ 22.18 (runs the TypeScript directly). Environment variables:
 `NOTUS_LTC_NETWORK` (`test`, default, or `main`), `NOTUS_LTC_API` (an Esplora
-endpoint; default `https://litecoinspace.org/testnet/api`), `NOTUS_LTC_DESK`
+endpoint; default `https://litecoinspace.org/testnet/api`; several, comma
+separated, are tried in order when one is down, and one serving the other
+chain is skipped), `NOTUS_LTC_DESK`
 (the desk address, for verifiers without the key), `NOTUS_LTC_STATE`,
 `NOTUS_LTC_CACHE`, `NOTUS_LTC_CONFIRMATIONS`; for the desk process also
 `PORT`, `NOTUS_LTC_INDEX_EVERY`, `NOTUS_LTC_PAYOUT_EVERY`. For the website:

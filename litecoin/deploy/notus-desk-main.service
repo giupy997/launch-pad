@@ -20,6 +20,9 @@ Environment=NOTUS_LTC_NETWORK=main
 Environment=NOTUS_LTC_DESK_DIR=/home/notus/launch-pad/litecoin/desk-main
 Environment=NOTUS_LTC_STATE=/home/notus/launch-pad/litecoin/cache/main-state.json
 Environment=NOTUS_LTC_CONFIRMATIONS=2
+# litecoinspace.org's mainnet API answered 522 over IPv4 from this host while
+# IPv6 worked: reach it over IPv6 first (IPv4 remains the fallback).
+Environment=NODE_OPTIONS=--dns-result-order=ipv6first
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=read-only

@@ -56,7 +56,7 @@ export async function payDue(dryRun = false, log: (line: string) => void = conso
     else batches.push([p]);
   }
 
-  const api = new Esplora(API);
+  const api = new Esplora(API, NETWORK);
   const feeRate = await api.feeRate();
   let utxos: Utxo[] = await api.utxos(desk.address);
   log(`desk holds ${fmtLit(utxos.reduce((t, u) => t + u.value, 0n))} LTC in ${utxos.length} coins · fee ${feeRate} lit/vB`);

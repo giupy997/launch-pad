@@ -117,7 +117,7 @@ let firstPass = true;
 /** One indexer pass: sync (unless told not to), replay, write the snapshot. */
 export async function pass(sync: boolean) {
   const desk = deskAddress();
-  const api = new Esplora(API);
+  const api = new Esplora(API, NETWORK);
   const cache = loadCache(desk);
   let tip: number | null = null;
   let pending: PendingTx[] = [];
