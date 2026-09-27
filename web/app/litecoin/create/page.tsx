@@ -7,6 +7,7 @@ import { LTC_NETWORK, fmtCoins, fmtLtc, parseLtc, txLink, useLitecoinState, useL
 import { SendPanel } from "@/components/litecoin/SendPanel";
 import { NeedsLtcWallet } from "@/components/litecoin/Wallet";
 import { TokenLogo } from "@/components/TokenLogo";
+import { Copyable } from "@/components/litecoin/Copyable";
 
 const inputCls =
   "w-full rounded-lg bg-black border border-zinc-700 px-3 py-2 text-sm focus:border-white outline-none placeholder:text-zinc-600";
@@ -117,6 +118,15 @@ export default function LitecoinCreate() {
               <Link href={`/litecoin/c/${deployed.ticker}`} className="underline text-zinc-300">/litecoin/c/{deployed.ticker}</Link>. Sending the same
               ticker again would only be refunded as a claimable credit.
             </p>
+            <div className="pt-1 space-y-1.5">
+              <div className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">Share</div>
+              <Copyable label="link" value={`${typeof window === "undefined" ? "" : window.location.origin}/litecoin/c/${deployed.ticker}`} />
+              <Copyable label="coin id" value={deployed.txid} />
+              <p className="text-[11px] text-zinc-600">
+                There is no contract address on Litecoin: the ticker is the coin, and this transaction is its birth certificate — anyone can
+                verify the coin from it. Buyers only need the link.
+              </p>
+            </div>
             <button
               type="button"
               onClick={() => {

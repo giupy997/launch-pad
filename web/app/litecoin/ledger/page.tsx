@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
 import { LTC_NETWORK, addressLink, fmtLtc, shortAddr, txLink, useLitecoinState } from "@/lib/litecoin/client";
+import { Copyable } from "@/components/litecoin/Copyable";
 
 export default function LitecoinLedger() {
   const { data: state } = useLitecoinState();
@@ -122,15 +122,5 @@ function Stat({ label, value }: { label: string; value: string }) {
       <div className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">{label}</div>
       <div className="mt-1 font-semibold text-sm font-mono">{value}</div>
     </div>
-  );
-}
-function Copyable({ value }: { value: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <button type="button" title="Copy"
-      onClick={() => { navigator.clipboard.writeText(value); setCopied(true); setTimeout(() => setCopied(false), 1200); }}
-      className="block w-full rounded-lg border border-zinc-800 px-3 py-2 text-left font-mono text-xs text-zinc-300 break-all hover:border-white">
-      {value} <span className="text-zinc-600">{copied ? "· copied ✓" : "· copy"}</span>
-    </button>
   );
 }

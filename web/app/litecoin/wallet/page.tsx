@@ -7,6 +7,7 @@ import { CARRY_LIT, DUST_LIT, evmAddressOfSecret, isAddress } from "@/lib/liteco
 import { LTC_NETWORK, fmtCoins, fmtLtc, parseLtc, txLink, useLitecoinState, useLtcWallet, useUtxos } from "@/lib/litecoin/client";
 import { FundPanel, NeedsLtcWallet } from "@/components/litecoin/Wallet";
 import { SendPanel } from "@/components/litecoin/SendPanel";
+import { Copyable } from "@/components/litecoin/Copyable";
 
 export default function LitecoinWallet() {
   const { data: state } = useLitecoinState();
@@ -197,13 +198,3 @@ function Label({ children }: { children: React.ReactNode }) {
   return <div className="font-mono text-[10px] tracking-widest uppercase text-zinc-500 mb-1.5">{children}</div>;
 }
 
-function Copyable({ value }: { value: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <button type="button" title="Copy"
-      onClick={() => { navigator.clipboard.writeText(value); setCopied(true); setTimeout(() => setCopied(false), 1200); }}
-      className="block w-full rounded-lg border border-zinc-800 px-3 py-2 text-left font-mono text-xs text-zinc-300 break-all hover:border-white">
-      {value} <span className="text-zinc-600">{copied ? "· copied ✓" : "· copy"}</span>
-    </button>
-  );
-}

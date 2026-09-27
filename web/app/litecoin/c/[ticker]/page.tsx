@@ -7,6 +7,7 @@ import { LTC_NETWORK, addressLink, curveOf, fmtCoins, fmtLtc, fmtPrice, parseLtc
 import { SendPanel } from "@/components/litecoin/SendPanel";
 import { NeedsLtcWallet } from "@/components/litecoin/Wallet";
 import { TokenLogo } from "@/components/TokenLogo";
+import { Copyable } from "@/components/litecoin/Copyable";
 import { PriceChart } from "@/components/PriceChart";
 
 const URL_OK = /^(https?:\/\/|ipfs:\/\/)\S{1,300}$/;
@@ -57,6 +58,10 @@ export default function LitecoinCoinPage({ params }: { params: { ticker: string 
               </a>{" "}
               · born in block {coin.createdHeight.toLocaleString("en-US")} · paired with <span className="text-zinc-300">LTC</span>
             </p>
+            <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+              <Copyable label="link" value={`${typeof window === "undefined" ? "" : window.location.origin}/litecoin/c/${coin.ticker}`} />
+              <Copyable label="coin id" value={coin.txid} />
+            </div>
           </div>
         </div>
 
