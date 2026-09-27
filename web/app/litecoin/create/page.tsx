@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { MEMO_MAX_BYTES, PARAMS, VIRTUAL_TOKEN, memo, memoBytes, quoteBuy } from "@/lib/litecoin/ledger";
-import { LTC_NETWORK, fmtCoins, fmtLtc, parseLtc, useLitecoinState, useLtcWallet } from "@/lib/litecoin/client";
+import { LTC_NETWORK, fmtCoins, fmtLtc, parseLtc, txLink, useLitecoinState, useLtcWallet } from "@/lib/litecoin/client";
 import { SendPanel } from "@/components/litecoin/SendPanel";
 import { NeedsLtcWallet } from "@/components/litecoin/Wallet";
 import { TokenLogo } from "@/components/TokenLogo";
@@ -21,6 +21,8 @@ export default function LitecoinCreate() {
   const [logo, setLogo] = useState("");
   const [feesToHolders, setFeesToHolders] = useState(false);
   const [devBuy, setDevBuy] = useState("");
+  /** txid of the deploy just broadcast: the same ticker must not be sent twice. */
+  const [deployed, setDeployed] = useState<{ ticker: string; txid: string } | null>(null);
 
   const ticker = symbol.trim().toUpperCase();
   const tickerOk = /^[A-Z0-9]{2,8}$/.test(ticker);
@@ -102,19 +104,45 @@ export default function LitecoinCreate() {
           {est > 0n && <Hint>≈ {fmtCoins(est)} ${ticker || "COINS"} at the opening price</Hint>}
         </div>
 
-        {valid ? (
+        {deployed ? (
+          <div className="rounded-xl border border-white bg-black p-4 space-y-2">
+            <div className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">Deploy ${deployed.ticker} · broadcast ✓</div>
+            <a href={txLink(deployed.txid)} target="_blank" rel="noreferrer" className="block truncate font-mono text-xs text-zinc-300 underline">
+              {deployed.txid}
+            </a>
+            <p className="text-[11px] text-zinc-500">
+              After 2 confirmations (~5 minutes) your coin lives at{" "}
+              <Link href={`/litecoin/c/${deployed.ticker}`} className="underline text-zinc-300">/litecoin/c/{deployed.ticker}</Link>. Sending the same
+              ticker again would only be refunded as a claimable credit.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setDeployed(null);
+                setName("");
+                setSymbol("");
+                setLogo("");
+                setDevBuy("");
+              }}
+              className="text-xs text-zinc-500 underline"
+            >
+              Deploy a different coin
+            </button>
+          </div>
+        ) : valid ? (
           <SendPanel
             payments={[{ address: desk!, lit: P.deployFeeLit + devBuyLit }]}
             memo={memo.deploy(ticker, name.trim(), feesToHolders, logoFits ? logoUrl : "")}
             title={`Deploy $${ticker}`}
             note="Your wallet pays the desk and writes the deploy in the OP_RETURN; the address it pays from becomes the creator."
+            onSent={(txid) => setDeployed({ ticker, txid })}
           />
         ) : (
           <p className="rounded-xl border border-dashed border-zinc-800 p-4 text-sm text-zinc-600">
             Fill the coin in and the transaction appears here, ready to sign.
           </p>
         )}
-        {valid && (
+        {valid && !deployed && (
           <p className="text-xs text-zinc-500">
             Once it confirms, your coin lives at{" "}
             <Link href={`/litecoin/c/${ticker}`} className="underline text-zinc-300">/litecoin/c/{ticker}</Link>.
