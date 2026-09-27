@@ -242,6 +242,23 @@ test("first paid deploy wins the ticker; whatever else arrives is refundable", (
   assert.equal(s.rejected.at(-1)!.reason, "no recognisable sender");
 });
 
+test("fund: LTC for the desk's fees goes to the treasury, owed to nobody", () => {
+  const events = [
+    ev(ALICE, memo.fund(), 1_000_000n),
+    ev(BOB, null, 1_000_000n), // a faucet or a wallet without memos: credited, claimable
+    ev(CAROL, memo.fund(), 0n),
+  ];
+  const s = assertSolvent(events);
+  assert.equal(s.treasuryLit, 1_000_000n);
+  assert.equal(claimableLit(s, ALICE), 0n);
+  assert.equal(claimableLit(s, BOB), 1_000_000n);
+  assert.equal(s.rejected.length, 2);
+  assert.equal(s.rejected.at(-1)!.reason, "no LTC attached");
+  // still allowed after a freeze: the desk keeps paying out
+  const frozen = replay("test", [...events, { ...ev(ALICE, memo.fund(), 5_000n), height: 9_000 }], { ...PARAMS.test, freezeHeight: 8_000 });
+  assert.equal(frozen.treasuryLit, 1_005_000n);
+});
+
 test("logo: set at deploy when it fits, changed later only by the creator", () => {
   const events = [
     ev(ALICE, memo.deploy("PIC", "Picture", false, "https://i.example/p.png"), PARAMS.test.deployFeeLit),
@@ -281,6 +298,7 @@ test("every instruction fits in 80 bytes at its longest", () => {
     memo.sell("ABCDEFGH", amount, 21_000_000n * LTC, 9),
     memo.send("ABCDEFGH", amount, 9),
     memo.claim(9),
+    memo.fund(),
     memo.paid([9999, 9998, 9997, 9996, 9995, 9994, 9993, 9992, 9991, 9990]),
   ];
   for (const m of cases) assert.ok(memoBytes(m) <= MEMO_MAX_BYTES, `${m} is ${memoBytes(m)} bytes`);

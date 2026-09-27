@@ -16,6 +16,7 @@ export default function LitecoinWallet() {
   const [claiming, setClaiming] = useState(false);
   const [to, setTo] = useState("");
   const [amount, setAmount] = useState("");
+  const [fund, setFund] = useState("");
 
   if (!ready) return null;
   if (!address || !secret || !wallet) {
@@ -37,6 +38,7 @@ export default function LitecoinWallet() {
   const desk = state?.desk.address ?? null;
   const withdrawLit = parseLtc(amount);
   const withdrawOk = isAddress(to.trim(), LTC_NETWORK) && withdrawLit >= DUST_LIT;
+  const fundLit = parseLtc(fund);
 
   return (
     <div className="max-w-2xl mx-auto space-y-8">
@@ -82,6 +84,20 @@ export default function LitecoinWallet() {
         </div>
         {to.trim() && !isAddress(to.trim(), LTC_NETWORK) && <p className="text-xs text-zinc-500">⚠ Not a {LTC_NETWORK === "test" ? "testnet" : "mainnet"} Litecoin address.</p>}
         {withdrawOk && <SendPanel payments={[{ address: to.trim(), lit: withdrawLit }]} memo={null} title="Withdraw" confirmLabel="Sign & send" note="A plain Litecoin payment from your wallet." />}
+      </section>
+
+      <section className="rounded-xl border border-zinc-800 bg-black p-5 space-y-3">
+        <Label>Fund the desk — LTC for its payout fees, owed to nobody</Label>
+        <p className="text-xs text-zinc-600">
+          A plain payment to the desk is credited back to whoever sent it. This one carries the <span className="font-mono">fund</span> instruction
+          instead, so it becomes the desk&apos;s own money for the network fees of sells and claims. For the operator, or anyone who wants to chip in.
+        </p>
+        <input value={fund} onChange={(e) => setFund(e.target.value)} placeholder="0.0 LTC" type="number" min="0" step="any"
+          className="w-full sm:w-48 rounded-lg bg-black border border-zinc-700 px-3 py-2 text-sm focus:border-white outline-none text-right" />
+        {desk && fundLit >= DUST_LIT && (
+          <SendPanel payments={[{ address: desk, lit: fundLit }]} memo={memo.fund()} title="Fund the desk" confirmLabel="Sign & fund"
+            note="Goes to the desk's treasury, not to a claimable balance." />
+        )}
       </section>
 
       <section>

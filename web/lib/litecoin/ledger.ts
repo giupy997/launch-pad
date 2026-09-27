@@ -235,6 +235,8 @@ export const memo = {
     [PROTOCOL, "sell", ticker, amount, minLit, ...(payoutOutput === undefined ? [] : [payoutOutput])].join(" "),
   send: (ticker: string, amount: bigint, toOutput: number) => [PROTOCOL, "send", ticker, amount, toOutput].join(" "),
   claim: (payoutOutput?: number) => [PROTOCOL, "claim", ...(payoutOutput === undefined ? [] : [payoutOutput])].join(" "),
+  /** LTC for the desk's own costs (payout fees): treasury, owed to nobody. */
+  fund: () => [PROTOCOL, "fund"].join(" "),
   paid: (ids: number[]) => [PROTOCOL, "paid", ...ids].join(" "),
 };
 
@@ -389,7 +391,7 @@ function apply(s: State, p: Params, e: TxEvent): string | null {
     addCredit(s, sender, e.valueLit);
     return "only the desk confirms payouts — credited";
   }
-  if (p.freezeHeight !== null && e.height > p.freezeHeight && cmd !== "claim") {
+  if (p.freezeHeight !== null && e.height > p.freezeHeight && cmd !== "claim" && cmd !== "fund") {
     return credited(s, sender, e, "ledger frozen for migration");
   }
 
@@ -410,6 +412,14 @@ function apply(s: State, p: Params, e: TxEvent): string | null {
     s.treasuryLit += p.deployFeeLit;
     const devBuy = e.valueLit - p.deployFeeLit;
     return devBuy > 0n ? buy(s, e, coin, sender, devBuy, 0n) : null;
+  }
+
+  if (cmd === "fund") {
+    // the operator (or anyone) topping the desk up for network fees: this is
+    // the desk's money, not a balance somebody can claim back
+    if (e.valueLit === 0n) return "no LTC attached";
+    s.treasuryLit += e.valueLit;
+    return null;
   }
 
   if (cmd === "logo") {
