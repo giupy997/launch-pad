@@ -1,25 +1,869 @@
 {
  "protocol": "NOTUS1",
  "network": "test",
- "height": 0,
- "stateRoot": null,
+ "height": 3600090,
+ "stateRoot": "dee3bdb78c0c420f5b4af754a200201561d951eef0fd31120393754ae6935d51",
  "freezeHeight": null,
- "txsRead": 0,
- "treasuryLit": "0",
- "liabilitiesLit": "0",
- "coins": [],
- "balances": {},
- "claimable": {},
- "pubkeys": {},
- "payouts": [],
- "trades": [],
+ "txsRead": 45,
+ "treasuryLit": "1061893",
+ "liabilitiesLit": "288529412",
+ "coins": [
+  {
+   "ticker": "CHIKUN",
+   "name": "Chikun",
+   "logo": "",
+   "creator": "tltc1ql43qc4ewguxww7wy3zd3mpat736pvwkpw5j5rf",
+   "feesToHolders": false,
+   "vLit": "20000000",
+   "vToken": "105000000000000000",
+   "realLit": "0",
+   "sold": "0",
+   "graduated": false,
+   "poolLit": "0",
+   "poolToken": "0",
+   "acc": "0",
+   "volumeLit": "0",
+   "trades": 0,
+   "createdHeight": 3600003,
+   "createdTime": 1789990150,
+   "txid": "0000000000000000000000000000000000000000000000000000000000000002",
+   "holders": 0
+  },
+  {
+   "ticker": "LCAT",
+   "name": "Lite Cat",
+   "logo": "https://i.imgur.com/1Q9Z1Zm.png",
+   "creator": "tltc1qe0859twv0u7ek0hg05qq38dffykztvjl5e9qpd",
+   "feesToHolders": true,
+   "vLit": "83999999",
+   "vToken": "25000000000000000",
+   "realLit": "63999999",
+   "sold": "80000000000000000",
+   "graduated": true,
+   "poolLit": "38425265",
+   "poolToken": "33311411770037454",
+   "acc": "35861223533373522212",
+   "volumeLit": "286294075",
+   "trades": 41,
+   "createdHeight": 3600001,
+   "createdTime": 1789990000,
+   "txid": "0000000000000000000000000000000000000000000000000000000000000001",
+   "holders": 3
+  },
+  {
+   "ticker": "MWEB",
+   "name": "Mimble",
+   "logo": "",
+   "creator": "tltc1qm7nfgx4dl7atjhav6474wmhjzmq05fanfuljsd",
+   "feesToHolders": true,
+   "vLit": "84000000",
+   "vToken": "25000000000000000",
+   "realLit": "64000000",
+   "sold": "80000000000000000",
+   "graduated": true,
+   "poolLit": "93700000",
+   "poolToken": "13660618996798292",
+   "acc": "10771662336629285949",
+   "volumeLit": "94646464",
+   "trades": 3,
+   "createdHeight": 3600006,
+   "createdTime": 1789990300,
+   "txid": "0000000000000000000000000000000000000000000000000000000000000003",
+   "holders": 3
+  }
+ ],
+ "balances": {
+  "LCAT": {
+   "tltc1q424lzsrykvtez02v442tfeud4z4ew4ujsll7c8": "18917444360280639",
+   "tltc1qe0859twv0u7ek0hg05qq38dffykztvjl5e9qpd": "21908021563630567",
+   "tltc1qm7nfgx4dl7atjhav6474wmhjzmq05fanfuljsd": "25863122306051340"
+  },
+  "MWEB": {
+   "tltc1q424lzsrykvtez02v442tfeud4z4ew4ujsll7c8": "6339381003201708",
+   "tltc1qm7nfgx4dl7atjhav6474wmhjzmq05fanfuljsd": "2535984386435717",
+   "tltc1qppjchqwad68s8pvgezvcwn6shgd0rfyw4yzfqh": "77464015613564283"
+  }
+ },
+ "claimable": {
+  "tltc1q424lzsrykvtez02v442tfeud4z4ew4ujsll7c8": "322012",
+  "tltc1qe0859twv0u7ek0hg05qq38dffykztvjl5e9qpd": "1289074",
+  "tltc1qm7nfgx4dl7atjhav6474wmhjzmq05fanfuljsd": "6339940",
+  "tltc1qppjchqwad68s8pvgezvcwn6shgd0rfyw4yzfqh": "26565768"
+ },
+ "pubkeys": {
+  "tltc1q424lzsrykvtez02v442tfeud4z4ew4ujsll7c8": "03a7426403f593078a581d960f34db4d14f57218f855b458d70558131b42f58875",
+  "tltc1qe0859twv0u7ek0hg05qq38dffykztvjl5e9qpd": "02152d3b5f14f979047c99c7106ee3ef6752a83f87b5e5277aeaeebceba814b22c",
+  "tltc1ql43qc4ewguxww7wy3zd3mpat736pvwkpw5j5rf": "03689cc5690d6fac09856a9c04cc18a579a446080ad0b59f85095c745240cf137d",
+  "tltc1qm7nfgx4dl7atjhav6474wmhjzmq05fanfuljsd": "0301d66f97748a9a5f53d1b0fc8912c660feb161aeeb27671ec77b59562aae9d6f",
+  "tltc1qppjchqwad68s8pvgezvcwn6shgd0rfyw4yzfqh": "0212c818498dea971cbb8e529a9da38348d658ed48f1f0c495d0d10cdf5e0202cd"
+ },
+ "payouts": [
+  {
+   "id": 0,
+   "kind": "sell",
+   "holder": "tltc1q424lzsrykvtez02v442tfeud4z4ew4ujsll7c8",
+   "to": "tltc1q424lzsrykvtez02v442tfeud4z4ew4ujsll7c8",
+   "lit": "784545",
+   "height": 3600024,
+   "txid": "000000000000000000000000000000000000000000000000000000000000000c",
+   "paidTxid": null
+  },
+  {
+   "id": 1,
+   "kind": "sell",
+   "holder": "tltc1q424lzsrykvtez02v442tfeud4z4ew4ujsll7c8",
+   "to": "tltc1q424lzsrykvtez02v442tfeud4z4ew4ujsll7c8",
+   "lit": "7428649",
+   "height": 3600039,
+   "txid": "0000000000000000000000000000000000000000000000000000000000000014",
+   "paidTxid": null
+  },
+  {
+   "id": 2,
+   "kind": "sell",
+   "holder": "tltc1q424lzsrykvtez02v442tfeud4z4ew4ujsll7c8",
+   "to": "tltc1q424lzsrykvtez02v442tfeud4z4ew4ujsll7c8",
+   "lit": "13927738",
+   "height": 3600055,
+   "txid": "000000000000000000000000000000000000000000000000000000000000001c",
+   "paidTxid": null
+  },
+  {
+   "id": 3,
+   "kind": "sell",
+   "holder": "tltc1qe0859twv0u7ek0hg05qq38dffykztvjl5e9qpd",
+   "to": "tltc1qe0859twv0u7ek0hg05qq38dffykztvjl5e9qpd",
+   "lit": "47693466",
+   "height": 3600060,
+   "txid": "000000000000000000000000000000000000000000000000000000000000001e",
+   "paidTxid": null
+  },
+  {
+   "id": 4,
+   "kind": "sell",
+   "holder": "tltc1q424lzsrykvtez02v442tfeud4z4ew4ujsll7c8",
+   "to": "tltc1q424lzsrykvtez02v442tfeud4z4ew4ujsll7c8",
+   "lit": "1551170",
+   "height": 3600061,
+   "txid": "000000000000000000000000000000000000000000000000000000000000001f",
+   "paidTxid": null
+  },
+  {
+   "id": 5,
+   "kind": "sell",
+   "holder": "tltc1qe0859twv0u7ek0hg05qq38dffykztvjl5e9qpd",
+   "to": "tltc1qe0859twv0u7ek0hg05qq38dffykztvjl5e9qpd",
+   "lit": "13205195",
+   "height": 3600066,
+   "txid": "0000000000000000000000000000000000000000000000000000000000000021",
+   "paidTxid": null
+  },
+  {
+   "id": 6,
+   "kind": "sell",
+   "holder": "tltc1qe0859twv0u7ek0hg05qq38dffykztvjl5e9qpd",
+   "to": "tltc1qe0859twv0u7ek0hg05qq38dffykztvjl5e9qpd",
+   "lit": "5081877",
+   "height": 3600067,
+   "txid": "0000000000000000000000000000000000000000000000000000000000000022",
+   "paidTxid": null
+  },
+  {
+   "id": 7,
+   "kind": "sell",
+   "holder": "tltc1q424lzsrykvtez02v442tfeud4z4ew4ujsll7c8",
+   "to": "tltc1q424lzsrykvtez02v442tfeud4z4ew4ujsll7c8",
+   "lit": "8076670",
+   "height": 3600078,
+   "txid": "0000000000000000000000000000000000000000000000000000000000000027",
+   "paidTxid": null
+  },
+  {
+   "id": 8,
+   "kind": "sell",
+   "holder": "tltc1qm7nfgx4dl7atjhav6474wmhjzmq05fanfuljsd",
+   "to": "tltc1qm7nfgx4dl7atjhav6474wmhjzmq05fanfuljsd",
+   "lit": "24138043",
+   "height": 3600090,
+   "txid": "000000000000000000000000000000000000000000000000000000000000002d",
+   "paidTxid": null
+  }
+ ],
+ "trades": [
+  {
+   "ticker": "LCAT",
+   "type": "buy",
+   "holder": "tltc1qe0859twv0u7ek0hg05qq38dffykztvjl5e9qpd",
+   "lit": "2000000",
+   "tokens": "9458598726114650",
+   "fee": "20000",
+   "height": 3600001,
+   "time": 1789990000,
+   "txid": "0000000000000000000000000000000000000000000000000000000000000001"
+  },
+  {
+   "ticker": "MWEB",
+   "type": "buy",
+   "holder": "tltc1qm7nfgx4dl7atjhav6474wmhjzmq05fanfuljsd",
+   "lit": "500000",
+   "tokens": "2535984386435717",
+   "fee": "5000",
+   "height": 3600006,
+   "time": 1789990300,
+   "txid": "0000000000000000000000000000000000000000000000000000000000000003"
+  },
+  {
+   "ticker": "MWEB",
+   "type": "buy",
+   "holder": "tltc1qppjchqwad68s8pvgezvcwn6shgd0rfyw4yzfqh",
+   "lit": "64146464",
+   "tokens": "77464015613564283",
+   "fee": "641464",
+   "height": 3600007,
+   "time": 1789990450,
+   "txid": "0000000000000000000000000000000000000000000000000000000000000004"
+  },
+  {
+   "ticker": "MWEB",
+   "type": "buy",
+   "holder": "tltc1q424lzsrykvtez02v442tfeud4z4ew4ujsll7c8",
+   "lit": "30000000",
+   "tokens": "6339381003201708",
+   "fee": "300000",
+   "height": 3600009,
+   "time": 1789990600,
+   "txid": "0000000000000000000000000000000000000000000000000000000000000005"
+  },
+  {
+   "ticker": "LCAT",
+   "type": "buy",
+   "holder": "tltc1qe0859twv0u7ek0hg05qq38dffykztvjl5e9qpd",
+   "lit": "5263712",
+   "tokens": "18310177425618962",
+   "fee": "52637",
+   "height": 3600012,
+   "time": 1789990750,
+   "txid": "0000000000000000000000000000000000000000000000000000000000000006"
+  },
+  {
+   "ticker": "LCAT",
+   "type": "buy",
+   "holder": "tltc1qm7nfgx4dl7atjhav6474wmhjzmq05fanfuljsd",
+   "lit": "5582176",
+   "tokens": "13045253250942577",
+   "fee": "55821",
+   "height": 3600013,
+   "time": 1789990900,
+   "txid": "0000000000000000000000000000000000000000000000000000000000000007"
+  },
+  {
+   "ticker": "LCAT",
+   "type": "buy",
+   "holder": "tltc1qm7nfgx4dl7atjhav6474wmhjzmq05fanfuljsd",
+   "lit": "685216",
+   "tokens": "1303800465360488",
+   "fee": "6852",
+   "height": 3600015,
+   "time": 1789991050,
+   "txid": "0000000000000000000000000000000000000000000000000000000000000008"
+  },
+  {
+   "ticker": "LCAT",
+   "type": "buy",
+   "holder": "tltc1qe0859twv0u7ek0hg05qq38dffykztvjl5e9qpd",
+   "lit": "6272160",
+   "tokens": "9858873942795595",
+   "fee": "62721",
+   "height": 3600018,
+   "time": 1789991200,
+   "txid": "0000000000000000000000000000000000000000000000000000000000000009"
+  },
+  {
+   "ticker": "LCAT",
+   "type": "buy",
+   "holder": "tltc1qe0859twv0u7ek0hg05qq38dffykztvjl5e9qpd",
+   "lit": "4803872",
+   "tokens": "5684488941812746",
+   "fee": "48038",
+   "height": 3600019,
+   "time": 1789991350,
+   "txid": "000000000000000000000000000000000000000000000000000000000000000a"
+  },
+  {
+   "ticker": "LCAT",
+   "type": "buy",
+   "holder": "tltc1q424lzsrykvtez02v442tfeud4z4ew4ujsll7c8",
+   "lit": "2322528",
+   "tokens": "2332734642272770",
+   "fee": "23225",
+   "height": 3600021,
+   "time": 1789991500,
+   "txid": "000000000000000000000000000000000000000000000000000000000000000b"
+  },
+  {
+   "ticker": "LCAT",
+   "type": "sell",
+   "holder": "tltc1q424lzsrykvtez02v442tfeud4z4ew4ujsll7c8",
+   "lit": "784545",
+   "tokens": "777578214090923",
+   "fee": "7924",
+   "height": 3600024,
+   "time": 1789991650,
+   "txid": "000000000000000000000000000000000000000000000000000000000000000c"
+  },
+  {
+   "ticker": "LCAT",
+   "type": "buy",
+   "holder": "tltc1qe0859twv0u7ek0hg05qq38dffykztvjl5e9qpd",
+   "lit": "8771744",
+   "tokens": "7288220131693084",
+   "fee": "87717",
+   "height": 3600025,
+   "time": 1789991800,
+   "txid": "000000000000000000000000000000000000000000000000000000000000000d"
+  },
+  {
+   "ticker": "LCAT",
+   "type": "buy",
+   "holder": "tltc1q424lzsrykvtez02v442tfeud4z4ew4ujsll7c8",
+   "lit": "9235424",
+   "tokens": "5525809380758255",
+   "fee": "92354",
+   "height": 3600027,
+   "time": 1789991950,
+   "txid": "000000000000000000000000000000000000000000000000000000000000000e"
+  },
+  {
+   "ticker": "LCAT",
+   "type": "buy",
+   "holder": "tltc1qm7nfgx4dl7atjhav6474wmhjzmq05fanfuljsd",
+   "lit": "6234400",
+   "tokens": "2912536558416792",
+   "fee": "62344",
+   "height": 3600030,
+   "time": 1789992100,
+   "txid": "000000000000000000000000000000000000000000000000000000000000000f"
+  },
+  {
+   "ticker": "LCAT",
+   "type": "buy",
+   "holder": "tltc1qm7nfgx4dl7atjhav6474wmhjzmq05fanfuljsd",
+   "lit": "4152928",
+   "tokens": "1670441367259957",
+   "fee": "41529",
+   "height": 3600031,
+   "time": 1789992250,
+   "txid": "0000000000000000000000000000000000000000000000000000000000000010"
+  },
+  {
+   "ticker": "LCAT",
+   "type": "buy",
+   "holder": "tltc1qe0859twv0u7ek0hg05qq38dffykztvjl5e9qpd",
+   "lit": "6364448",
+   "tokens": "2227956297127441",
+   "fee": "63644",
+   "height": 3600033,
+   "time": 1789992400,
+   "txid": "0000000000000000000000000000000000000000000000000000000000000011"
+  },
+  {
+   "ticker": "LCAT",
+   "type": "buy",
+   "holder": "tltc1qm7nfgx4dl7atjhav6474wmhjzmq05fanfuljsd",
+   "lit": "3758325",
+   "tokens": "1158687083917606",
+   "fee": "37583",
+   "height": 3600036,
+   "time": 1789992550,
+   "txid": "0000000000000000000000000000000000000000000000000000000000000012"
+  },
+  {
+   "ticker": "LCAT",
+   "type": "buy",
+   "holder": "tltc1qe0859twv0u7ek0hg05qq38dffykztvjl5e9qpd",
+   "lit": "3689568",
+   "tokens": "1079831111474799",
+   "fee": "36895",
+   "height": 3600037,
+   "time": 1789992700,
+   "txid": "0000000000000000000000000000000000000000000000000000000000000013"
+  },
+  {
+   "ticker": "LCAT",
+   "type": "sell",
+   "holder": "tltc1q424lzsrykvtez02v442tfeud4z4ew4ujsll7c8",
+   "lit": "7428649",
+   "tokens": "2360321936313367",
+   "fee": "75036",
+   "height": 3600039,
+   "time": 1789992850,
+   "txid": "0000000000000000000000000000000000000000000000000000000000000014"
+  },
+  {
+   "ticker": "LCAT",
+   "type": "buy",
+   "holder": "tltc1qe0859twv0u7ek0hg05qq38dffykztvjl5e9qpd",
+   "lit": "5718880",
+   "tokens": "1830760394662726",
+   "fee": "57188",
+   "height": 3600042,
+   "time": 1789993000,
+   "txid": "0000000000000000000000000000000000000000000000000000000000000015"
+  },
+  {
+   "ticker": "LCAT",
+   "type": "buy",
+   "holder": "tltc1qe0859twv0u7ek0hg05qq38dffykztvjl5e9qpd",
+   "lit": "4012960",
+   "tokens": "1107288698929675",
+   "fee": "40129",
+   "height": 3600043,
+   "time": 1789993150,
+   "txid": "0000000000000000000000000000000000000000000000000000000000000016"
+  },
+  {
+   "ticker": "LCAT",
+   "type": "buy",
+   "holder": "tltc1q424lzsrykvtez02v442tfeud4z4ew4ujsll7c8",
+   "lit": "3052576",
+   "tokens": "761367588065893",
+   "fee": "30525",
+   "height": 3600045,
+   "time": 1789993300,
+   "txid": "0000000000000000000000000000000000000000000000000000000000000017"
+  },
+  {
+   "ticker": "LCAT",
+   "type": "buy",
+   "holder": "tltc1qm7nfgx4dl7atjhav6474wmhjzmq05fanfuljsd",
+   "lit": "3719264",
+   "tokens": "846343105329565",
+   "fee": "37192",
+   "height": 3600048,
+   "time": 1789993450,
+   "txid": "0000000000000000000000000000000000000000000000000000000000000018"
+  },
+  {
+   "ticker": "LCAT",
+   "type": "buy",
+   "holder": "tltc1qm7nfgx4dl7atjhav6474wmhjzmq05fanfuljsd",
+   "lit": "8570336",
+   "tokens": "1670992876780200",
+   "fee": "85703",
+   "height": 3600049,
+   "time": 1789993600,
+   "txid": "0000000000000000000000000000000000000000000000000000000000000019"
+  },
+  {
+   "ticker": "LCAT",
+   "type": "buy",
+   "holder": "tltc1q424lzsrykvtez02v442tfeud4z4ew4ujsll7c8",
+   "lit": "7918112",
+   "tokens": "1272299117602143",
+   "fee": "79181",
+   "height": 3600051,
+   "time": 1789993750,
+   "txid": "000000000000000000000000000000000000000000000000000000000000001a"
+  },
+  {
+   "ticker": "LCAT",
+   "type": "buy",
+   "holder": "tltc1qe0859twv0u7ek0hg05qq38dffykztvjl5e9qpd",
+   "lit": "3971936",
+   "tokens": "560564578186067",
+   "fee": "39719",
+   "height": 3600054,
+   "time": 1789993900,
+   "txid": "000000000000000000000000000000000000000000000000000000000000001b"
+  },
+  {
+   "ticker": "LCAT",
+   "type": "sell",
+   "holder": "tltc1q424lzsrykvtez02v442tfeud4z4ew4ujsll7c8",
+   "lit": "13927738",
+   "tokens": "2251436859431590",
+   "fee": "140684",
+   "height": 3600055,
+   "time": 1789994050,
+   "txid": "000000000000000000000000000000000000000000000000000000000000001c"
+  },
+  {
+   "ticker": "LCAT",
+   "type": "buy",
+   "holder": "tltc1qe0859twv0u7ek0hg05qq38dffykztvjl5e9qpd",
+   "lit": "2874592",
+   "tokens": "515199450235785",
+   "fee": "28745",
+   "height": 3600057,
+   "time": 1789994200,
+   "txid": "000000000000000000000000000000000000000000000000000000000000001d"
+  },
+  {
+   "ticker": "LCAT",
+   "type": "sell",
+   "holder": "tltc1qe0859twv0u7ek0hg05qq38dffykztvjl5e9qpd",
+   "lit": "47693466",
+   "tokens": "19307319899550510",
+   "fee": "481752",
+   "height": 3600060,
+   "time": 1789994350,
+   "txid": "000000000000000000000000000000000000000000000000000000000000001e"
+  },
+  {
+   "ticker": "LCAT",
+   "type": "sell",
+   "holder": "tltc1q424lzsrykvtez02v442tfeud4z4ew4ujsll7c8",
+   "lit": "1551170",
+   "tokens": "1500957906287727",
+   "fee": "15668",
+   "height": 3600061,
+   "time": 1789994500,
+   "txid": "000000000000000000000000000000000000000000000000000000000000001f"
+  },
+  {
+   "ticker": "LCAT",
+   "type": "buy",
+   "holder": "tltc1qm7nfgx4dl7atjhav6474wmhjzmq05fanfuljsd",
+   "lit": "7996448",
+   "tokens": "6481601313890345",
+   "fee": "79964",
+   "height": 3600063,
+   "time": 1789994650,
+   "txid": "0000000000000000000000000000000000000000000000000000000000000020"
+  },
+  {
+   "ticker": "LCAT",
+   "type": "sell",
+   "holder": "tltc1qe0859twv0u7ek0hg05qq38dffykztvjl5e9qpd",
+   "lit": "13205195",
+   "tokens": "12871546599700340",
+   "fee": "133385",
+   "height": 3600066,
+   "time": 1789994800,
+   "txid": "0000000000000000000000000000000000000000000000000000000000000021"
+  },
+  {
+   "ticker": "LCAT",
+   "type": "sell",
+   "holder": "tltc1qe0859twv0u7ek0hg05qq38dffykztvjl5e9qpd",
+   "lit": "5081877",
+   "tokens": "8581031066466893",
+   "fee": "51332",
+   "height": 3600067,
+   "time": 1789994950,
+   "txid": "0000000000000000000000000000000000000000000000000000000000000022"
+  },
+  {
+   "ticker": "LCAT",
+   "type": "buy",
+   "holder": "tltc1q424lzsrykvtez02v442tfeud4z4ew4ujsll7c8",
+   "lit": "4755936",
+   "tokens": "7982566488493387",
+   "fee": "47559",
+   "height": 3600069,
+   "time": 1789995100,
+   "txid": "0000000000000000000000000000000000000000000000000000000000000023"
+  },
+  {
+   "ticker": "LCAT",
+   "type": "buy",
+   "holder": "tltc1q424lzsrykvtez02v442tfeud4z4ew4ujsll7c8",
+   "lit": "2794976",
+   "tokens": "3618734975743573",
+   "fee": "27949",
+   "height": 3600072,
+   "time": 1789995250,
+   "txid": "0000000000000000000000000000000000000000000000000000000000000024"
+  },
+  {
+   "ticker": "LCAT",
+   "type": "buy",
+   "holder": "tltc1q424lzsrykvtez02v442tfeud4z4ew4ujsll7c8",
+   "lit": "5893472",
+   "tokens": "5927150165662126",
+   "fee": "58934",
+   "height": 3600073,
+   "time": 1789995400,
+   "txid": "0000000000000000000000000000000000000000000000000000000000000025"
+  },
+  {
+   "ticker": "LCAT",
+   "type": "buy",
+   "holder": "tltc1q424lzsrykvtez02v442tfeud4z4ew4ujsll7c8",
+   "lit": "2861600",
+   "tokens": "2274933543080082",
+   "fee": "28616",
+   "height": 3600075,
+   "time": 1789995550,
+   "txid": "0000000000000000000000000000000000000000000000000000000000000026"
+  },
+  {
+   "ticker": "LCAT",
+   "type": "sell",
+   "holder": "tltc1q424lzsrykvtez02v442tfeud4z4ew4ujsll7c8",
+   "lit": "8076670",
+   "tokens": "7601766995184874",
+   "fee": "81582",
+   "height": 3600078,
+   "time": 1789995700,
+   "txid": "0000000000000000000000000000000000000000000000000000000000000027"
+  },
+  {
+   "ticker": "LCAT",
+   "type": "buy",
+   "holder": "tltc1qm7nfgx4dl7atjhav6474wmhjzmq05fanfuljsd",
+   "lit": "5411808",
+   "tokens": "5354759533946587",
+   "fee": "54118",
+   "height": 3600079,
+   "time": 1789995850,
+   "txid": "0000000000000000000000000000000000000000000000000000000000000028"
+  },
+  {
+   "ticker": "LCAT",
+   "type": "buy",
+   "holder": "tltc1qe0859twv0u7ek0hg05qq38dffykztvjl5e9qpd",
+   "lit": "6499808",
+   "tokens": "4745959430696780",
+   "fee": "64998",
+   "height": 3600081,
+   "time": 1789996000,
+   "txid": "0000000000000000000000000000000000000000000000000000000000000029"
+  },
+  {
+   "ticker": "LCAT",
+   "type": "buy",
+   "holder": "tltc1qm7nfgx4dl7atjhav6474wmhjzmq05fanfuljsd",
+   "lit": "8207200",
+   "tokens": "4350267903232893",
+   "fee": "82072",
+   "height": 3600084,
+   "time": 1789996150,
+   "txid": "000000000000000000000000000000000000000000000000000000000000002a"
+  },
+  {
+   "ticker": "LCAT",
+   "type": "buy",
+   "holder": "tltc1q424lzsrykvtez02v442tfeud4z4ew4ujsll7c8",
+   "lit": "1479456",
+   "tokens": "646435801978452",
+   "fee": "14794",
+   "height": 3600085,
+   "time": 1789996300,
+   "txid": "000000000000000000000000000000000000000000000000000000000000002b"
+  },
+  {
+   "ticker": "LCAT",
+   "type": "buy",
+   "holder": "tltc1q424lzsrykvtez02v442tfeud4z4ew4ujsll7c8",
+   "lit": "8299680",
+   "tokens": "3067474567932439",
+   "fee": "82996",
+   "height": 3600087,
+   "time": 1789996450,
+   "txid": "000000000000000000000000000000000000000000000000000000000000002c"
+  },
+  {
+   "ticker": "LCAT",
+   "type": "sell",
+   "holder": "tltc1qm7nfgx4dl7atjhav6474wmhjzmq05fanfuljsd",
+   "lit": "24138043",
+   "tokens": "12931561153025670",
+   "fee": "243818",
+   "height": 3600090,
+   "time": 1789996600,
+   "txid": "000000000000000000000000000000000000000000000000000000000000002d"
+  }
+ ],
  "rejected": [],
- "roots": [],
+ "roots": [
+  {
+   "height": 3600001,
+   "root": "4729947ef5fcae3349bd2d4901aec5ddda6c245ebef054248ff5a23ac17bfe33"
+  },
+  {
+   "height": 3600003,
+   "root": "c6567e44d1a9ab7f64ae248288e66e8bb3f8b68e7aaa5c1eb41839a28e027966"
+  },
+  {
+   "height": 3600006,
+   "root": "e89f4945992e4201479fd84b9fdc66dc0b9f5fcab3ed3fdc4c3563df2ea44355"
+  },
+  {
+   "height": 3600007,
+   "root": "a9c0e66d6fbd84636c09ad9d1d928fc729ea66322044dcdbd0878ddd302b9462"
+  },
+  {
+   "height": 3600009,
+   "root": "789a7a364a525d12a6543a61ffc3577b9617a376e0d238cc1cded916e4d4ee41"
+  },
+  {
+   "height": 3600012,
+   "root": "f9f94d7f69286a47395b45471b7ae69f7c52b5f24018bdf30446e7fb8f38be51"
+  },
+  {
+   "height": 3600013,
+   "root": "07f8a9b0176ac18fb088c467888ab6393cb5e30976c62d76295496f0e9a9f799"
+  },
+  {
+   "height": 3600015,
+   "root": "f799c6da535e2bb2c5dd0fff0ae14319bc033251ddc629aeb8c70ff7b0e65b4f"
+  },
+  {
+   "height": 3600018,
+   "root": "eeb828a3fd91123f7c6d0cb6a0d6737b6d6a9915f9bd7d068fc73e1890de8d55"
+  },
+  {
+   "height": 3600019,
+   "root": "de4f1c1832f9bb5808385b30477cec99eaac60b5522a5052c45bcdf3c088eb4a"
+  },
+  {
+   "height": 3600021,
+   "root": "c9a2620f3f45471bf10f43fbc27df571a563b0c0ce74aa8712bef8658fc9c7fc"
+  },
+  {
+   "height": 3600024,
+   "root": "8cfd9684ebe02a69d368ab89da68cfae4304fe93f09489608e3b33d09f4915df"
+  },
+  {
+   "height": 3600025,
+   "root": "d91738710da5c177b6528b4d86b49b16de9e8daeea5c5af27fba82db8164b371"
+  },
+  {
+   "height": 3600027,
+   "root": "d9789403d8d8ec90cb8241a74d890db0ec2fb38c24aa239efdaf5ce4077c3120"
+  },
+  {
+   "height": 3600030,
+   "root": "4c5274b3f4f34ebff2a43e3bc4707d801392233cc0427b8dd89dc92019d06600"
+  },
+  {
+   "height": 3600031,
+   "root": "b515ba23d4cd6dc0622e5411450140b15086169be95e0e9839549848bbddf683"
+  },
+  {
+   "height": 3600033,
+   "root": "8b7c3bfcbbb45382e0e3f9c31070d591ce5aa70f22541a7f2a59c956cb88fd12"
+  },
+  {
+   "height": 3600036,
+   "root": "1271adc83f774c3e6f9c65a0d2a1bb6dd2737fb82a9f8925ee68ffd8bda81497"
+  },
+  {
+   "height": 3600037,
+   "root": "08590b4572cc3332d21468914869ada27a06eeecf4c13ab0034e80978df5be7a"
+  },
+  {
+   "height": 3600039,
+   "root": "6b93cd4308d82546383551eca61618d165570ac28cc64a064615cadfb6b09c8d"
+  },
+  {
+   "height": 3600042,
+   "root": "ae668cbba88fe031127b09dc09659b35174036a1fe880450cbde90b06dbdf9c3"
+  },
+  {
+   "height": 3600043,
+   "root": "a7e8a7522a6ebcdaa73d5bfb0e77c6e26d014d15c8ca34794ac6d92f0d73b42e"
+  },
+  {
+   "height": 3600045,
+   "root": "3ddf00bb0b38482453b6744f2b3df2dfcb355e80d574f60cfa5d650cda8d98a7"
+  },
+  {
+   "height": 3600048,
+   "root": "c4accbf2b01e3f0282a09a40f96bb8548554653b8249a44337a4bb6927aeccfa"
+  },
+  {
+   "height": 3600049,
+   "root": "31d438550e9e36ca87880de7e74ac286064f3dda0867b3172e4facfcffc0e40f"
+  },
+  {
+   "height": 3600051,
+   "root": "810caab8dccaad7f5a38d5b6413f572bac78ee4c7be72b584cdf00112c906ce0"
+  },
+  {
+   "height": 3600054,
+   "root": "fee39f95ea9cee47e41a7b45db22da863efb25f70b6228c757bfc3d2bef524cc"
+  },
+  {
+   "height": 3600055,
+   "root": "73b4dba56e3fe7344bb3a798941dca5fd6e5daff608ad139e2915c944150b91c"
+  },
+  {
+   "height": 3600057,
+   "root": "ccc790fac1fecad6b3fe776f7d58d266a4e33a2a12ebe7c8747dc04b061bee63"
+  },
+  {
+   "height": 3600060,
+   "root": "f56cb91e30998121491d1e4bec13eaabc1b53da9f48381c18a2a9196d769e41a"
+  },
+  {
+   "height": 3600061,
+   "root": "d278d4def8d8e605ac98779ef20232f666a96f2fa18558faa90938ce7a0c2e6a"
+  },
+  {
+   "height": 3600063,
+   "root": "3b717b332868ceea7d8e92b7ac3c5a7ca9deb1c42b73c324e89129e44aa840dc"
+  },
+  {
+   "height": 3600066,
+   "root": "6171dbb55bf4a5d773991c6ba18ec8de27115211fcbe374b8f5ece8ad1866aae"
+  },
+  {
+   "height": 3600067,
+   "root": "501b729fdc9c2459cc76c649f52562e31c8eb205f0193e7fc36f27c49bbe6d93"
+  },
+  {
+   "height": 3600069,
+   "root": "665efe8d882490324bfe56d82e263d4eca9b931c0443c4fe0cd350f684dd1f9f"
+  },
+  {
+   "height": 3600072,
+   "root": "132992af91923af5c90c1a274b6f30c56c53fc4e71684ea7a6c5c1661971f721"
+  },
+  {
+   "height": 3600073,
+   "root": "2988c6918a77edc58fa2e4c57c54711600a0119a34fcbfc51dfc90d4c8acb715"
+  },
+  {
+   "height": 3600075,
+   "root": "09e968d14c760f292e0747b6f4943579cc0bb11cb653ba70062f216891b94442"
+  },
+  {
+   "height": 3600078,
+   "root": "63263449d2bc53ca430bb616fb20f82505c92b4a5eac75beb8132be155d33b3d"
+  },
+  {
+   "height": 3600079,
+   "root": "5be247b8f7903880f89f9eb2582050ac19dfdd85fcae5b60454b5c7c4be6d371"
+  },
+  {
+   "height": 3600081,
+   "root": "d57d62af7d280587558b3cbcdc7bad46ac6f8e4f24c88c93188aad984009f060"
+  },
+  {
+   "height": 3600084,
+   "root": "df2cb4fbd18571d2c8d429904e99e06330850598014d3b91e2a3b93ff80bc760"
+  },
+  {
+   "height": 3600085,
+   "root": "5dbefa3f093d662d9bd052fd8090ecc28f8f297de5e2ce86d8be4725915924bd"
+  },
+  {
+   "height": 3600087,
+   "root": "40eb15e3134c59ea16642aedd89bb3cba4b6dc23f5fc2352b1d83c70e0ad4417"
+  },
+  {
+   "height": 3600090,
+   "root": "dee3bdb78c0c420f5b4af754a200201561d951eef0fd31120393754ae6935d51"
+  }
+ ],
  "desk": {
-  "address": "tltc1qw6q8s864xr5u03sm006736cawsq3snwt46xkvj",
+  "address": "tltc1qsnag2wwx9weppm8dahlz90h8dlqega9zdmacpq",
   "network": "test"
  },
- "chainTip": 4898644,
+ "chainTip": 3600092,
  "confirmations": 2,
- "updatedAt": 1790281231
+ "updatedAt": 1790529162,
+ "demo": true
 }

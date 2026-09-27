@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { Network } from "./ledger.ts";
+import type { CurveView, Network } from "./ledger.ts";
 import { Esplora, PUBLIC_EXPLORER } from "./esplora.ts";
 import { isSecret, newSecret, secretFromWif, walletFromSecret, type Wallet } from "./tx.ts";
 
@@ -16,8 +16,18 @@ export const api = new Esplora(process.env.NEXT_PUBLIC_LTC_API ?? "/api/ltc");
 export type LCoin = {
   ticker: string; name: string; logo: string; creator: string; feesToHolders: boolean;
   vLit: string; vToken: string; realLit: string; sold: string; volumeLit: string;
+  /** Graduated coins trade in their locked pool (real reserves, no ceiling). */
+  graduated: boolean; poolLit: string; poolToken: string;
   trades: number; holders: number; createdHeight: number; createdTime: number; txid: string;
 };
+
+/** The quote view of a snapshot coin (strings → bigints). */
+export function curveOf(c: LCoin): CurveView {
+  return {
+    vLit: BigInt(c.vLit), vToken: BigInt(c.vToken), realLit: BigInt(c.realLit), sold: BigInt(c.sold),
+    graduated: !!c.graduated, poolLit: BigInt(c.poolLit ?? "0"), poolToken: BigInt(c.poolToken ?? "0"),
+  };
+}
 export type LTrade = {
   ticker: string; type: "buy" | "sell"; holder: string; lit: string; tokens: string;
   fee: string; height: number; time: number; txid: string;

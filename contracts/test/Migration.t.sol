@@ -113,7 +113,8 @@ contract MigrationTest is Test {
             creator: creator_,
             feesToHolders: holdersMode,
             virtualQuote: vq,
-            sold: sold_
+            sold: sold_,
+            poolToken: 0
         });
     }
 
@@ -273,6 +274,51 @@ contract MigrationTest is Test {
         vm.prank(alice);
         IERC20(token).transfer(dave, 1e18);
         assertEq(IERC20(token).balanceOf(dave), 1e18);
+    }
+
+    /// A coin that sold its 800M out on the ledger traded on there in a locked
+    /// pool (the 200M reserve against the LTC raised); it arrives with that
+    /// pool as it stood: holders own TOTAL - poolToken, the pool goes to the DEX.
+    function test_graduatedLedgerCoinMigratesItsPool() public {
+        RecordingMigrator migrator = new RecordingMigrator();
+        pad.setMigrator(address(migrator));
+        uint256 poolToken = 150_000_000e18; // buys through the pool took 50M out of the 200M
+        uint256 poolQuote = 1.2 ether;
+        uint256 owned = pad.TOTAL_SUPPLY() - poolToken;
+        uint256[] memory full = new uint256[](3);
+        full[0] = 500_000_000e18;
+        full[1] = 300_000_000e18;
+        full[2] = owned - full[0] - full[1];
+        Launchpad.LedgerCoin memory c = _coin("Pooled", "POOL", creator, true, virtualQuote, owned);
+        c.poolToken = poolToken;
+        address token = pad.migrateToken{value: poolQuote}(c, holders, full);
+
+        (, uint256 vToken, uint256 realEth, uint256 soldNow, bool graduated,,) = pad.curves(token);
+        assertTrue(graduated, "the curve was complete on the ledger");
+        assertTrue(LaunchToken(token).graduated());
+        assertEq(soldNow, pad.CURVE_SUPPLY());
+        assertEq(vToken, pad.VIRTUAL_TOKEN() - pad.CURVE_SUPPLY());
+        assertEq(realEth, 0, "the pool went to the DEX");
+        assertEq(pad.migratedPoolTokens(token), poolToken);
+        assertEq(migrator.lastToken(), token);
+        assertEq(migrator.lastTokenAmount(), poolToken, "the pool's token side, not the fixed 200M");
+        assertEq(migrator.lastEthAmount(), poolQuote, "the pool's LTC side");
+        assertEq(IERC20(token).balanceOf(address(pad)), 0, "nothing stranded: holders + pool = supply");
+        assertEq(IERC20(token).balanceOf(alice), full[0]);
+        assertEq(IERC20(token).balanceOf(carol), full[2]);
+        assertEq(pad.migrationPending(token), 0);
+        vm.prank(alice);
+        IERC20(token).transfer(dave, 1e18);
+        assertEq(IERC20(token).balanceOf(dave), 1e18);
+
+        // holders and pool must add up to the supply, and a pool has a quote side
+        c = _coin("Pooled", "POOL2", creator, true, virtualQuote, owned);
+        c.poolToken = poolToken + 1;
+        vm.expectRevert(Launchpad.BadMigration.selector);
+        pad.migrateToken{value: poolQuote}(c, holders, full);
+        c.poolToken = poolToken;
+        vm.expectRevert(Launchpad.BadMigration.selector);
+        pad.migrateToken(c, holders, full);
     }
 
     function test_holdersModeKeepsPayingMigratedHolders() public {

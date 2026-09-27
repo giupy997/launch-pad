@@ -24,7 +24,8 @@ export default function LitecoinExplore() {
         </h1>
         <p className="text-zinc-400 max-w-xl mx-auto">
           Litecoin has no smart contracts — so a coin here begins as an OP_RETURN. One desk address,
-          plain Litecoin transactions signed by you, and a bonding curve anyone can recompute from the chain.
+          plain Litecoin transactions signed by you, a bonding curve that graduates into a locked pool with
+          no price ceiling, and a ledger anyone can recompute from the chain.
         </p>
         <Link
           href="/litecoin/create"
@@ -125,13 +126,13 @@ function CoinCard({ coin: c }: { coin: LCoin }) {
       <div className="mt-3 text-xs text-zinc-500">creator {shortAddr(c.creator)}</div>
       <div className="mt-3 flex justify-between text-sm">
         <span className="text-zinc-300">{fmtPrice(spotPrice(c))} LTC</span>
-        <span className="text-zinc-500">raised {fmtLtc(c.realLit)} LTC</span>
+        <span className="text-zinc-500">{c.graduated ? `pool ${fmtLtc(c.poolLit)} LTC` : `raised ${fmtLtc(c.realLit)} LTC`}</span>
       </div>
       <div className="mt-3 h-1 rounded bg-zinc-800 overflow-hidden">
         <div className="h-full bg-white" style={{ width: `${Math.min(progress, 100)}%` }} />
       </div>
       <div className="mt-1.5 font-mono text-[10px] tracking-widest uppercase text-zinc-500">
-        curve {progress.toFixed(1)}% · {c.holders} holders
+        {c.graduated ? `graduated · pool ${fmtLtc(c.poolLit)} LTC` : `curve ${progress.toFixed(1)}%`} · {c.holders} holders
       </div>
     </Link>
   );

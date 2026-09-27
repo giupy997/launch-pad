@@ -58,7 +58,10 @@ if (cmd === "whoami") {
   const bal = BigInt(s.balances[a]?.[me.address] ?? 0);
   const amount = (bal * BigInt(b)) / 100n;
   const coin = s.coins.find((x: { ticker: string }) => x.ticker === a);
-  const q = quoteSell({ vLit: BigInt(coin.vLit), vToken: BigInt(coin.vToken), realLit: BigInt(coin.realLit) }, amount);
+  const q = quoteSell(
+    { vLit: BigInt(coin.vLit), vToken: BigInt(coin.vToken), realLit: BigInt(coin.realLit), sold: BigInt(coin.sold), graduated: !!coin.graduated, poolLit: BigInt(coin.poolLit ?? 0), poolToken: BigInt(coin.poolToken ?? 0) },
+    amount
+  );
   await send([{ address: desk(), lit: CARRY_LIT }], memo.sell(a, amount, (q.net * 97n) / 100n));
 } else if (cmd === "send") {
   const bal = BigInt(state().balances[a]?.[me.address] ?? 0);

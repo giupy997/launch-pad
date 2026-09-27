@@ -22,6 +22,7 @@ contract MigrateFromLedger is Script {
         address[] holders;
         string logo;
         string name;
+        uint256 poolToken;
         uint256 realQuote;
         uint256 sold;
         string symbol;
@@ -66,7 +67,8 @@ contract MigrateFromLedger is Script {
                 creator: c.creator,
                 feesToHolders: c.feesToHolders,
                 virtualQuote: c.virtualQuote,
-                sold: c.sold
+                sold: c.sold,
+                poolToken: c.poolToken
             }),
             h,
             b

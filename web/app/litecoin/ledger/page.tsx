@@ -99,7 +99,7 @@ NOTUS_LTC_DESK=${state.desk.address ?? "<desk address>"} node litecoin/indexer.t
 
       <section className="rounded-xl border border-zinc-800 p-4 text-xs text-zinc-500 space-y-1.5">
         <p className="text-zinc-300 font-semibold">What could cost you</p>
-        <p>— The desk holds the LTC. There is no escrow script on Litecoin: what sits in a curve sits with the desk until it is sold back or claimed.</p>
+        <p>— The desk holds the LTC. There is no escrow script on Litecoin: what sits in a curve or in a graduated pool sits with the desk until it is sold back or claimed.</p>
         <p>— This ledger is the only record of balances. Anyone can recompute it; nobody can enforce it.</p>
         <p>— Your coins belong to the address your transactions pay from. Send from your own wallet, never from an exchange: the exchange&apos;s address would own them.</p>
         <p>— A memo typed wrong does nothing — but the LTC that carried it is credited to the sender and can be claimed back.</p>

@@ -5,7 +5,9 @@ import {
   CURVE_SUPPLY,
   MEMO_MAX_BYTES,
   PARAMS,
+  TOTAL_SUPPLY,
   claimableLit,
+  heldSupply,
   liabilitiesLit,
   memo,
   memoBytes,
@@ -199,23 +201,46 @@ test("send moves coins to a pointed output; self-send cannot mint cashback", () 
   assert.equal(s.rejected.at(-1)!.reason, "bad recipient output");
 });
 
-test("curve sells out: surplus is credited, sells reopen the curve", () => {
+test("graduation: at 800M the raised LTC and the 200M reserve become a locked pool — no ceiling, always liquid", () => {
   const events = [
-    ev(ALICE, memo.deploy("TOP", "Top", false), PARAMS.test.deployFeeLit),
+    ev(ALICE, memo.deploy("TOP", "Top", true), PARAMS.test.deployFeeLit),
     ev(BOB, memo.buy("TOP"), 5n * LTC), // the curve only needs ~0.65 LTC
   ];
   let s = assertSolvent(events);
-  assert.equal(s.coins.get("TOP")!.sold, CURVE_SUPPLY);
-  assert.ok(claimableLit(s, BOB) > 4n * LTC, "surplus stays the buyer's");
+  const coin = s.coins.get("TOP")!;
+  assert.equal(coin.sold, CURVE_SUPPLY);
+  assert.equal(coin.graduated, true);
+  assert.equal(coin.poolToken, TOTAL_SUPPLY - CURVE_SUPPLY, "the 200M reserve seeds the pool");
+  assert.equal(coin.poolLit, coin.realLit, "with every LTC the curve raised");
+  assert.ok(claimableLit(s, BOB) > 4n * LTC, "the surplus over the curve stays the buyer's");
+  // pump.fun-style hand-over: the pool opens a few percent under the curve's last price
+  const lastCurvePrice = Number(coin.vLit) / Number(coin.vToken);
+  const openPrice = spotPrice(coin);
+  assert.ok(openPrice < lastCurvePrice && openPrice > lastCurvePrice * 0.94, `pool opens at ${openPrice / lastCurvePrice} of the curve price`);
 
-  events.push(ev(BOB, memo.buy("TOP"), LTC));
+  // buys keep working through the pool and the price keeps rising: no ceiling
+  events.push(ev(CAROL, memo.buy("TOP"), LTC));
   s = assertSolvent(events);
-  assert.match(s.rejected.at(-1)!.reason, /sold out/);
+  const c2 = s.coins.get("TOP")!;
+  assert.ok(s.balances.get("TOP")!.get(CAROL)! > 0n && c2.poolToken < TOTAL_SUPPLY - CURVE_SUPPLY);
+  assert.ok(spotPrice(c2) > openPrice);
+  events.push(ev(CAROL, memo.buy("TOP"), 100n * LTC));
+  s = assertSolvent(events);
+  const c3 = s.coins.get("TOP")!;
+  assert.ok(spotPrice(c3) > spotPrice(c2) * 50, "a whale moves the price a lot, never into a wall");
+  assert.ok(c3.poolToken > 0n, "the last token is never for sale");
+  assert.equal(c3.sold, CURVE_SUPPLY, "the curve figures stay frozen at graduation");
 
-  events.push(ev(BOB, memo.sell("TOP", CURVE_SUPPLY / 2n, 0n), CARRY));
-  events.push(ev(ALICE, memo.buy("TOP"), LTC / 100n));
+  // sells always fill from the pool; holders mode keeps paying, spread over the coins people hold
+  const bobBal = s.balances.get("TOP")!.get(BOB)!;
+  events.push(ev(BOB, memo.sell("TOP", bobBal / 2n, 0n), CARRY));
   s = assertSolvent(events);
-  assert.ok(s.balances.get("TOP")!.get(ALICE)! > 0n, "buying works again after a sell");
+  const c4 = s.coins.get("TOP")!;
+  assert.ok(s.payouts.at(-1)!.lit > 0n && s.payouts.at(-1)!.holder === BOB);
+  assert.equal(c4.poolToken, c3.poolToken + bobBal / 2n);
+  assert.equal(heldSupply(c4), TOTAL_SUPPLY - c4.poolToken);
+  assert.ok(claimableLit(s, CAROL) > 0n, "carol earned cashback on bob's sell");
+  assert.ok(spotPrice(c4) < spotPrice(c3));
 });
 
 test("first paid deploy wins the ticker; whatever else arrives is refundable", () => {

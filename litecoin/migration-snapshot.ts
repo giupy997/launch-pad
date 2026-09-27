@@ -22,6 +22,7 @@ import { evmAddressOfPubkey } from "../web/lib/litecoin/tx.ts";
 const ROOT = import.meta.dirname;
 const STATE = process.env.NOTUS_LTC_STATE ?? join(ROOT, "../web/public/litecoin/state.json");
 const SCALE = 10n ** 10n; // 8 → 18 decimals
+const TOTAL = 1_000_000_000n * 10n ** 18n;
 
 const args = process.argv.slice(2);
 const flag = (name: string) => {
@@ -33,7 +34,7 @@ if (vault !== undefined && !/^0x[0-9a-fA-F]{40}$/.test(vault)) throw new Error("
 
 type Snapshot = {
   network: string; height: number; stateRoot: string | null; freezeHeight: number | null; liabilitiesLit: string;
-  coins: { ticker: string; name: string; logo: string; creator: string; feesToHolders: boolean; vLit: string; realLit: string; sold: string }[];
+  coins: { ticker: string; name: string; logo: string; creator: string; feesToHolders: boolean; vLit: string; realLit: string; sold: string; graduated?: boolean; poolLit?: string; poolToken?: string }[];
   balances: Record<string, Record<string, string>>;
   pubkeys: Record<string, string>;
   claimable: Record<string, string>;
@@ -70,10 +71,12 @@ const coins = s.coins.map((c) => {
     holders.push(vault);
     balances.push(vaulted);
   }
-  const sold = BigInt(c.sold) * SCALE;
+  // a graduated coin migrates its pool: the reserve that goes to the DEX and the LTC in it
+  const poolToken = c.graduated ? BigInt(c.poolToken ?? "0") * SCALE : 0n;
+  const sold = c.graduated ? TOTAL - poolToken : BigInt(c.sold) * SCALE;
   const delivered = balances.reduce((t, b) => t + b, 0n);
-  if (delivered !== sold - (vault ? 0n : vaulted)) throw new Error(`${c.ticker}: balances (${delivered}) do not add up to sold (${sold})`);
-  const realQuote = BigInt(c.realLit) * SCALE;
+  if (delivered !== sold - (vault ? 0n : vaulted)) throw new Error(`${c.ticker}: balances (${delivered}) do not add up to what holders own (${sold})`);
+  const realQuote = (c.graduated ? BigInt(c.poolLit ?? "0") : BigInt(c.realLit)) * SCALE;
   bridgeWei += realQuote;
   return {
     name: c.name,
@@ -84,6 +87,7 @@ const coins = s.coins.map((c) => {
     virtualQuote: (BigInt(c.vLit) - BigInt(c.realLit)) * SCALE,
     realQuote,
     sold,
+    poolToken,
     holders,
     balances,
   };
@@ -100,7 +104,7 @@ for (const v of Object.values(s.claimable)) dueLit += BigInt(v);
 for (const p of s.payouts) if (!p.paidTxid) dueLit += BigInt(p.lit);
 // pending holder cashback is inside liabilities but not in `claimable` totals per coin; report the ledger's own number
 const liabilities = BigInt(s.liabilitiesLit);
-const inCurves = coins.reduce((t, c) => t + c.realQuote / SCALE, 0n);
+const inCurves = coins.reduce((t, c) => t + c.realQuote / SCALE, 0n); // curves and pools alike
 
 const out = {
   network: s.network,

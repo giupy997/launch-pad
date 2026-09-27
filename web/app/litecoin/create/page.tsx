@@ -36,7 +36,9 @@ export default function LitecoinCreate() {
   const logoFits = memoBytes(withLogo) <= MEMO_MAX_BYTES;
   const desk = state?.desk.address ?? null;
   const valid = tickerOk && !taken && name.trim().length > 0 && nameFits && logoOk && !!address && !!desk;
-  const est = devBuyLit > 0n ? quoteBuy({ vLit: P.virtualLit, vToken: VIRTUAL_TOKEN, sold: 0n }, devBuyLit).tokensOut : 0n;
+  const est = devBuyLit > 0n
+    ? quoteBuy({ vLit: P.virtualLit, vToken: VIRTUAL_TOKEN, realLit: 0n, sold: 0n, graduated: false, poolLit: 0n, poolToken: 0n }, devBuyLit).tokensOut
+    : 0n;
 
   return (
     <div className="grid gap-8 lg:grid-cols-[1fr_380px]">
@@ -164,9 +166,9 @@ export default function LitecoinCreate() {
             <Row k="Trading fees" v="1% buy · 1% sell" />
             <Row k="Fee split" v={feesToHolders ? "80% holders · 20% desk" : "80% you · 20% desk"} strong />
             <Row k="Supply" v="1B fixed · 800M on the curve" />
-            <Row k="Curve raises" v={`~${fmtLtc((P.virtualLit * 32n) / 10n, 2)} LTC`} />
-            <Row k="Market" v="The curve, forever — sells always fill" strong />
-            <Row k="Reserve" v="200M held back" />
+            <Row k="Curve raises" v={`~${fmtLtc((P.virtualLit * 32n) / 10n, 2)} LTC, then it graduates`} />
+            <Row k="After graduation" v="Locked pool: no price ceiling, sells always fill" strong />
+            <Row k="Reserve" v="200M seed the pool with the LTC raised" />
           </div>
           <p className="text-[11px] text-zinc-600">
             The desk holds the LTC sent to the curve and the ledger is the only record of balances.{" "}

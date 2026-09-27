@@ -57,11 +57,16 @@ reserves (0.2 LTC on testnet, 10 LTC on mainnet: a curve raises ~32 LTC to
 sell out; deploy costs 0.01 LTC), 1B supply with 800M on the
 curve, 1% fee split 20% desk / 80% to the creator **or** the holders (fixed
 at deploy; pro-rata accumulator, debts rounded up so claims never exceed the
-pot). There is no DEX to graduate to: the curve stays the market, a sell
-always fills, and the last 200M stay reserved.
+pot). When the 800M are sold the coin **graduates** inside the ledger: the
+LTC the curve raised and the 200M reserve become a locked constant-product
+pool with real reserves (it opens a few percent under the curve's last
+price, like a DEX listing would), and every later buy and sell trades
+against that pool. There is no price ceiling — the pool's price is
+LTC / tokens and a buy keeps pushing it up — and a sell always fills, since
+the LTC is really there. On LitVM the pool is what migrates into Uniswap.
 
-Nothing sent to the desk is lost: a buy that cannot fill (slippage, sold out,
-unknown ticker), a plain payment without a memo, a memo typed wrong — the LTC
+Nothing sent to the desk is lost: a buy that cannot fill (slippage, too
+small, unknown ticker), a plain payment without a memo, a memo typed wrong — the LTC
 is credited to the sender's address and can be claimed. The one exception is
 deliberate: `fund` gives the desk LTC for its own network fees (the wallet
 page has a "Fund the desk" box; a faucet payment without memo instead shows
@@ -93,16 +98,18 @@ coin on this ledger can move over with its holders and its price:
   it owes on Litecoin. The frozen state root is what gets re-created.
 - **The file.** `node litecoin/migration-snapshot.ts` turns the frozen
   snapshot into `litecoin/migration/<network>-<height>.json`: per coin the
-  curve (virtual and real reserve, sold), creator and holders as EVM
-  addresses, balances — scaled from 8 to 18 decimals — plus the LTC to
-  bridge (the sum of the curves' real reserves) and what remains to settle
-  on Litecoin.
+  curve (virtual and real reserve, sold — for a graduated coin the pool's
+  LTC and `poolToken`, its token side, with `sold` everything the holders
+  own), creator and holders as EVM addresses, balances — scaled from 8 to
+  18 decimals — plus the LTC to bridge (the sum of the curves' and pools'
+  real reserves) and what remains to settle on Litecoin.
 - **The contracts.** `Launchpad.migrateToken` (owner only, once per coin)
   re-creates the coin with that state: `msg.value` is the bridged reserve,
   balances are delivered in batches (`migrateBalances`) and trading opens
-  when every holder has theirs, at exactly the ledger's price. A curve that
-  had sold out graduates on delivery into a locked Uniswap v2 pool
-  (`UniV2Migrator`, LitVM has no v4).
+  when every holder has theirs, at exactly the ledger's price. A coin that
+  graduated on the ledger graduates again on delivery and its pool — the
+  bridged LTC against `poolToken` tokens, so at the same price — goes into
+  a locked Uniswap v2 pool (`UniV2Migrator`, LitVM has no v4).
 
 ```bash
 NOTUS_LTC_FREEZE=<height> node litecoin/indexer.ts     # freeze, publish the frozen snapshot

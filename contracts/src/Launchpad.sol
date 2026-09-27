@@ -118,6 +118,7 @@ contract Launchpad is Ownable, ReentrancyGuard {
         bool feesToHolders;
         uint256 virtualQuote; // the ledger's virtual quote reserve
         uint256 sold; //         tokens its holders own, delivered by migrateToken/migrateBalances
+        uint256 poolToken; //    a coin that graduated there: the token side of its locked pool (0 = still on the curve)
     }
 
     mapping(address token => Curve) public curves;
@@ -125,6 +126,9 @@ contract Launchpad is Ownable, ReentrancyGuard {
     /// Coins migrated from a ledger: tokens still to be handed to their
     /// holders. Trading waits for zero.
     mapping(address token => uint256) public migrationPending;
+    /// Coins that graduated on the ledger: the token side of the locked pool
+    /// they arrived with, handed to the DEX in place of DEX_RESERVE.
+    mapping(address token => uint256) public migratedPoolTokens;
     /// Per-token override for where the creator share of fees accrues.
     /// address(0) = the token's creator.
     mapping(address token => address) public feeRecipient;
@@ -452,15 +456,19 @@ contract Launchpad is Ownable, ReentrancyGuard {
         if (ethAmount == 0) revert ZeroAmount(); // already migrated
         c.realEth = 0;
 
-        IERC20(token).safeTransfer(address(migrator), DEX_RESERVE);
+        // a coin that graduated on a ledger brings its own pool's token side
+        uint256 reserve = migratedPoolTokens[token];
+        if (reserve == 0) reserve = DEX_RESERVE;
+
+        IERC20(token).safeTransfer(address(migrator), reserve);
         if (c.quoteAsset == address(0)) {
-            migrator.migrate{value: ethAmount}(token, DEX_RESERVE, address(0), ethAmount);
+            migrator.migrate{value: ethAmount}(token, reserve, address(0), ethAmount);
         } else {
             IERC20(c.quoteAsset).safeTransfer(address(migrator), ethAmount);
-            migrator.migrate(token, DEX_RESERVE, c.quoteAsset, ethAmount);
+            migrator.migrate(token, reserve, c.quoteAsset, ethAmount);
         }
 
-        emit Migrated(token, DEX_RESERVE, ethAmount);
+        emit Migrated(token, reserve, ethAmount);
     }
 
     // ------------------------------------------------- migration from a ledger
@@ -473,6 +481,9 @@ contract Launchpad is Ownable, ReentrancyGuard {
     ///         and, for large holder sets, in further migrateBalances calls.
     ///         Buys and sells open once every token is delivered. Cashback
     ///         and creator fees accrued on the ledger are paid out there.
+    ///         A coin that graduated on the ledger comes with its locked pool
+    ///         (`poolToken` tokens against msg.value): it graduates here as
+    ///         soon as its holders are served and that pool goes to the DEX.
     function migrateToken(LedgerCoin calldata coin, address[] calldata holders, uint256[] calldata balances)
         external
         payable
@@ -480,22 +491,12 @@ contract Launchpad is Ownable, ReentrancyGuard {
         nonReentrant
         returns (address token)
     {
-        if (coin.creator == address(0) || coin.virtualQuote == 0 || coin.sold > CURVE_SUPPLY) {
-            revert BadMigration();
-        }
-        if (coin.sold == 0 && (msg.value != 0 || holders.length != 0)) revert BadMigration(); // an untraded coin
+        _checkLedgerCoin(coin, holders.length);
         token = address(new LaunchToken(coin.name, coin.symbol, TOTAL_SUPPLY, false));
-        curves[token] = Curve({
-            vEth: coin.virtualQuote + msg.value,
-            vToken: VIRTUAL_TOKEN - coin.sold,
-            realEth: msg.value,
-            sold: coin.sold,
-            graduated: false,
-            creator: coin.creator,
-            quoteAsset: address(0)
-        });
+        curves[token] = _ledgerCurve(coin);
         tokenMetadata[token] = coin.meta;
         if (coin.feesToHolders) feesToHolders[token] = true;
+        if (coin.poolToken != 0) migratedPoolTokens[token] = coin.poolToken;
         allTokens.push(token);
         migrationPending[token] = coin.sold;
         emit TokenCreated(token, coin.creator, coin.name, coin.symbol, coin.feesToHolders);
@@ -504,6 +505,35 @@ contract Launchpad is Ownable, ReentrancyGuard {
         );
         emit TokenMigrated(token, coin.creator, coin.virtualQuote, msg.value, coin.sold);
         if (coin.sold != 0) _migrateBalances(token, holders, balances);
+    }
+
+    /// Only state the ledger could have produced. A coin that graduated there
+    /// (poolToken != 0) has `sold` = everything its holders own and `poolToken`
+    /// = what its pool holds, the two adding up to the supply, and its pool
+    /// always has a quote side.
+    function _checkLedgerCoin(LedgerCoin calldata coin, uint256 holderCount) internal view {
+        if (coin.creator == address(0) || coin.virtualQuote == 0) revert BadMigration();
+        if (coin.poolToken != 0) {
+            if (coin.sold + coin.poolToken != TOTAL_SUPPLY || msg.value == 0) revert BadMigration();
+        } else if (coin.sold > CURVE_SUPPLY) {
+            revert BadMigration();
+        }
+        if (coin.sold == 0 && (msg.value != 0 || holderCount != 0)) revert BadMigration(); // an untraded coin
+    }
+
+    /// The curve as the ledger left it. A pooled coin's curve is complete:
+    /// it graduates once its holders are served (see _migrateBalances).
+    function _ledgerCurve(LedgerCoin calldata coin) internal view returns (Curve memory) {
+        bool pooled = coin.poolToken != 0;
+        return Curve({
+            vEth: coin.virtualQuote + msg.value,
+            vToken: pooled ? VIRTUAL_TOKEN - CURVE_SUPPLY : VIRTUAL_TOKEN - coin.sold,
+            realEth: msg.value,
+            sold: pooled ? CURVE_SUPPLY : coin.sold,
+            graduated: false,
+            creator: coin.creator,
+            quoteAsset: address(0)
+        });
     }
 
     /// @notice Deliver more of a migrated coin's balances (owner only).

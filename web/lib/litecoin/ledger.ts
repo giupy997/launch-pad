@@ -19,8 +19,12 @@
 // only be mined once. Where an instruction names another address (a
 // recipient, a payout address) it points at one of its own outputs, because
 // an OP_RETURN holds 80 bytes and a bech32 address alone can take 62.
-// There is no DEX to graduate to: the curve stays the market, sells always
-// have liquidity, and the last 200M stay reserved.
+// There is no DEX to graduate to, so the ledger graduates a coin itself:
+// when the 800M are sold, the raised LTC and the 200M reserve become a
+// constant-product pool with real reserves, locked forever inside the
+// ledger. Prices float freely from there (no ceiling: the last token is
+// never for sale), sells always fill, and the pool is exactly what moves to
+// a DEX on LitVM.
 
 import { sha256 } from "@noble/hashes/sha2";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils";
@@ -107,6 +111,11 @@ export type Coin = {
   vToken: bigint;
   realLit: bigint;
   sold: bigint;
+  /** true once the 800M sold out: trading moved to the pool below. */
+  graduated: boolean;
+  /** The locked pool after graduation: real LTC and tokens, no virtuals. */
+  poolLit: bigint;
+  poolToken: bigint;
   acc: bigint; // cashback per token unit, scaled by ACC_PRECISION
   volumeLit: bigint;
   trades: number;
@@ -183,9 +192,36 @@ export function emptyState(network: Network): State {
 
 // ------------------------------------------------------------------ curve
 
-export function quoteBuy(c: Pick<Coin, "vLit" | "vToken" | "sold">, litIn: bigint) {
+/** What a quote needs to know about a coin (the snapshot has it as strings). */
+export type CurveView = {
+  vLit: bigint;
+  vToken: bigint;
+  realLit: bigint;
+  sold: bigint;
+  graduated: boolean;
+  poolLit: bigint;
+  poolToken: bigint;
+};
+
+/** Reserves the price is made of: the pool once graduated, else the virtual curve. */
+export function reserves(c: CurveView): { lit: bigint; token: bigint } {
+  return c.graduated ? { lit: c.poolLit, token: c.poolToken } : { lit: c.vLit, token: c.vToken };
+}
+
+/** Tokens in people's hands: what holder cashback is spread over. */
+export function heldSupply(c: CurveView): bigint {
+  return c.graduated ? TOTAL_SUPPLY - c.poolToken : c.sold;
+}
+
+export function quoteBuy(c: CurveView, litIn: bigint) {
   const fee = (litIn * FEE_BPS) / BPS;
   let forCurve = litIn - fee;
+  if (c.graduated) {
+    // the pool: constant product on real reserves, never sells out
+    const kp = c.poolLit * c.poolToken;
+    const tokensOut = forCurve > 0n ? c.poolToken - kp / (c.poolLit + forCurve) : 0n;
+    return { tokensOut, forCurve, fee, refund: 0n };
+  }
   const k = c.vLit * c.vToken;
   let tokensOut = forCurve > 0n ? c.vToken - k / (c.vLit + forCurve) : 0n;
   let refund = 0n;
@@ -204,7 +240,13 @@ export function quoteBuy(c: Pick<Coin, "vLit" | "vToken" | "sold">, litIn: bigin
   return { tokensOut, forCurve, fee: feeOut, refund };
 }
 
-export function quoteSell(c: Pick<Coin, "vLit" | "vToken" | "realLit">, tokensIn: bigint) {
+export function quoteSell(c: CurveView, tokensIn: bigint) {
+  if (c.graduated) {
+    const kp = c.poolLit * c.poolToken;
+    const grossPool = c.poolLit - kp / (c.poolToken + tokensIn);
+    const feePool = (grossPool * FEE_BPS) / BPS;
+    return { gross: grossPool, fee: feePool, net: grossPool - feePool };
+  }
   const k = c.vLit * c.vToken;
   let gross = c.vLit - k / (c.vToken + tokensIn);
   if (gross > c.realLit) gross = c.realLit;
@@ -214,7 +256,8 @@ export function quoteSell(c: Pick<Coin, "vLit" | "vToken" | "realLit">, tokensIn
 
 /** Spot price in LTC per whole coin. Display only — a coin costs a fraction
  *  of a litoshi early on, so this is a float; the ledger never uses it. */
-export function spotPrice(c: { vLit: bigint | string; vToken: bigint | string }): number {
+export function spotPrice(c: { vLit: bigint | string; vToken: bigint | string; graduated?: boolean; poolLit?: bigint | string; poolToken?: bigint | string }): number {
+  if (c.graduated) return Number(c.poolLit) / Number(c.poolToken);
   return Number(c.vLit) / Number(c.vToken);
 }
 
@@ -301,11 +344,20 @@ function splitFee(s: State, coin: Coin, fee: bigint) {
   const pot = (fee * POT_BPS) / BPS;
   let toTreasury = fee - pot;
   if (pot > 0n) {
+    const held = heldSupply(coin);
     if (!coin.feesToHolders) addCredit(s, coin.creator, pot);
-    else if (coin.sold >= MIN_ELIGIBLE) coin.acc += (pot * ACC_PRECISION) / coin.sold;
+    else if (held >= MIN_ELIGIBLE) coin.acc += (pot * ACC_PRECISION) / held;
     else toTreasury = fee;
   }
   s.treasuryLit += toTreasury;
+}
+
+/** The 800M sold out: the raised LTC and the 200M reserve become the pool.
+ *  From here the pool is the market — no ceiling, always liquid. */
+function graduate(coin: Coin) {
+  coin.graduated = true;
+  coin.poolLit = coin.realLit;
+  coin.poolToken = TOTAL_SUPPLY - CURVE_SUPPLY;
 }
 
 /** The address an instruction points at: one of its own transaction's
@@ -321,12 +373,17 @@ function buy(s: State, e: TxEvent, coin: Coin, holder: string, litIn: bigint, mi
   const q = quoteBuy(coin, litIn);
   if (q.tokensOut === 0n || q.tokensOut < minOut) {
     addCredit(s, holder, litIn); // nothing bought: the LTC stays the buyer's
-    return q.tokensOut === 0n ? "sold out or amount too small — credited" : "slippage — credited";
+    return q.tokensOut === 0n ? "amount too small — credited" : "slippage — credited";
   }
-  coin.vLit += q.forCurve;
-  coin.vToken -= q.tokensOut;
-  coin.realLit += q.forCurve;
-  coin.sold += q.tokensOut;
+  if (coin.graduated) {
+    coin.poolLit += q.forCurve;
+    coin.poolToken -= q.tokensOut;
+  } else {
+    coin.vLit += q.forCurve;
+    coin.vToken -= q.tokensOut;
+    coin.realLit += q.forCurve;
+    coin.sold += q.tokensOut;
+  }
   coin.volumeLit += litIn - q.refund;
   coin.trades++;
   move(s, coin, holder, q.tokensOut);
@@ -336,6 +393,7 @@ function buy(s: State, e: TxEvent, coin: Coin, holder: string, litIn: bigint, mi
     ticker: coin.ticker, type: "buy", holder, lit: litIn - q.refund, tokens: q.tokensOut, fee: q.fee,
     height: e.height, time: e.time, txid: e.txid,
   });
+  if (!coin.graduated && coin.sold === CURVE_SUPPLY) graduate(coin);
   return null;
 }
 
@@ -407,7 +465,7 @@ function apply(s: State, p: Params, e: TxEvent): string | null {
     if (s.coins.has(ticker)) return credited(s, sender, e, "ticker taken");
     const coin: Coin = {
       ticker, name, logo: logo ?? "", creator: sender, feesToHolders: mode === "h",
-      vLit: p.virtualLit, vToken: VIRTUAL_TOKEN, realLit: 0n, sold: 0n, acc: 0n,
+      vLit: p.virtualLit, vToken: VIRTUAL_TOKEN, realLit: 0n, sold: 0n, graduated: false, poolLit: 0n, poolToken: 0n, acc: 0n,
       volumeLit: 0n, trades: 0, createdHeight: e.height, createdTime: e.time, txid: e.txid,
     };
     s.coins.set(ticker, coin);
@@ -456,10 +514,15 @@ function apply(s: State, p: Params, e: TxEvent): string | null {
     const q = quoteSell(coin, amount);
     if (q.net < minLit) return "slippage";
     if (q.net < p.minPayoutLit) return "below the minimum payout";
-    coin.vLit -= q.gross;
-    coin.vToken += amount;
-    coin.realLit -= q.gross;
-    coin.sold -= amount;
+    if (coin.graduated) {
+      coin.poolLit -= q.gross;
+      coin.poolToken += amount;
+    } else {
+      coin.vLit -= q.gross;
+      coin.vToken += amount;
+      coin.realLit -= q.gross;
+      coin.sold -= amount;
+    }
     coin.volumeLit += q.gross;
     coin.trades++;
     move(s, coin, sender, -amount);
@@ -527,7 +590,7 @@ export function claimableLit(s: State, holder: string): bigint {
 /** LTC the desk must hold to honour every coin, claim and unpaid payout. */
 export function liabilitiesLit(s: State): bigint {
   let total = 0n;
-  for (const c of s.coins.values()) total += c.realLit;
+  for (const c of s.coins.values()) total += c.graduated ? c.poolLit : c.realLit;
   const holders = new Set<string>(s.credit.keys());
   for (const m of s.balances.values()) for (const h of m.keys()) holders.add(h);
   for (const m of s.pending.values()) for (const h of m.keys()) holders.add(h);

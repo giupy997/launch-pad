@@ -27,23 +27,46 @@ contract MigrationFixtureTest is Test {
         script.migrateAll(pad, coins);
 
         assertEq(pad.tokenCount(), 3);
-        assertEq(address(pad).balance, total, "every curve's reserve is in the contract");
+        assertEq(address(pad).balance, total, "every curve's and pool's reserve is in the contract");
+        uint256 pooled;
         for (uint256 i = 0; i < coins.length; i++) {
-            address token = pad.allTokens(i);
-            (uint256 vEth, uint256 vToken, uint256 realEth, uint256 sold,, address creator,) = pad.curves(token);
-            assertEq(vEth, coins[i].virtualQuote + coins[i].realQuote);
-            assertEq(vToken, pad.VIRTUAL_TOKEN() - coins[i].sold);
-            assertEq(realEth, coins[i].realQuote);
-            assertEq(sold, coins[i].sold);
-            assertEq(creator, coins[i].creator);
-            assertEq(pad.migrationPending(token), 0);
-            uint256 delivered;
-            for (uint256 j = 0; j < coins[i].holders.length; j++) {
-                assertEq(IERC20(token).balanceOf(coins[i].holders[j]), coins[i].balances[j]);
-                delivered += coins[i].balances[j];
-            }
-            assertEq(delivered, coins[i].sold, "the ledger's sold amount is exactly what was delivered");
-            assertEq(pad.feesToHolders(token), coins[i].feesToHolders);
+            if (_checkCoin(pad, pad.allTokens(i), coins[i])) pooled++;
         }
+        assertGt(pooled, 0, "the demo ledger has a coin that graduated into its pool");
+    }
+
+    /// The coin on the Launchpad as the ledger left it; true if it had graduated there.
+    function _checkCoin(Launchpad pad, address token, MigrateFromLedger.Coin memory coin)
+        internal
+        view
+        returns (bool isPooled)
+    {
+        (uint256 vEth, uint256 vToken, uint256 realEth, uint256 sold, bool graduated, address creator,) =
+            pad.curves(token);
+        assertEq(vEth, coin.virtualQuote + coin.realQuote);
+        assertEq(realEth, coin.realQuote);
+        assertEq(creator, coin.creator);
+        assertEq(pad.migrationPending(token), 0);
+        assertEq(pad.feesToHolders(token), coin.feesToHolders);
+        isPooled = coin.poolToken != 0;
+        if (isPooled) {
+            // graduated on the ledger: its holders own the supply less the pool
+            assertTrue(graduated);
+            assertEq(sold, pad.CURVE_SUPPLY());
+            assertEq(vToken, pad.VIRTUAL_TOKEN() - pad.CURVE_SUPPLY());
+            assertEq(coin.sold + coin.poolToken, pad.TOTAL_SUPPLY());
+            assertEq(pad.migratedPoolTokens(token), coin.poolToken);
+            assertEq(IERC20(token).balanceOf(address(pad)), coin.poolToken, "the pool waits for the DEX");
+        } else {
+            assertFalse(graduated);
+            assertEq(vToken, pad.VIRTUAL_TOKEN() - coin.sold);
+            assertEq(sold, coin.sold);
+        }
+        uint256 delivered;
+        for (uint256 j = 0; j < coin.holders.length; j++) {
+            assertEq(IERC20(token).balanceOf(coin.holders[j]), coin.balances[j]);
+            delivered += coin.balances[j];
+        }
+        assertEq(delivered, coin.sold, "what the holders own is exactly what was delivered");
     }
 }

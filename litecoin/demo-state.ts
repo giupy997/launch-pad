@@ -23,6 +23,8 @@ const ev = (sender: string, m: string, lit: bigint) =>
 ev(people[0], memo.deploy("LCAT", "Lite Cat", true, "https://i.imgur.com/1Q9Z1Zm.png"), PARAMS.test.deployFeeLit + 2_000_000n);
 ev(people[1], memo.deploy("CHIKUN", "Chikun", false), PARAMS.test.deployFeeLit);
 ev(people[2], memo.deploy("MWEB", "Mimble", true), PARAMS.test.deployFeeLit + 500_000n);
+ev(people[3], memo.buy("MWEB"), 90_000_000n); // sells the curve out: MWEB graduates into its pool
+ev(people[4], memo.buy("MWEB"), 30_000_000n); // and keeps trading there
 let seed = 7;
 const rnd = (n: number) => (seed = (seed * 1103515245 + 12345) % 2 ** 31) % n;
 for (let i = 0; i < 40; i++) {

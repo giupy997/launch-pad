@@ -1,15 +1,15 @@
 {
  "network": "test",
- "height": 3600085,
+ "height": 3600090,
  "freezeHeight": null,
- "stateRoot": "1bc7d3314ab9bbc1aab50cdb3a43b9693dcbe50420aa3277178802feeba8c25c",
- "generatedAt": "2026-09-24T17:01:53.666Z",
+ "stateRoot": "28bf69752873a3620128cb7ad5a7b2996f96650d0a165416fdc1980d5651721b",
+ "generatedAt": "2026-09-27T17:08:14.365Z",
  "totals": {
   "coins": 3,
-  "holders": 4,
-  "bridgeWei": "319783750000000000",
-  "bridgeLtc": "0.31978375",
-  "settleOnLitecoinLit": "136858118",
+  "holders": 6,
+  "bridgeWei": "1321252650000000000",
+  "bridgeLtc": "1.32125265",
+  "settleOnLitecoinLit": "156404147",
   "unresolved": 0,
   "vault": null
  },
@@ -19,11 +19,12 @@
    "name": "Chikun",
    "symbol": "CHIKUN",
    "logo": "",
-   "creator": "0xddf33bAc82FDC189eeBD6ab8c948AE5d5649F065",
+   "creator": "0x8fc5ea0D9ebb9E4D892000Eb63077A887789496d",
    "feesToHolders": false,
    "virtualQuote": 200000000000000000,
    "realQuote": 0,
    "sold": 0,
+   "poolToken": 0,
    "holders": [],
    "balances": []
   },
@@ -31,36 +32,42 @@
    "name": "Lite Cat",
    "symbol": "LCAT",
    "logo": "https://i.imgur.com/1Q9Z1Zm.png",
-   "creator": "0x5814E1e7C6531aC113C9C457f8D845ba3ea844FC",
+   "creator": "0x2F36E1dB7ef4bf6394D65BD84C091774a9673471",
    "feesToHolders": true,
    "virtualQuote": 200000000000000000,
-   "realQuote": 314833750000000000,
-   "sold": 642101372849899260000000000,
+   "realQuote": 384252650000000000,
+   "sold": 666885882299625460000000000,
+   "poolToken": 333114117700374540000000000,
    "holders": [
-    "0x6a82B788e315f92142D2A0d48E07A77b28A530aA",
-    "0x5814E1e7C6531aC113C9C457f8D845ba3ea844FC",
-    "0x3036765D0Fd48F567ca0c07cBCb31cE48c34905C"
+    "0xb9a245a5e23DD13a4569689D2EE1f34681aaa47e",
+    "0xAa96DFFd61B8C21b69b06F98710eF65c74eeD595",
+    "0x2F36E1dB7ef4bf6394D65BD84C091774a9673471"
    ],
    "balances": [
-    244740769276616880000000000,
-    215425553619570150000000000,
-    181935049953712230000000000
+    189174443602806390000000000,
+    258631223060513400000000000,
+    219080215636305670000000000
    ]
   },
   {
    "name": "Mimble",
    "symbol": "MWEB",
    "logo": "",
-   "creator": "0x6a82B788e315f92142D2A0d48E07A77b28A530aA",
+   "creator": "0xAa96DFFd61B8C21b69b06F98710eF65c74eeD595",
    "feesToHolders": true,
    "virtualQuote": 200000000000000000,
-   "realQuote": 4950000000000000,
-   "sold": 25359843864357170000000000,
+   "realQuote": 937000000000000000,
+   "sold": 863393810032017080000000000,
+   "poolToken": 136606189967982920000000000,
    "holders": [
-    "0x6a82B788e315f92142D2A0d48E07A77b28A530aA"
+    "0xb9a245a5e23DD13a4569689D2EE1f34681aaa47e",
+    "0xAa96DFFd61B8C21b69b06F98710eF65c74eeD595",
+    "0x2B70B561BEc73a1956081050D85b70C284e0657B"
    ],
    "balances": [
-    25359843864357170000000000
+    63393810032017080000000000,
+    25359843864357170000000000,
+    774640156135642830000000000
    ]
   }
  ]

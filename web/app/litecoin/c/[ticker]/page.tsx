@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { CURVE_SUPPLY, MEMO_MAX_BYTES, PARAMS, memo, memoBytes, quoteBuy, quoteSell, spotPrice } from "@/lib/litecoin/ledger";
+import { CURVE_SUPPLY, MEMO_MAX_BYTES, PARAMS, TOTAL_SUPPLY, memo, memoBytes, quoteBuy, quoteSell, spotPrice } from "@/lib/litecoin/ledger";
 import { CARRY_LIT } from "@/lib/litecoin/tx";
-import { LTC_NETWORK, addressLink, fmtCoins, fmtLtc, fmtPrice, parseLtc, shortAddr, txLink, useLitecoinState, useLtcWallet, type LCoin, type LState } from "@/lib/litecoin/client";
+import { LTC_NETWORK, addressLink, curveOf, fmtCoins, fmtLtc, fmtPrice, parseLtc, shortAddr, txLink, useLitecoinState, useLtcWallet, type LCoin, type LState } from "@/lib/litecoin/client";
 import { SendPanel } from "@/components/litecoin/SendPanel";
 import { NeedsLtcWallet } from "@/components/litecoin/Wallet";
 import { TokenLogo } from "@/components/TokenLogo";
@@ -26,6 +26,7 @@ export default function LitecoinCoinPage({ params }: { params: { ticker: string 
   }
 
   const progress = Number((BigInt(coin.sold) * 10_000n) / CURVE_SUPPLY) / 100;
+  const held = coin.graduated ? TOTAL_SUPPLY - BigInt(coin.poolToken) : BigInt(coin.sold);
   const trades = state.trades.filter((t) => t.ticker === ticker);
   const points = trades.filter((t) => t.tokens !== "0").map((t) => Number(t.lit) / Number(t.tokens));
   const holders = Object.entries(state.balances[ticker] ?? {}).sort((a, b) => (BigInt(b[1]) > BigInt(a[1]) ? 1 : -1));
@@ -38,6 +39,11 @@ export default function LitecoinCoinPage({ params }: { params: { ticker: string 
           <div>
             <h1 className="text-3xl font-bold">
               {coin.name} <span className="font-mono text-lg text-zinc-400">${coin.ticker}</span>
+              {coin.graduated && (
+                <span className="ml-3 font-mono text-xs tracking-widest uppercase bg-white text-black rounded-full px-2 py-0.5 align-middle">
+                  Graduated
+                </span>
+              )}
               {coin.feesToHolders && (
                 <span className="ml-3 font-mono text-xs tracking-widest uppercase border border-white rounded-full px-2 py-0.5 align-middle">
                   ✦ Rewards
@@ -56,8 +62,8 @@ export default function LitecoinCoinPage({ params }: { params: { ticker: string 
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <Stat label="Price" value={`${fmtPrice(spotPrice(coin))} LTC`} />
-          <Stat label="In the curve" value={`${fmtLtc(coin.realLit)} LTC`} />
-          <Stat label="Sold" value={fmtCoins(coin.sold)} />
+          <Stat label={coin.graduated ? "In the pool" : "In the curve"} value={`${fmtLtc(coin.graduated ? coin.poolLit : coin.realLit)} LTC`} />
+          <Stat label={coin.graduated ? "Held" : "Sold"} value={fmtCoins(held)} />
           <Stat label="Holders" value={String(coin.holders)} />
         </div>
 
@@ -66,8 +72,18 @@ export default function LitecoinCoinPage({ params }: { params: { ticker: string 
             <div className="h-full bg-white" style={{ width: `${Math.min(progress, 100)}%` }} />
           </div>
           <p className="mt-2 text-xs text-zinc-500">
-            {progress.toFixed(1)}% of the 800M on the curve. There is no DEX to graduate to on Litecoin: the curve
-            stays the market, so a sell always fills.
+            {coin.graduated ? (
+              <>
+                Graduated: the 800M sold out, and the LTC raised plus the 200M reserve became a pool locked inside the
+                ledger ({fmtLtc(coin.poolLit)} LTC · {fmtCoins(coin.poolToken)} ${coin.ticker}). The price floats freely from here — no
+                ceiling — and a sell always fills. On LitVM this pool moves to Uniswap as is.
+              </>
+            ) : (
+              <>
+                {progress.toFixed(1)}% of the 800M on the curve. At 800M the coin graduates: the LTC raised and the 200M
+                reserve become a locked pool, and the price keeps going with no ceiling. A sell always fills.
+              </>
+            )}
           </p>
         </div>
 
@@ -97,7 +113,7 @@ export default function LitecoinCoinPage({ params }: { params: { ticker: string 
                 <a href={addressLink(h)} target="_blank" rel="noreferrer" className="text-zinc-400 hover:text-white">
                   {shortAddr(h)}{h === coin.creator && " · creator"}
                 </a>
-                <span className="text-zinc-300">{fmtCoins(v)} · {((Number(v) / Number(CURVE_SUPPLY)) * 80).toFixed(2)}%</span>
+                <span className="text-zinc-300">{fmtCoins(v)} · {((Number(v) / Number(TOTAL_SUPPLY)) * 100).toFixed(2)}%</span>
               </div>
             ))}
           </div>
@@ -118,7 +134,7 @@ function TradeBox({ coin, state }: { coin: LCoin; state: LState }) {
   const [amount, setAmount] = useState("");
   const [percent, setPercent] = useState(100);
 
-  const c = { vLit: BigInt(coin.vLit), vToken: BigInt(coin.vToken), realLit: BigInt(coin.realLit), sold: BigInt(coin.sold) };
+  const c = curveOf(coin);
   const balance = BigInt((address && state.balances[coin.ticker]?.[address]) || "0");
   const desk = state.desk.address;
 
@@ -178,7 +194,7 @@ function TradeBox({ coin, state }: { coin: LCoin; state: LState }) {
               />
             </>
           )}
-          {buyQ && buyQ.tokensOut === 0n && <p className="text-sm text-zinc-500">The curve is sold out — buys reopen when someone sells.</p>}
+          {buyQ && buyQ.tokensOut === 0n && <p className="text-sm text-zinc-500">Too small to buy anything at this price.</p>}
         </>
       ) : (
         <>
