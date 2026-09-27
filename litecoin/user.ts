@@ -8,6 +8,7 @@
 //   node litecoin/user.ts sell CAT 50                  percent of the balance
 //   node litecoin/user.ts send CAT 25 <address>        percent, to a Litecoin address
 //   node litecoin/user.ts claim
+//   node litecoin/user.ts fund 0.01                    LTC for the desk's payout fees (treasury)
 //   node litecoin/user.ts withdraw <address> 0.1       plain LTC out of the test wallet
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -65,8 +66,10 @@ if (cmd === "whoami") {
   await send([{ address: desk(), lit: CARRY_LIT }, { address: c, lit: DUST_LIT }], memo.send(a, (bal * BigInt(b)) / 100n, 2));
 } else if (cmd === "claim") {
   await send([{ address: desk(), lit: CARRY_LIT }], memo.claim());
+} else if (cmd === "fund") {
+  await send([{ address: desk(), lit: lit(a) }], memo.fund());
 } else if (cmd === "withdraw") {
   await send([{ address: a, lit: lit(b) }], null);
 } else {
-  console.log("usage: whoami | balance | deploy TICKER NAME c|h [devBuyLtc] [logoUrl] | buy TICKER ltc | sell TICKER percent | send TICKER percent address | claim | withdraw address ltc");
+  console.log("usage: whoami | balance | deploy TICKER NAME c|h [devBuyLtc] [logoUrl] | buy TICKER ltc | sell TICKER percent | send TICKER percent address | claim | fund ltc | withdraw address ltc");
 }

@@ -42,6 +42,7 @@ buy    TICKER [minOut]            value = the LTC to spend
 sell   TICKER amount minLit [o]   LTC paid to output o's address (default: the sender)
 send   TICKER amount o            coins to the address of output o
 claim  [o]                        creator fees + holder cashback + refunds
+fund                              LTC for the desk's payout fees: treasury, owed to nobody
 paid   id [id…]                   desk only: one output per payout, settles them
 ```
 
@@ -60,7 +61,10 @@ always fills, and the last 200M stay reserved.
 
 Nothing sent to the desk is lost: a buy that cannot fill (slippage, sold out,
 unknown ticker), a plain payment without a memo, a memo typed wrong — the LTC
-is credited to the sender's address and can be claimed. Only a transaction
+is credited to the sender's address and can be claimed. The one exception is
+deliberate: `fund` gives the desk LTC for its own network fees (the wallet
+page has a "Fund the desk" box; a faucet payment without memo instead shows
+up as owed to the faucet). Only a transaction
 whose first input is not a standard single-address script has nobody to
 credit; that LTC goes to the desk's fees.
 
@@ -148,6 +152,9 @@ sudo cp litecoin/deploy/notus-desk.service /etc/systemd/system/
 sudo systemctl daemon-reload && sudo systemctl enable --now notus-desk
 journalctl -u notus-desk -f           # watch it work
 ```
+
+The unit writes the snapshot to `litecoin/cache/state.json` (gitignored), so
+updating the server is always `git pull && sudo systemctl restart notus-desk`.
 
 Put HTTPS in front with Caddy (`litecoin/deploy/Caddyfile`, a DNS record
 such as `desk.notuspad.com` pointing at the server), then on Netlify set
