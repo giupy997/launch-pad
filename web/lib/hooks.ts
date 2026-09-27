@@ -4,12 +4,15 @@ import { useMemo } from "react";
 import { keepPreviousData } from "@tanstack/react-query";
 import { useChainId, useReadContract, useReadContracts } from "wagmi";
 import { launchpadAbi, launchTokenAbi } from "./abi";
-import { APP_CHAINS, giwaSepolia, LAUNCHPAD_ADDRESS, QUOTE_ASSETS } from "./config";
+import { APP_CHAINS, DEFAULT_CHAIN, LAUNCHPAD_ADDRESS, QUOTE_ASSETS, VISIBLE_CHAINS } from "./config";
+
+/** Any chain the app is wired for (the pages still special-case Robinhood's assets). */
+export type AppChain = (typeof APP_CHAINS)[number];
 
 /** The app chain currently selected (falls back to GIWA Sepolia). */
-export function useAppChain() {
+export function useAppChain(): AppChain {
   const chainId = useChainId();
-  return APP_CHAINS.find((c) => c.id === chainId) ?? giwaSepolia;
+  return VISIBLE_CHAINS.find((c) => c.id === chainId) ?? DEFAULT_CHAIN;
 }
 
 /** Ticker of the chain's gas coin (ETH on GIWA and Robinhood, zkLTC on LitVM). */

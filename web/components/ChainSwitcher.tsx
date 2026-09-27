@@ -3,16 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useSwitchChain } from "wagmi";
-import { APP_CHAINS } from "@/lib/config";
+import { VISIBLE_CHAINS } from "@/lib/config";
 import { useAppChain } from "@/lib/hooks";
 import { LTC_LABEL, LTC_NETWORK } from "@/lib/litecoin/client";
 
-// Zcash and Litecoin are not EVM chains: they have no wagmi chain, only their
-// own section of the site. The switcher treats each as one more network.
-const SECTIONS = [
-  { id: -1, path: "/zcash", name: "Zcash", label: "Zcash Testnet", testnet: true },
-  { id: -2, path: "/litecoin", name: "Litecoin", label: LTC_LABEL, testnet: LTC_NETWORK === "test" },
-];
+// Litecoin is not an EVM chain: it has no wagmi chain, only its own section
+// of the site. The switcher treats it as one more network, listed first.
+// (Zcash has a section too, reachable at /zcash, out of the menu for now.)
+const SECTIONS = [{ id: -2, path: "/litecoin", name: "Litecoin", label: LTC_LABEL, testnet: LTC_NETWORK === "test" }];
 
 const CHAIN_LOGOS: Record<number, string> = {
   91342: "/chains/giwa.png",
@@ -74,7 +72,32 @@ export function ChainSwitcher() {
 
       {open && (
         <div className="absolute right-0 mt-2 w-56 rounded-xl border border-zinc-700 bg-black p-1 z-20 shadow-lg shadow-black/60">
-          {APP_CHAINS.map((c) => {
+          {SECTIONS.map((sec) => {
+            const active = section?.path === sec.path;
+            return (
+              <button
+                key={sec.path}
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  if (!active) router.push(sec.path);
+                }}
+                className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm ${
+                  active ? "bg-zinc-900 text-white" : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
+                }`}
+              >
+                <ChainLogo id={sec.id} size={22} />
+                <span className="flex-1">
+                  {sec.name}
+                  {sec.testnet && (
+                    <span className="ml-2 font-mono text-[10px] tracking-widest uppercase text-zinc-500">testnet</span>
+                  )}
+                </span>
+                {active && <span className="text-xs">●</span>}
+              </button>
+            );
+          })}
+          {VISIBLE_CHAINS.map((c) => {
             const active = c.id === chain.id;
             return (
               <button
@@ -96,31 +119,6 @@ export function ChainSwitcher() {
                     <span className="ml-2 font-mono text-[10px] tracking-widest uppercase text-zinc-500">
                       testnet
                     </span>
-                  )}
-                </span>
-                {active && <span className="text-xs">●</span>}
-              </button>
-            );
-          })}
-          {SECTIONS.map((sec) => {
-            const active = section?.path === sec.path;
-            return (
-              <button
-                key={sec.path}
-                type="button"
-                onClick={() => {
-                  setOpen(false);
-                  if (!active) router.push(sec.path);
-                }}
-                className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm ${
-                  active ? "bg-zinc-900 text-white" : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
-                }`}
-              >
-                <ChainLogo id={sec.id} size={22} />
-                <span className="flex-1">
-                  {sec.name}
-                  {sec.testnet && (
-                    <span className="ml-2 font-mono text-[10px] tracking-widest uppercase text-zinc-500">testnet</span>
                   )}
                 </span>
                 {active && <span className="text-xs">●</span>}

@@ -127,10 +127,12 @@ equity, no backing, no affiliation with the companies.
 
 ## Multichain
 
-The app has a chain switcher in the header (GIWA Sepolia · Robinhood Chain ·
-LitVM Liteforge · Zcash Testnet · Litecoin Testnet — the last two are
-contract-less ledgers with their own sections of the site, `/zcash` and
-`/litecoin`). LitVM (chain 4441, RPC `https://liteforge.rpc.caldera.xyz/infra-partner-http`,
+The app has a chain switcher in the header. It offers **Litecoin** (the
+contract-less ledger, its own section of the site at `/litecoin`) and **LitVM
+Liteforge**; GIWA Sepolia, Robinhood Chain and Zcash Testnet (`/zcash`) stay
+wired — addresses, assets, pages — but out of the menu (`VISIBLE_CHAINS` in
+`web/lib/config.ts` lists what the menu shows; LitVM is the default EVM
+chain). LitVM (chain 4441, RPC `https://liteforge.rpc.caldera.xyz/infra-partner-http`,
 explorer `https://liteforge.explorer.caldera.xyz`, gas in zkLTC) is Litecoin's
 EVM layer 2: the Litecoin ledger is designed to migrate there — same holders,
 same price — see [litecoin/README.md](litecoin/README.md#the-road-to-litvm).

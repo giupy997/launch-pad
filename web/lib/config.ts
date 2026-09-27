@@ -55,7 +55,12 @@ export const litvmTestnet = defineChain({
 export { sepolia, mainnet };
 
 // Chains the app runs on (shown in the chain switcher).
+/** Every EVM chain the app is wired for (addresses, quote assets, deploy blocks). */
 export const APP_CHAINS = [giwaSepolia, robinhood, litvmTestnet] as const;
+/** The chains the site offers: Litecoin's EVM layer, next to Litecoin itself.
+ *  GIWA and Robinhood stay wired above but out of the menu, one line to bring back. */
+export const VISIBLE_CHAINS = [litvmTestnet] as const;
+export const DEFAULT_CHAIN = litvmTestnet;
 
 // One address per chain: add future deployments here (multichain).
 export const LAUNCHPAD_ADDRESS: Record<number, `0x${string}` | undefined> = {
@@ -217,7 +222,7 @@ export const config = createConfig({
   // so selection survives reloads without hydration mismatches.
   ssr: true,
   storage: createStorage({ storage: cookieStorage }),
-  chains: [giwaSepolia, robinhood, litvmTestnet, sepolia, mainnet],
+  chains: [litvmTestnet, giwaSepolia, robinhood, sepolia, mainnet], // the first is the default before a wallet connects
   connectors: [injected()],
   batch: { multicall: { wait: 16 } },
   transports: {
