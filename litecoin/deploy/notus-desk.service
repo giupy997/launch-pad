@@ -16,6 +16,8 @@ Restart=always
 RestartSec=10
 Environment=PORT=8787
 Environment=NOTUS_LTC_NETWORK=test
+# write the snapshot outside the files git tracks, so `git pull` always works
+Environment=NOTUS_LTC_STATE=/home/notus/launch-pad/litecoin/cache/state.json
 # Environment=NOTUS_LTC_API=https://litecoinspace.org/testnet/api
 # Environment=NOTUS_LTC_CONFIRMATIONS=2
 # the key lives in litecoin/desk/key.json (chmod 600); or set NOTUS_LTC_DESK_KEY here instead

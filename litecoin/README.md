@@ -153,6 +153,9 @@ sudo systemctl daemon-reload && sudo systemctl enable --now notus-desk
 journalctl -u notus-desk -f           # watch it work
 ```
 
+The unit writes the snapshot to `litecoin/cache/state.json` (gitignored), so
+updating the server is always `git pull && sudo systemctl restart notus-desk`.
+
 Put HTTPS in front with Caddy (`litecoin/deploy/Caddyfile`, a DNS record
 such as `desk.notuspad.com` pointing at the server), then on Netlify set
 `LTC_STATE_URL=https://desk.notuspad.com/state.json` and redeploy: the pages
