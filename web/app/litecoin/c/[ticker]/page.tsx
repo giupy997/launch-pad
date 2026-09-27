@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { CURVE_SUPPLY, MEMO_MAX_BYTES, memo, memoBytes, quoteBuy, quoteSell, spotPrice } from "@/lib/litecoin/ledger";
+import { CURVE_SUPPLY, MEMO_MAX_BYTES, PARAMS, memo, memoBytes, quoteBuy, quoteSell, spotPrice } from "@/lib/litecoin/ledger";
 import { CARRY_LIT } from "@/lib/litecoin/tx";
-import { addressLink, fmtCoins, fmtLtc, fmtPrice, parseLtc, shortAddr, txLink, useLitecoinState, useLtcWallet, type LCoin, type LState } from "@/lib/litecoin/client";
+import { LTC_NETWORK, addressLink, fmtCoins, fmtLtc, fmtPrice, parseLtc, shortAddr, txLink, useLitecoinState, useLtcWallet, type LCoin, type LState } from "@/lib/litecoin/client";
 import { SendPanel } from "@/components/litecoin/SendPanel";
 import { NeedsLtcWallet } from "@/components/litecoin/Wallet";
 import { TokenLogo } from "@/components/TokenLogo";
@@ -129,6 +129,19 @@ function TradeBox({ coin, state }: { coin: LCoin; state: LState }) {
   const buyQ = litIn > 0n ? quoteBuy(c, litIn) : null;
   const sellAmount = (balance * BigInt(percent)) / 100n;
   const sellQ = sellAmount > 0n ? quoteSell(c, sellAmount) : null;
+  // The desk only pays out from minPayoutLit (a network fee would eat less):
+  // the ledger refuses smaller sells, so do not let one be signed.
+  const minPayout = PARAMS[LTC_NETWORK].minPayoutLit;
+  const tooSmall = !!sellQ && sellQ.net < minPayout;
+  let minPercent: number | null = null;
+  if (tooSmall) {
+    for (let p = percent + 1; p <= 100; p++) {
+      if (quoteSell(c, (balance * BigInt(p)) / 100n).net >= minPayout) {
+        minPercent = p;
+        break;
+      }
+    }
+  }
 
   return (
     <div className="rounded-xl border border-zinc-800 bg-black p-5 space-y-4 lg:sticky lg:top-24">
@@ -180,7 +193,24 @@ function TradeBox({ coin, state }: { coin: LCoin; state: LState }) {
               </button>
             ))}
           </div>
-          {sellQ && (
+          {sellQ && tooSmall && (
+            <p className="text-xs text-zinc-400">
+              ⚠ {fmtCoins(sellAmount)} ${coin.ticker} would pay {fmtLtc(sellQ.net, 8)} LTC, below the {fmtLtc(minPayout)} LTC the desk pays out
+              (a network fee would eat less; the ledger refuses it).{" "}
+              {minPercent !== null ? (
+                <>
+                  Sell at least{" "}
+                  <button type="button" onClick={() => setPercent(minPercent!)} className="underline text-zinc-200">
+                    {minPercent}%
+                  </button>
+                  .
+                </>
+              ) : (
+                "Your whole balance is under the minimum right now — it clears once the price rises."
+              )}
+            </p>
+          )}
+          {sellQ && !tooSmall && (
             <>
               <p className="text-sm text-zinc-400">
                 {fmtCoins(sellAmount)} ${coin.ticker} → <span className="text-white">{fmtLtc(sellQ.net, 8)} LTC</span>
