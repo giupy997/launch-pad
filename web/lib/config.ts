@@ -61,13 +61,14 @@ export const APP_CHAINS = [giwaSepolia, robinhood, litvmTestnet] as const;
 export const LAUNCHPAD_ADDRESS: Record<number, `0x${string}` | undefined> = {
   [giwaSepolia.id]: "0x8E1a1308E3b176528Ee9278d7a531F185F9fBeFD",
   [robinhood.id]: "0x4A84c7B0dc45a473eA67f56617BC5903CA2c001c", // v7.4
-  [litvmTestnet.id]: undefined, // contracts/script/DeployLitVM.s.sol, then paste the address here
+  [litvmTestnet.id]: "0x2cF3e6281dddD13f4351781c584C3585e08d9580", // v7.5 (migrateToken), no migrator yet
 };
 
 // Launchpad deployment blocks: where on-chain event scans start.
 export const LAUNCHPAD_DEPLOY_BLOCK: Record<number, bigint> = {
   [giwaSepolia.id]: 31_997_798n, // v7.1
   [robinhood.id]: 61_447_720n, // v7.4
+  [litvmTestnet.id]: 55_262_418n,
 };
 
 // Quote assets offered at launch per chain. address null = native ETH.
