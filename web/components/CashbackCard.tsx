@@ -7,14 +7,14 @@ import {
   useWriteContract,
 } from "wagmi";
 import { launchpadAbi } from "@/lib/abi";
-import { useLaunchpadAddress, useAppChain } from "@/lib/hooks";
+import { useLaunchpadAddress, useAppChain, useNativeSymbol } from "@/lib/hooks";
 import { fmtUnits } from "@/lib/format";
 
 /** Holder cashback (80% of trade fees on rewards-mode tokens, pro-rata) for the connected wallet.
  *  Renders nothing on deployments that predate the cashback system. */
 export function CashbackCard({
   token,
-  quoteSymbol = "ETH",
+  quoteSymbol: quoteSymbolProp,
   quoteDecimals = 18,
 }: {
   token: `0x${string}`;
@@ -22,6 +22,8 @@ export function CashbackCard({
   quoteDecimals?: number;
 }) {
   const pad = useLaunchpadAddress();
+  const native = useNativeSymbol();
+  const quoteSymbol = quoteSymbolProp ?? native;
   const appChainId = useAppChain().id;
   const { address: user } = useAccount();
 

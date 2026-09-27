@@ -2,12 +2,12 @@
 
 import { type Trade } from "@/lib/events";
 import { fmtUnits, fmtTokens, shortAddr } from "@/lib/format";
-import { useExplorer } from "@/lib/hooks";
+import { useExplorer, useNativeSymbol } from "@/lib/hooks";
 
 export function TradeFeed({
   trades,
   symbol,
-  quoteSymbol = "ETH",
+  quoteSymbol: quoteSymbolProp,
   quoteDecimals = 18,
   truncated,
 }: {
@@ -18,6 +18,8 @@ export function TradeFeed({
   truncated: boolean;
 }) {
   const explorer = useExplorer();
+  const native = useNativeSymbol();
+  const quoteSymbol = quoteSymbolProp ?? native;
   const recent = [...trades].reverse().slice(0, 20);
 
   return (

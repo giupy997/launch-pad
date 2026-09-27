@@ -58,7 +58,9 @@ export function useLitecoinState() {
   });
 }
 
-const KEY_STORAGE = "notus.litecoin.key";
+// One wallet per network: the testnet key keeps its original name, a mainnet
+// wallet is a different key so test habits never touch real coins.
+const KEY_STORAGE = LTC_NETWORK === "test" ? "notus.litecoin.key" : `notus.litecoin.key.${LTC_NETWORK}`;
 
 // One store for every component: making or restoring a wallet in one place
 // (the inline prompt) must show up everywhere at once (header chip, trade box).

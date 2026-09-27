@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { useAccount, useBalance, useReadContracts } from "wagmi";
 import { launchTokenAbi } from "@/lib/abi";
-import { useTokens, spotPrice, useExplorer, useAppChain, isQuoteAsset } from "@/lib/hooks";
+import { useTokens, spotPrice, useExplorer, useAppChain, useNativeSymbol, isQuoteAsset } from "@/lib/hooks";
 import { fmtEth, fmtTokens, shortAddr } from "@/lib/format";
 import { TokenCard } from "@/components/TokenCard";
 import { TokenLogo } from "@/components/TokenLogo";
 import { CreatorFees } from "@/components/CreatorFees";
 
 export default function ProfilePage() {
+  const native = useNativeSymbol();
   const { address: user, isConnected } = useAccount();
   const { tokens } = useTokens();
   const explorer = useExplorer();
@@ -82,7 +83,7 @@ export default function ProfilePage() {
               Balance
             </div>
             <div className="mt-0.5 font-semibold">
-              {ethBal ? `${fmtEth(ethBal.value)} ETH` : "…"}
+              {ethBal ? `${fmtEth(ethBal.value)} ${native}` : "…"}
             </div>
           </div>
           <CreatorFees />
@@ -119,7 +120,7 @@ export default function ProfilePage() {
               </div>
               <div className="text-right">
                 <div className="font-semibold text-sm">{fmtTokens(balance)}</div>
-                <div className="text-xs text-zinc-500">≈ {fmtEth(value)} ETH</div>
+                <div className="text-xs text-zinc-500">≈ {fmtEth(value)} {native}</div>
               </div>
             </Link>
           ))}

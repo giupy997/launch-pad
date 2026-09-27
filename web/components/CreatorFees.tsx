@@ -17,7 +17,7 @@ export function CreatorFees() {
   const pad = useLaunchpadAddress();
   const chain = useAppChain();
   const { address: user } = useAccount();
-  const assets = QUOTE_ASSETS[chain.id] ?? [{ address: null, symbol: "ETH", decimals: 18 }];
+  const assets = QUOTE_ASSETS[chain.id] ?? [{ address: null, symbol: chain.nativeCurrency.symbol, decimals: 18 }];
 
   const { data, isError } = useReadContracts({
     contracts: assets.map((a) => ({

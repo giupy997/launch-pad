@@ -53,7 +53,8 @@ and writes its index. Names are URL-encoded (a space costs 3 bytes), so a long
 name leaves no room for a logo in the deploy — that is what `logo` is for.
 
 Curve and fees mirror the EVM launchpad: constant product with virtual
-reserves (0.2 LTC on testnet, 20 LTC on mainnet), 1B supply with 800M on the
+reserves (0.2 LTC on testnet, 10 LTC on mainnet: a curve raises ~32 LTC to
+sell out; deploy costs 0.01 LTC), 1B supply with 800M on the
 curve, 1% fee split 20% desk / 80% to the creator **or** the holders (fixed
 at deploy; pro-rata accumulator, debts rounded up so claims never exceed the
 pot). There is no DEX to graduate to: the curve stays the market, a sell
@@ -155,6 +156,29 @@ journalctl -u notus-desk -f           # watch it work
 
 The unit writes the snapshot to `litecoin/cache/state.json` (gitignored), so
 updating the server is always `git pull && sudo systemctl restart notus-desk`.
+
+### Mainnet
+
+Same code, `NOTUS_LTC_NETWORK=main`, its own desk key and process next to
+the testnet one. The parameters in `PARAMS.main` are part of the rules:
+fixed once the first mainnet transaction is folded in.
+
+```bash
+NOTUS_LTC_NETWORK=main node litecoin/keygen.ts desk-main   # litecoin/desk-main/key.json — back it up, this one holds real LTC
+sudo cp litecoin/deploy/notus-desk-main.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now notus-desk-main
+sudo cp litecoin/deploy/Caddyfile /etc/caddy/Caddyfile && sudo systemctl reload caddy   # adds /main/state.json
+```
+
+Fund the mainnet desk with a little LTC for payout fees (the `fund`
+instruction, or a plain payment you then leave as the sender's credit). On
+Netlify, the production site becomes the mainnet site with
+`NEXT_PUBLIC_LTC_NETWORK=main` and
+`LTC_STATE_URL=https://desk.notuspad.com/main/state.json`; a second Netlify
+site from the same repository with the defaults and
+`LTC_STATE_URL=https://desk.notuspad.com/state.json` keeps the testnet
+reachable. Before opening it to the public: the desk custodies real LTC, the
+software is unaudited, and a public launchpad may need a legal review (MiCA).
 
 Put HTTPS in front with Caddy (`litecoin/deploy/Caddyfile`, a DNS record
 such as `desk.notuspad.com` pointing at the server), then on Netlify set

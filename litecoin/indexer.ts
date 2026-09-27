@@ -12,7 +12,7 @@
 //
 // Environment: NOTUS_LTC_DESK (address; or litecoin/desk/key.json),
 // NOTUS_LTC_NETWORK (test|main), NOTUS_LTC_API, NOTUS_LTC_STATE,
-// NOTUS_LTC_CACHE, NOTUS_LTC_CONFIRMATIONS (default 2), NOTUS_LTC_FREEZE
+// NOTUS_LTC_CACHE, NOTUS_LTC_DESK_DIR, NOTUS_LTC_CONFIRMATIONS (default 2), NOTUS_LTC_FREEZE
 // (block height at which the ledger froze for the LitVM migration).
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -26,6 +26,8 @@ const API = process.env.NOTUS_LTC_API ?? PUBLIC_API[NETWORK];
 export const STATE_PATH = process.env.NOTUS_LTC_STATE ?? join(ROOT, "../web/public/litecoin/state.json");
 const OUT = STATE_PATH;
 const CACHE = process.env.NOTUS_LTC_CACHE ?? join(ROOT, "cache", `${NETWORK}.json`);
+/** Where this desk's key lives (a mainnet desk uses its own directory). */
+const DESK_DIR = process.env.NOTUS_LTC_DESK_DIR ?? join(ROOT, "desk");
 /** Transactions fold into the ledger once this deep, so a reorg cannot unwind them. */
 const CONFIRMATIONS = Number(process.env.NOTUS_LTC_CONFIRMATIONS ?? 2);
 /** Migration freeze height (see Params.freezeHeight); unset = the ledger is live. */
@@ -36,9 +38,9 @@ const PAGE = 25; // Esplora's page size for /address/:addr/txs/chain
 
 export function deskAddress(): string {
   if (process.env.NOTUS_LTC_DESK) return process.env.NOTUS_LTC_DESK;
-  const keyFile = join(ROOT, "desk/key.json");
+  const keyFile = join(DESK_DIR, "key.json");
   if (existsSync(keyFile)) return walletFromSecret(JSON.parse(readFileSync(keyFile, "utf8")).secret, NETWORK).address;
-  throw new Error("set NOTUS_LTC_DESK to the desk address, or make one with `node litecoin/keygen.ts desk`");
+  throw new Error(`set NOTUS_LTC_DESK to the desk address, or make a key with \`node litecoin/keygen.ts desk\` (looked in ${DESK_DIR})`);
 }
 
 type Cache = {

@@ -60,7 +60,9 @@ export type Params = {
 
 export const PARAMS: Record<Network, Params> = {
   test: { network: "test", virtualLit: 20_000_000n, deployFeeLit: 100_000n, minPayoutLit: 50_000n, freezeHeight: null },
-  main: { network: "main", virtualLit: 2_000_000_000n, deployFeeLit: 1_000_000n, minPayoutLit: 50_000n, freezeHeight: null },
+  // mainnet: 10 LTC virtual → a curve raises ~32 LTC to sell out. Fixed the
+  // moment the first mainnet transaction is folded in; never change it after.
+  main: { network: "main", virtualLit: 1_000_000_000n, deployFeeLit: 1_000_000n, minPayoutLit: 50_000n, freezeHeight: null },
 };
 
 /** One output of a transaction, as the ledger needs to see it. */

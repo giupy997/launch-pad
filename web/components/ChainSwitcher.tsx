@@ -5,12 +5,13 @@ import { usePathname, useRouter } from "next/navigation";
 import { useSwitchChain } from "wagmi";
 import { APP_CHAINS } from "@/lib/config";
 import { useAppChain } from "@/lib/hooks";
+import { LTC_LABEL, LTC_NETWORK } from "@/lib/litecoin/client";
 
 // Zcash and Litecoin are not EVM chains: they have no wagmi chain, only their
 // own section of the site. The switcher treats each as one more network.
 const SECTIONS = [
-  { id: -1, path: "/zcash", name: "Zcash", label: "Zcash Testnet" },
-  { id: -2, path: "/litecoin", name: "Litecoin", label: "Litecoin Testnet" },
+  { id: -1, path: "/zcash", name: "Zcash", label: "Zcash Testnet", testnet: true },
+  { id: -2, path: "/litecoin", name: "Litecoin", label: LTC_LABEL, testnet: LTC_NETWORK === "test" },
 ];
 
 const CHAIN_LOGOS: Record<number, string> = {
@@ -118,7 +119,9 @@ export function ChainSwitcher() {
                 <ChainLogo id={sec.id} size={22} />
                 <span className="flex-1">
                   {sec.name}
-                  <span className="ml-2 font-mono text-[10px] tracking-widest uppercase text-zinc-500">testnet</span>
+                  {sec.testnet && (
+                    <span className="ml-2 font-mono text-[10px] tracking-widest uppercase text-zinc-500">testnet</span>
+                  )}
                 </span>
                 {active && <span className="text-xs">●</span>}
               </button>

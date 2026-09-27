@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { addressLink, fmtLtc, shortAddr, txLink, useLitecoinState } from "@/lib/litecoin/client";
+import { LTC_NETWORK, addressLink, fmtLtc, shortAddr, txLink, useLitecoinState } from "@/lib/litecoin/client";
 
 export default function LitecoinLedger() {
   const { data: state } = useLitecoinState();
@@ -103,7 +103,11 @@ NOTUS_LTC_DESK=${state.desk.address ?? "<desk address>"} node litecoin/indexer.t
         <p>— This ledger is the only record of balances. Anyone can recompute it; nobody can enforce it.</p>
         <p>— Your coins belong to the address your transactions pay from. Send from your own wallet, never from an exchange: the exchange&apos;s address would own them.</p>
         <p>— A memo typed wrong does nothing — but the LTC that carried it is credited to the sender and can be claimed back.</p>
-        <p>— This deployment is on the Litecoin testnet: testnet LTC has no value. Notus is not affiliated with Litecoin or the Litecoin Foundation.</p>
+        {LTC_NETWORK === "test" ? (
+          <p>— This deployment is on the Litecoin testnet: testnet LTC has no value. Notus is not affiliated with Litecoin or the Litecoin Foundation.</p>
+        ) : (
+          <p>— This is the Litecoin mainnet: real LTC, no undo. The desk is unaudited software run by one operator. Notus is not affiliated with Litecoin or the Litecoin Foundation.</p>
+        )}
       </section>
     </div>
   );

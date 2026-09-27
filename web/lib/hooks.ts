@@ -12,6 +12,11 @@ export function useAppChain() {
   return APP_CHAINS.find((c) => c.id === chainId) ?? giwaSepolia;
 }
 
+/** Ticker of the chain's gas coin (ETH on GIWA and Robinhood, zkLTC on LitVM). */
+export function useNativeSymbol(): string {
+  return useAppChain().nativeCurrency.symbol;
+}
+
 /** Block explorer base URL for the current app chain. */
 export function useExplorer() {
   return useAppChain().blockExplorers.default.url;

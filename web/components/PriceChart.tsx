@@ -1,9 +1,12 @@
 "use client";
 
 import { fmtNum } from "@/lib/format";
+import { useNativeSymbol } from "@/lib/hooks";
 
 /** Minimal monochrome SVG line chart of trade-implied prices. */
-export function PriceChart({ points, quoteSymbol = "ETH" }: { points: number[]; quoteSymbol?: string }) {
+export function PriceChart({ points, quoteSymbol: quoteSymbolProp }: { points: number[]; quoteSymbol?: string }) {
+  const native = useNativeSymbol();
+  const quoteSymbol = quoteSymbolProp ?? native;
   if (points.length < 2) {
     return (
       <div className="rounded-xl border border-zinc-800 p-6 text-center text-sm text-zinc-600">

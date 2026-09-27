@@ -1,10 +1,11 @@
 // Notus on Litecoin — make a wallet key for the desk or for a test user.
 //
-//   node litecoin/keygen.ts desk     writes litecoin/desk/key.json (once) and prints the address
-//   node litecoin/keygen.ts user     same for the CLI test user
+//   node litecoin/keygen.ts desk                          writes litecoin/desk/key.json (once), prints the address
+//   node litecoin/keygen.ts user                          same for the CLI test user
+//   NOTUS_LTC_NETWORK=main node litecoin/keygen.ts desk-main   a separate desk for the mainnet
 //
-// The key file is the only copy of the secret: back it up. Both directories
-// are gitignored. NOTUS_LTC_NETWORK=main derives mainnet addresses.
+// The key file is the only copy of the secret: back it up. litecoin/desk*,
+// litecoin/user are gitignored. NOTUS_LTC_NETWORK=main derives mainnet addresses.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { newSecret, walletFromSecret } from "../web/lib/litecoin/tx.ts";
@@ -12,8 +13,8 @@ import type { Network } from "../web/lib/litecoin/ledger.ts";
 
 const NETWORK: Network = process.env.NOTUS_LTC_NETWORK === "main" ? "main" : "test";
 const who = process.argv[2];
-if (who !== "desk" && who !== "user") {
-  console.log("usage: node litecoin/keygen.ts desk|user");
+if (!who || !/^(desk|user)(-[a-z0-9]+)?$/.test(who)) {
+  console.log("usage: node litecoin/keygen.ts desk|user|desk-<name>|user-<name>");
   process.exit(1);
 }
 const dir = join(import.meta.dirname, who);

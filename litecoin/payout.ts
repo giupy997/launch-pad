@@ -8,8 +8,8 @@
 //   node litecoin/payout.ts            pay what is due
 //   node litecoin/payout.ts --dry-run  only list it
 //
-// Environment: NOTUS_LTC_DESK_KEY (hex secret; or litecoin/desk/key.json),
-// NOTUS_LTC_NETWORK, NOTUS_LTC_API, NOTUS_LTC_STATE.
+// Environment: NOTUS_LTC_DESK_KEY (hex secret; or <NOTUS_LTC_DESK_DIR>/key.json,
+// default litecoin/desk), NOTUS_LTC_NETWORK, NOTUS_LTC_API, NOTUS_LTC_STATE.
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { MEMO_MAX_BYTES, memo, memoBytes, type Network } from "../web/lib/litecoin/ledger.ts";
@@ -22,13 +22,14 @@ const API = process.env.NOTUS_LTC_API ?? PUBLIC_API[NETWORK];
 const STATE = process.env.NOTUS_LTC_STATE ?? join(ROOT, "../web/public/litecoin/state.json");
 // A payout stays "due" in the ledger until its payment is mined and folded
 // in, so remember what was already broadcast or it would be paid twice.
-const SENT = process.env.NOTUS_LTC_SENT ?? join(ROOT, "desk/sent-payouts.json");
+const DESK_DIR = process.env.NOTUS_LTC_DESK_DIR ?? join(ROOT, "desk");
+const SENT = process.env.NOTUS_LTC_SENT ?? join(DESK_DIR, "sent-payouts.json");
 const MAX_OUTPUTS = 20;
 
 type Payout = { id: number; kind: string; to: string; lit: string; paidTxid: string | null };
 
 function deskSecret(): string {
-  return process.env.NOTUS_LTC_DESK_KEY ?? JSON.parse(readFileSync(join(ROOT, "desk/key.json"), "utf8")).secret;
+  return process.env.NOTUS_LTC_DESK_KEY ?? JSON.parse(readFileSync(join(DESK_DIR, "key.json"), "utf8")).secret;
 }
 
 /** Pay (or, dry, list) everything due. Returns how many payouts were broadcast. */

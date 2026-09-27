@@ -90,8 +90,9 @@ export function CreateTokenForm() {
     }
   }
 
+  const native = chain.nativeCurrency.symbol;
   const quoteAssets = QUOTE_ASSETS[chain.id] ?? [
-    { address: null, symbol: "ETH", decimals: 18, kind: "native" as const },
+    { address: null, symbol: native, decimals: 18, kind: "native" as const },
   ];
   const quote = quoteAssets[Math.min(quoteIdx, quoteAssets.length - 1)];
   const isEthQuote = quote.address === null;
@@ -257,7 +258,7 @@ export function CreateTokenForm() {
                     : "border border-zinc-700 text-zinc-400 hover:border-white hover:text-white"
                 }`}
               >
-                {v === "0" ? "Off" : `${v} ETH`}
+                {v === "0" ? "Off" : `${v} ${native}`}
               </button>
             ))}
             <input
@@ -388,7 +389,7 @@ export function CreateTokenForm() {
               }
               strong
             />
-            <Row k="Curve" v={isEthQuote ? "800M · graduates at ~4 ETH" : `800M on the ${quote.symbol} curve`} />
+            <Row k="Curve" v={isEthQuote ? `800M · graduates at ~4 ${native}` : `800M on the ${quote.symbol} curve`} />
             <Row
               k="Liquidity"
               v={chain.id === robinhood.id ? "Locked forever on Uniswap v4" : "Locked at graduation"}
@@ -397,7 +398,7 @@ export function CreateTokenForm() {
             {chain.id === robinhood.id && <Row k="After graduation" v="1% fee keeps flowing" strong />}
             <Row
               k="Dev buy"
-              v={devBuyNum > 0 ? `${formatEther(parseEtherSafe(initialBuy))} ETH` : "0 ETH"}
+              v={devBuyNum > 0 ? `${formatEther(parseEtherSafe(initialBuy))} ${native}` : `0 ${native}`}
             />
           </div>
 

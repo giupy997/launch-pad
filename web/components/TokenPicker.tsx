@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { type TokenInfo } from "@/lib/hooks";
+import { type TokenInfo, useNativeSymbol } from "@/lib/hooks";
 import { TokenLogo } from "@/components/TokenLogo";
 import { shortAddr } from "@/lib/format";
 
@@ -48,7 +48,8 @@ export function TokenPicker({
       t.address.toLowerCase().startsWith(query)
     );
   });
-  const showEth = !query || "eth".includes(query);
+  const native = useNativeSymbol();
+  const showEth = !query || "eth".includes(query) || native.toLowerCase().includes(query);
   const selected = value !== "ETH" ? tokens.find((t) => t.address === value) : undefined;
 
   function pick(v: PickerValue) {
@@ -64,7 +65,7 @@ export function TokenPicker({
         className="flex items-center gap-2 rounded-full bg-black border border-zinc-700 px-3 py-2 text-sm text-white hover:border-white"
       >
         {value === "ETH" ? (
-          <span className="font-semibold">ETH</span>
+          <span className="font-semibold">{native}</span>
         ) : (
           <>
             <TokenLogo uri={selected?.meta.logoURI ?? ""} symbol={selected?.symbol ?? "?"} size={18} />
@@ -89,7 +90,7 @@ export function TokenPicker({
             {showEth && (
               <Row onClick={() => pick("ETH")} active={value === "ETH"}>
                 <span className="w-[18px] text-center font-mono text-xs">Ξ</span>
-                <span className="flex-1 font-semibold">ETH</span>
+                <span className="flex-1 font-semibold">{native}</span>
                 <span className="text-xs text-zinc-500">native</span>
               </Row>
             )}

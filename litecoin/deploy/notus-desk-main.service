@@ -1,0 +1,30 @@
+# systemd unit for the Notus on Litecoin desk — MAINNET (runs next to the testnet one).
+#   NOTUS_LTC_NETWORK=main node litecoin/keygen.ts desk-main     # once; back the key up
+#   sudo cp litecoin/deploy/notus-desk-main.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now notus-desk-main
+#   journalctl -u notus-desk-main -f
+[Unit]
+Description=Notus on Litecoin desk (mainnet)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=notus
+WorkingDirectory=/home/notus/launch-pad
+ExecStart=/usr/bin/node litecoin/desk.ts
+Restart=always
+RestartSec=10
+Environment=PORT=8788
+Environment=NOTUS_LTC_NETWORK=main
+Environment=NOTUS_LTC_DESK_DIR=/home/notus/launch-pad/litecoin/desk-main
+Environment=NOTUS_LTC_STATE=/home/notus/launch-pad/litecoin/cache/main-state.json
+Environment=NOTUS_LTC_CONFIRMATIONS=2
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/notus/launch-pad/litecoin
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

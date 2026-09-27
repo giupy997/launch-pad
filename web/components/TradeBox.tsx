@@ -17,6 +17,7 @@ import {
   quoteInfo,
   parseCurve,
   type CurveInfo,
+  useNativeSymbol,
 } from "@/lib/hooks";
 import { fmtUnits, fmtTokens } from "@/lib/format";
 import { SlippageControl, useSlippageBps } from "@/components/SlippageControl";
@@ -82,6 +83,7 @@ export function TradeBox({
   const pad = padMaybe ?? ("0x0000000000000000000000000000000000000000" as `0x${string}`);
   const explorer = useExplorer();
   const chain = useAppChain();
+  const native = useNativeSymbol();
   const { address: user, isConnected } = useAccount();
   const [mode, setMode] = useState<"buy" | "sell">("buy");
   const [slippageBps, setSlippageBps] = useSlippageBps();
@@ -331,7 +333,7 @@ export function TradeBox({
             <span className="font-mono text-[10px] tracking-widest uppercase text-zinc-500 mr-1">
               Pay with
             </span>
-            {(["ETH", q.symbol] as const).map((label, i) => (
+            {([native, q.symbol] as const).map((label, i) => (
               <button
                 key={label}
                 type="button"
@@ -351,7 +353,7 @@ export function TradeBox({
           <input
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            placeholder={mode === "buy" ? `${zapMode ? "ETH" : q.symbol} to spend` : `${symbol} to sell`}
+            placeholder={mode === "buy" ? `${zapMode ? native : q.symbol} to spend` : `${symbol} to sell`}
             type="number"
             step="any"
             min="0"

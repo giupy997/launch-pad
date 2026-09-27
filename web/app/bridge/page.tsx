@@ -9,13 +9,66 @@ import {
   useSwitchChain,
   useWaitForTransactionReceipt,
 } from "wagmi";
-import { giwaSepolia, robinhood, sepolia, mainnet, L1_STANDARD_BRIDGE } from "@/lib/config";
+import { giwaSepolia, robinhood, litvmTestnet, sepolia, mainnet, L1_STANDARD_BRIDGE } from "@/lib/config";
 import { useAppChain } from "@/lib/hooks";
 import { fmtEth } from "@/lib/format";
 
 export default function BridgePage() {
   const chain = useAppChain();
+  if (chain.id === litvmTestnet.id) return <LitvmBridge />;
   return chain.id === robinhood.id ? <RobinhoodBridge /> : <GiwaBridge />;
+}
+
+/* --------------------------------------------------------------- LitVM */
+
+function LitvmBridge() {
+  const { address: user } = useAccount();
+  const { data: bal } = useBalance({
+    address: user,
+    chainId: litvmTestnet.id,
+    query: { enabled: !!user, refetchInterval: 15_000 },
+  });
+
+  return (
+    <div className="max-w-md mx-auto space-y-6">
+      <Header />
+      <p className="text-sm text-zinc-400 text-center">
+        LitVM is Litecoin&apos;s EVM layer 2. Its gas coin, zkLTC, is LTC locked on the Litecoin base
+        layer and released 1:1 on LitVM through the official bridge. On the Liteforge testnet, zkLTC
+        comes free from the faucet.
+      </p>
+
+      <div className="grid grid-cols-1 gap-3">
+        <Balance label="LitVM Liteforge" value={bal?.value} symbol="zkLTC" />
+      </div>
+
+      <a
+        href="https://testnet.litvm.com"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block w-full rounded-full bg-white py-2.5 font-semibold text-black hover:bg-zinc-200 text-center"
+      >
+        Open the LitVM testnet portal (faucet &amp; bridge) ↗
+      </a>
+
+      <div className="rounded-xl border border-zinc-800 p-5 space-y-2">
+        <div className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">How it works</div>
+        <ul className="text-sm text-zinc-400 space-y-1.5 list-disc list-inside">
+          <li>Add LitVM to your wallet: chain ID 4441, RPC liteforge.rpc.caldera.xyz, symbol zkLTC.</li>
+          <li>Testnet: request zkLTC from the faucet, then launch and trade here.</li>
+          <li>Mainnet (expected later in 2026): lock LTC on Litecoin, receive zkLTC through the bridge.</li>
+        </ul>
+      </div>
+
+      <p className="text-xs text-zinc-600 text-center">
+        Use only the official LitVM sites — see the{" "}
+        <a href="https://docs.litvm.com" target="_blank" className="underline hover:text-zinc-400">
+          LitVM docs
+        </a>
+        .
+      </p>
+    </div>
+  );
 }
 
 /* ---------------------------------------------------------------- GIWA */
@@ -241,12 +294,12 @@ function Header() {
   );
 }
 
-function Balance({ label, value }: { label: string; value?: bigint }) {
+function Balance({ label, value, symbol = "ETH" }: { label: string; value?: bigint; symbol?: string }) {
   return (
     <div className="rounded-xl border border-zinc-800 p-4">
       <div className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">{label}</div>
       <div className="mt-1 font-semibold">
-        {value !== undefined ? `${fmtEth(value)} ETH` : "—"}
+        {value !== undefined ? `${fmtEth(value)} ${symbol}` : "—"}
       </div>
     </div>
   );

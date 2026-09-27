@@ -21,5 +21,7 @@ zcash/tool/
 
 # Notus on Litecoin: desk and test-user keys, explorer cache
 litecoin/desk/
+litecoin/desk-*/
 litecoin/user/
+litecoin/user-*/
 litecoin/cache/

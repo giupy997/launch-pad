@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { CURVE_SUPPLY, spotPrice } from "@/lib/litecoin/ledger";
-import { fmtLtc, fmtPrice, shortAddr, txLink, useLitecoinState, type LCoin } from "@/lib/litecoin/client";
+import { LTC_NETWORK, fmtLtc, fmtPrice, shortAddr, txLink, useLitecoinState, type LCoin } from "@/lib/litecoin/client";
 import { TokenLogo } from "@/components/TokenLogo";
 
 export default function LitecoinExplore() {
@@ -58,7 +58,7 @@ export default function LitecoinExplore() {
               </a>
             ))}
           </div>
-          <p className="mt-2 text-[11px] text-zinc-600">Seen on the network, not yet in the ledger: a Litecoin testnet block can take a while. Folded in after {state.confirmations} confirmations.</p>
+          <p className="mt-2 text-[11px] text-zinc-600">Seen on the network, not yet in the ledger{LTC_NETWORK === "test" ? ": a Litecoin testnet block can take a while" : ""}. Folded in after {state.confirmations} confirmations (~{state.confirmations * 2.5} min).</p>
         </section>
       )}
 

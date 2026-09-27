@@ -14,6 +14,7 @@ import {
   useTokens,
   useExplorer,
   useAppChain,
+  useNativeSymbol,
   isQuoteAsset,
   ZERO_ADDRESS,
 } from "@/lib/hooks";
@@ -32,6 +33,7 @@ export default function SwapPage() {
   const pad = padMaybe ?? ("0x0000000000000000000000000000000000000000" as `0x${string}`);
   const explorer = useExplorer();
   const appChainId = useAppChain().id;
+  const native = useNativeSymbol();
   const { address: user, isConnected } = useAccount();
   const { tokens } = useTokens();
   const live = tokens.filter(
@@ -225,7 +227,7 @@ export default function SwapPage() {
               {invalid || parsed === 0n || outQuote === undefined
                 ? "—"
                 : to === ETH
-                  ? `${fmtEth(outQuote)} ETH`
+                  ? `${fmtEth(outQuote)} ${native}`
                   : `${fmtTokens(outQuote)} ${toToken?.symbol ?? ""}`}
             </div>
           </div>
@@ -233,7 +235,7 @@ export default function SwapPage() {
 
         {isTokenToToken && (
           <p className="font-mono text-[10px] tracking-widest uppercase text-zinc-500 text-center">
-            Route: {fromToken?.symbol} → ETH → {toToken?.symbol} · 2 transactions
+            Route: {fromToken?.symbol} → {native} → {toToken?.symbol} · 2 transactions
           </p>
         )}
 
@@ -283,7 +285,7 @@ export default function SwapPage() {
 
       {live.length === 0 && (
         <p className="text-center text-sm text-zinc-500">
-          No live ETH-paired tokens on the curve to swap yet. Asset-paired
+          No live {native}-paired tokens on the curve to swap yet. Asset-paired
           coins trade from their token page.
         </p>
       )}
