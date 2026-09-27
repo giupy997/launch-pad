@@ -131,6 +131,26 @@ export function senderPubkey(vin: EsploraVin, sender: string, network: Network):
   return addressOfPubkey(pub, type, network) === sender ? pub : null;
 }
 
+/** An instruction still waiting for a block: what the site shows as pending.
+ *  Nothing here is folded into the ledger — it is only a heads-up. */
+export type PendingTx = { txid: string; sender: string | null; valueLit: bigint; memo: string | null; seen: number };
+
+export function pendingFromTx(tx: EsploraTx, desk: string, network: Network, seen = Math.floor(Date.now() / 1000)): PendingTx | null {
+  const addr = (o: { scriptpubkey: string; scriptpubkey_address?: string }) => o.scriptpubkey_address ?? addressOfScript(o.scriptpubkey, network);
+  if (tx.vin.some((i) => i.prevout && addr(i.prevout) === desk)) return null; // the desk's own payouts are not instructions
+  const first = tx.vin[0];
+  let valueLit = 0n;
+  for (const o of tx.vout) if (o.scriptpubkey_type !== "op_return" && addr(o) === desk) valueLit += BigInt(o.value);
+  const memoOut = tx.vout.find((o) => o.scriptpubkey_type === "op_return");
+  return {
+    txid: tx.txid,
+    sender: first && !first.is_coinbase && first.prevout ? addr(first.prevout) : null,
+    valueLit,
+    memo: memoOut ? opReturnPayload(memoOut.scriptpubkey) : null,
+    seen,
+  };
+}
+
 /** The ledger event for a confirmed transaction that involves the desk. */
 export function eventFromTx(tx: EsploraTx, desk: string, network: Network, txIndex: number): TxEvent {
   if (!tx.status.confirmed || tx.status.block_height === undefined) throw new Error(`${tx.txid} is not confirmed`);

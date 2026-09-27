@@ -34,6 +34,8 @@ export type LState = {
   rejected: { txid: string; height: number; reason: string; memo: string }[];
   roots: { height: number; root: string }[];
   desk: { address: string | null; network: Network };
+  /** Instructions seen in the mempool, waiting for a block (not folded in). */
+  pending?: { txid: string; sender: string | null; valueLit: string; memo: string | null; seen: number }[];
   chainTip: number | null; confirmations: number; updatedAt: number; demo?: boolean;
 };
 

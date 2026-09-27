@@ -5,7 +5,7 @@ import { sha256 } from "@noble/hashes/sha2";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils";
 import { memo } from "./ledger.ts";
 import { CARRY_LIT, DUST_LIT, addressOfPubkey, addressOfScript, buildTx, evmAddressOfPubkey, evmAddressOfSecret, isAddress, isSecret, opReturnPayload, parseTx, secretFromWif, walletFromSecret, type Utxo } from "./tx.ts";
-import { eventFromTx, senderPubkey, type EsploraTx } from "./esplora.ts";
+import { eventFromTx, pendingFromTx, senderPubkey, type EsploraTx } from "./esplora.ts";
 
 const secret = bytesToHex(sha256(utf8ToBytes("notus-litecoin-test-user")));
 const deskSecret = bytesToHex(sha256(utf8ToBytes("notus-litecoin-test-desk")));
@@ -142,6 +142,17 @@ test("eventFromTx: the funding address is the sender; the desk's own transaction
   assert.equal(d.memo, memo.paid([0]));
   assert.deepEqual(d.outputs.map((o) => [o.address, o.lit, o.toDesk]), [[user.address, 2_000_000n, false], [null, 0n, false], [desk.address, pay.change, true]]);
   assert.throws(() => eventFromTx({ ...d && esploraView(pay.hex, desk.script, 50_000_000n, 1), status: { confirmed: false } }, desk.address, "test", 0), /not confirmed/);
+});
+
+test("pendingFromTx: an instruction in the mempool is shown, the desk's own payouts are not", () => {
+  const m = memo.deploy("LCAT", "litecat", true);
+  const built = buildTx({ network: "test", secret, utxos: [utxo(1, 1_000_000n)], payments: [{ address: desk.address, lit: 200_000n }], memo: m, feeRate: 10n });
+  const view = esploraView(built.hex, user.script, 1_000_000n, 0);
+  view.status = { confirmed: false };
+  const p = pendingFromTx(view, desk.address, "test", 123)!;
+  assert.deepEqual({ ...p, valueLit: p.valueLit.toString() }, { txid: built.txid, sender: user.address, valueLit: "200000", memo: m, seen: 123 });
+  const pay = buildTx({ network: "test", secret: deskSecret, utxos: [utxo(9, 50_000_000n)], payments: [{ address: user.address, lit: 2_000_000n }], memo: memo.paid([0]), feeRate: 10n });
+  assert.equal(pendingFromTx(esploraView(pay.hex, desk.script, 50_000_000n, 0), desk.address, "test"), null);
 });
 
 test("scripts: OP_RETURN has no address; addresses decode from output scripts", () => {
