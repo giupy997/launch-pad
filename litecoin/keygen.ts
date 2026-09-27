@@ -3,18 +3,23 @@
 //   node litecoin/keygen.ts desk                          writes litecoin/desk/key.json (once), prints the address
 //   node litecoin/keygen.ts user                          same for the CLI test user
 //   NOTUS_LTC_NETWORK=main node litecoin/keygen.ts desk-main   a separate desk for the mainnet
+//   node litecoin/keygen.ts desk --wif                    also print the secret as WIF (for Electrum-LTC)
 //
 // The key file is the only copy of the secret: back it up. litecoin/desk*,
 // litecoin/user are gitignored. NOTUS_LTC_NETWORK=main derives mainnet addresses.
+// The secret is only printed on --wif: terminal output tends to get pasted
+// around, and a key that has been shown anywhere holds real coins no more.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { newSecret, walletFromSecret } from "../web/lib/litecoin/tx.ts";
 import type { Network } from "../web/lib/litecoin/ledger.ts";
 
 const NETWORK: Network = process.env.NOTUS_LTC_NETWORK === "main" ? "main" : "test";
-const who = process.argv[2];
+const args = process.argv.slice(2);
+const showWif = args.includes("--wif");
+const who = args.find((a) => !a.startsWith("--"));
 if (!who || !/^(desk|user)(-[a-z0-9]+)?$/.test(who)) {
-  console.log("usage: node litecoin/keygen.ts desk|user|desk-<name>|user-<name>");
+  console.log("usage: node litecoin/keygen.ts desk|user|desk-<name>|user-<name> [--wif]");
   process.exit(1);
 }
 const dir = join(import.meta.dirname, who);
@@ -26,4 +31,5 @@ if (!existsSync(file)) {
 }
 const w = walletFromSecret(JSON.parse(readFileSync(file, "utf8")).secret, NETWORK);
 console.log(`${who} address (${NETWORK}net): ${w.address}`);
-console.log(`WIF (import into Electrum-LTC as p2wpkh:${w.wif.slice(0, 6)}…): ${w.wif}`);
+if (showWif) console.log(`WIF (import into Electrum-LTC as p2wpkh:${w.wif.slice(0, 6)}…): ${w.wif}`);
+else console.log(`(the secret stays in ${file}; --wif prints it, do not paste that anywhere)`);
