@@ -71,6 +71,8 @@ export type Fees = { fastestFee: number; halfHourFee: number; hourFee: number };
 /** What the ledger needs from a chain: Esplora's dialect, whoever serves it
  *  (Esplora itself, a Blockbook through the adapter, several in fallback). */
 export abstract class ChainApi {
+  /** Where this reads from, for logs. */
+  abstract readonly label: string;
   abstract tipHeight(): Promise<number>;
   /** Hash of the block at `height` (0 = genesis: which chain is this?). */
   abstract blockHash(height: number): Promise<string>;
@@ -112,6 +114,10 @@ export class Esplora extends ChainApi {
     super();
     this.base = base.trim().replace(/\/$/, "");
     this.timeoutMs = timeoutMs;
+  }
+
+  get label(): string {
+    return this.base;
   }
 
   private async request(path: string, init: RequestInit = {}): Promise<Response> {

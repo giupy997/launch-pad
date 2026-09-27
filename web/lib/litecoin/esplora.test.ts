@@ -93,6 +93,27 @@ test("fallback: an endpoint that failed is left alone for a while, then retried"
   await assert.rejects(dead.tipHeight(), /fetch failed/);
 });
 
+test("fallback: an explorer whose tip is behind is passed over, never read", async () => {
+  fakeFetch({
+    "https://a/api/block-height/0": text(GENESIS.main),
+    "https://b/api/block-height/0": text(GENESIS.main),
+    "https://a/api/blocks/tip/height": text("3185405"),
+    "https://b/api/blocks/tip/height": text("3185079"),
+    "https://b/api/tx/aa/status": text('{"confirmed":true}'),
+  });
+  const api = chainApi("https://a/api,https://b/api", "main", undefined, 1000, 60_000) as Fallback;
+  assert.equal(await api.tipHeight(), 3185405);
+  assert.equal(api.lastUsed, "https://a/api");
+  fakeFetch({ "https://b/api/blocks/tip/height": text("3185079") }); // a is gone
+  await assert.rejects(api.tipHeight(), /behind \(tip 3185079, best seen 3185405\)/, "b is 326 blocks behind: not an answer");
+  await assert.rejects(api.tipHeight(), /behind/, "…and stays one until it catches up");
+  // a Blockbook that says it is still syncing is behind too
+  fakeFetch({ "https://bb/api/v2": json({ blockbook: { bestHeight: 3185079, inSync: false }, backend: { blocks: 3185405 } }) });
+  await assert.rejects(new Blockbook("https://bb/api/v2", "main").tipHeight(), /not in sync/);
+  fakeFetch({ "https://bb/api/v2": json({ blockbook: { bestHeight: 3185079, inSync: true }, backend: { blocks: 3185405 } }) });
+  await assert.rejects(new Blockbook("https://bb/api/v2", "main").tipHeight(), /behind its node/);
+});
+
 test("fallback: an endpoint on the other chain is skipped, one that cannot say is used", async () => {
   fakeFetch({
     "https://a/api/block-height/0": text(GENESIS.main),

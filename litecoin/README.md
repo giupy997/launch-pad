@@ -218,10 +218,12 @@ skipped), `NOTUS_LTC_DESK`
 `NOTUS_LTC_API`: Esplora, Blockbook or several in fallback — the proxy
 speaks Esplora to the browser whatever answers it; `LTC_API_KEY` for a
 Blockbook that wants one), `NEXT_PUBLIC_LTC_API` (to bypass the proxy),
-`PINATA_JWT` (a Pinata API key: with it the deploy and coin pages offer a
-logo upload — squared and compressed in the browser, pinned to IPFS by the
-site, carried by the instruction as `ipfs://Qm…`; without it creators paste
-an image URL).
+`PINATA_JWT` (optional). The deploy and coin pages offer a logo upload:
+the image is squared and compressed in the browser and kept by the site —
+on Netlify in the site's own blob store, served at `/i/<id>` (nothing to
+set up) — or, with a Pinata key in `PINATA_JWT`, pinned to IPFS and carried
+by the instruction as `ipfs://Qm…`. An OP_RETURN cannot hold the image
+itself, only its short URL. Elsewhere, with neither, creators paste a URL.
 
 To verify the published ledger you need no key at all:
 

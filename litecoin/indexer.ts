@@ -18,7 +18,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { PARAMS, replay, snapshot, type Network, type TxEvent } from "../web/lib/litecoin/ledger.ts";
 import { PUBLIC_API, eventFromTx, pendingFromTx, type ChainApi, type EsploraTx, type PendingTx } from "../web/lib/litecoin/esplora.ts";
-import { chainApi } from "../web/lib/litecoin/chain.ts";
+import { Fallback, chainApi } from "../web/lib/litecoin/chain.ts";
 import { walletFromSecret } from "../web/lib/litecoin/tx.ts";
 
 const ROOT = import.meta.dirname;
@@ -44,8 +44,13 @@ export function deskAddress(): string {
   throw new Error(`set NOTUS_LTC_DESK to the desk address, or make a key with \`node litecoin/keygen.ts desk\` (looked in ${DESK_DIR})`);
 }
 
+/** A tip this many blocks under the last one is a lagging explorer, not a reorg. */
+const LAG_BLOCKS = 6;
+
 type Cache = {
   desk: string;
+  /** The chain tip of the last completed pass: a pass may never go back further than a reorg could. */
+  tip?: number;
   /** Confirmed transactions by txid. */
   txs: Record<string, EsploraTx>;
   /** Position of each desk transaction in its block, by block hash. */
@@ -114,6 +119,8 @@ export function eventsFromCache(cache: Cache, desk: string, maxHeight: number): 
 }
 
 let firstPass = true;
+let lastVia = "";
+const via = (a: ChainApi) => (a instanceof Fallback ? a.lastUsed || a.label : a.label);
 
 /** One indexer pass: sync (unless told not to), replay, write the snapshot. */
 export async function pass(sync: boolean) {
@@ -124,10 +131,17 @@ export async function pass(sync: boolean) {
   let pending: PendingTx[] = [];
   if (sync) {
     tip = await api.tipHeight();
+    if (cache.tip && tip < cache.tip - LAG_BLOCKS) throw new Error(`explorer behind: tip ${tip}, last pass saw ${cache.tip} (${via(api)})`);
     await fetchTxs(api, desk, cache, tip, firstPass);
     await placeInBlocks(api, cache);
+    cache.tip = tip;
     saveCache(cache);
     firstPass = false;
+    const now = via(api);
+    if (now !== lastVia) {
+      lastVia = now;
+      console.log(`[${new Date().toISOString()}] reading the chain via ${now}`);
+    }
     try {
       // instructions waiting for a block: shown on the site, never folded in
       pending = (await api.addressTxsMempool(desk)).map((t) => pendingFromTx(t, desk, NETWORK)).filter((p): p is PendingTx => p !== null);

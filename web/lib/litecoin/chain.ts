@@ -16,10 +16,16 @@ import type { Network } from "./ledger.ts";
  *  not wait out its timeout again and again while the next endpoint works. */
 export const COOLDOWN_MS = 5 * 60_000;
 
+/** A tip this many blocks under the best one seen is a lagging explorer, not a reorg. */
+export const LAG_BLOCKS = 6;
+
 export class Fallback extends ChainApi {
   readonly backends: ChainApi[];
   readonly network: Network;
   readonly cooldownMs: number;
+  /** The endpoint that answered last. */
+  lastUsed = "";
+  private bestTip = 0;
   private chain = new Map<ChainApi, boolean>();
   private downUntil = new Map<ChainApi, number>();
   constructor(backends: ChainApi[], network: Network, cooldownMs = COOLDOWN_MS) {
@@ -46,6 +52,10 @@ export class Fallback extends ChainApi {
     }
   }
 
+  get label(): string {
+    return this.backends.map((b) => b.label).join(",");
+  }
+
   private async run<T>(f: (b: ChainApi) => Promise<T>): Promise<T> {
     const now = Date.now();
     let candidates = this.backends.filter((b) => (this.downUntil.get(b) ?? 0) <= now);
@@ -56,6 +66,7 @@ export class Fallback extends ChainApi {
       try {
         const v = await f(b);
         this.downUntil.delete(b);
+        this.lastUsed = b.label;
         return v;
       } catch (e) {
         if (isFinal(e)) throw e;
@@ -66,8 +77,16 @@ export class Fallback extends ChainApi {
     throw last ?? new ApiError("no explorer endpoint on this chain");
   }
 
+  /** An explorer whose tip is under the best one seen is behind: it is
+   *  passed over (and left alone for a while) like one that is down, so the
+   *  ledger never reads a stale chain. */
   tipHeight(): Promise<number> {
-    return this.run((b) => b.tipHeight());
+    return this.run(async (b) => {
+      const h = await b.tipHeight();
+      if (h < this.bestTip - LAG_BLOCKS) throw new ApiError(`${b.label}: behind (tip ${h}, best seen ${this.bestTip})`, 503);
+      if (h > this.bestTip) this.bestTip = h;
+      return h;
+    });
   }
   blockHash(height: number): Promise<string> {
     return this.run((b) => b.blockHash(height));

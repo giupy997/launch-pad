@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@netlify/blobs": "^11.1.1",
     "@noble/curves": "^1.9.1",
     "@noble/hashes": "^1.8.0",
     "@scure/base": "^2.4.0",

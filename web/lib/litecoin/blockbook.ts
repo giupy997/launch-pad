@@ -113,10 +113,18 @@ export class Blockbook extends ChainApi {
     return body as T;
   }
 
+  get label(): string {
+    return this.base;
+  }
+
+  /** An instance still catching up with its own node is no use: its
+   *  address history would be behind too. */
   async tipHeight(): Promise<number> {
-    const s = await this.get<{ blockbook?: { bestHeight?: number }; backend?: { blocks?: number } }>("");
+    const s = await this.get<{ blockbook?: { bestHeight?: number; inSync?: boolean }; backend?: { blocks?: number } }>("");
     const h = s.blockbook?.bestHeight ?? s.backend?.blocks;
     if (!h) throw new ApiError("status: no height", 502);
+    if (s.blockbook?.inSync === false) throw new ApiError(`status: not in sync (indexed ${h})`, 503);
+    if (s.backend?.blocks && h < s.backend.blocks - 3) throw new ApiError(`status: behind its node (indexed ${h}, node ${s.backend.blocks})`, 503);
     return h;
   }
 
