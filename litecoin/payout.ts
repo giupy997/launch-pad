@@ -13,7 +13,8 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { MEMO_MAX_BYTES, memo, memoBytes, type Network } from "../web/lib/litecoin/ledger.ts";
-import { Esplora, PUBLIC_API } from "../web/lib/litecoin/esplora.ts";
+import { PUBLIC_API } from "../web/lib/litecoin/esplora.ts";
+import { chainApi } from "../web/lib/litecoin/chain.ts";
 import { buildTx, fmtLit, walletFromSecret, type Utxo } from "../web/lib/litecoin/tx.ts";
 
 const ROOT = import.meta.dirname;
@@ -56,7 +57,7 @@ export async function payDue(dryRun = false, log: (line: string) => void = conso
     else batches.push([p]);
   }
 
-  const api = new Esplora(API, NETWORK);
+  const api = chainApi(API, NETWORK);
   const feeRate = await api.feeRate();
   let utxos: Utxo[] = await api.utxos(desk.address);
   log(`desk holds ${fmtLit(utxos.reduce((t, u) => t + u.value, 0n))} LTC in ${utxos.length} coins · fee ${feeRate} lit/vB`);

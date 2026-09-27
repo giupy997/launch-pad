@@ -13,7 +13,8 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { PARAMS, memo, memoBytes, quoteSell, type Network } from "../web/lib/litecoin/ledger.ts";
-import { Esplora, PUBLIC_API, PUBLIC_EXPLORER } from "../web/lib/litecoin/esplora.ts";
+import { PUBLIC_API, PUBLIC_EXPLORER } from "../web/lib/litecoin/esplora.ts";
+import { chainApi } from "../web/lib/litecoin/chain.ts";
 import { CARRY_LIT, DUST_LIT, buildTx, fmtLit, walletFromSecret, type Payment } from "../web/lib/litecoin/tx.ts";
 
 const ROOT = import.meta.dirname;
@@ -23,7 +24,7 @@ const STATE = process.env.NOTUS_LTC_STATE ?? join(ROOT, "../web/public/litecoin/
 
 const secret: string = JSON.parse(readFileSync(join(ROOT, "user/key.json"), "utf8")).secret;
 const me = walletFromSecret(secret, NETWORK);
-const api = new Esplora(API, NETWORK);
+const api = chainApi(API, NETWORK);
 const lit = (ltc: string) => BigInt(Math.round(Number(ltc) * 1e8));
 
 async function send(payments: Payment[], memoText: string | null) {

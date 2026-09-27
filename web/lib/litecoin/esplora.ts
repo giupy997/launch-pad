@@ -46,76 +46,86 @@ export const PUBLIC_EXPLORER: Record<Network, string> = {
   test: "https://litecoinspace.org/testnet",
 };
 
-/** Genesis block hashes: a fallback endpoint that serves the other chain is skipped. */
+/** Genesis block hashes: an endpoint that serves the other chain is never used. */
 export const GENESIS: Record<Network, string> = {
   main: "12a765e31ffd4059bada1e25190f6e98c99d9714d334efa41a195a7e7e04bfe2",
   test: "4966625a4b2851d9fdee139e56211a0d88575f59ed816ff5e6a63deb4e3e29a0",
 };
 /** An explorer behind Cloudflare answers 5xx after up to 100s; give up sooner. */
-const TIMEOUT_MS = 45_000;
+export const TIMEOUT_MS = 45_000;
 
-export class Esplora {
-  /** Endpoints in order of preference: `base` may list several, comma
-   *  separated (NOTUS_LTC_API=https://a/api,https://b/api). When one is down
-   *  or unreachable on the way there (a 5xx, a timeout) the next is tried;
-   *  one that turns out to serve the other chain is never used. */
-  readonly bases: string[];
-  readonly network: Network | null;
+/** An explorer's answer that is an error. `status` < 500 is a real answer
+ *  (unknown transaction, rejected broadcast); 5xx or none at all means the
+ *  explorer, or the road to it, is down. */
+export class ApiError extends Error {
+  readonly status: number;
+  constructor(message: string, status = 0) {
+    super(message);
+    this.status = status;
+  }
+}
+export const isFinal = (e: unknown) => e instanceof ApiError && e.status > 0 && e.status < 500;
+
+export type Fees = { fastestFee: number; halfHourFee: number; hourFee: number };
+
+/** What the ledger needs from a chain: Esplora's dialect, whoever serves it
+ *  (Esplora itself, a Blockbook through the adapter, several in fallback). */
+export abstract class ChainApi {
+  abstract tipHeight(): Promise<number>;
+  /** Hash of the block at `height` (0 = genesis: which chain is this?). */
+  abstract blockHash(height: number): Promise<string>;
+  /** Confirmed transactions of an address, newest first, PAGE per call;
+   *  the next call passes the last txid seen. */
+  abstract addressTxsChain(address: string, lastSeenTxid?: string): Promise<EsploraTx[]>;
+  abstract addressTxsMempool(address: string): Promise<EsploraTx[]>;
+  abstract tx(txid: string): Promise<EsploraTx>;
+  abstract txStatus(txid: string): Promise<EsploraStatus>;
+  abstract blockTxids(hash: string): Promise<string[]>;
+  abstract rawUtxos(address: string): Promise<EsploraUtxo[]>;
+  abstract broadcast(rawHex: string): Promise<string>;
+  abstract fees(): Promise<Fees>;
+
+  async utxos(address: string): Promise<Utxo[]> {
+    const list = await this.rawUtxos(address);
+    return list.map((u) => ({ txid: u.txid, vout: u.vout, value: BigInt(u.value), confirmed: !!u.status?.confirmed }));
+  }
+
+  /** Recommended fee rate in lit/vB, clamped to something sane. */
+  async feeRate(): Promise<bigint> {
+    try {
+      const f = await this.fees();
+      const v = Math.ceil(f.halfHourFee ?? f.hourFee ?? f.fastestFee ?? Number(DEFAULT_FEE_RATE));
+      return BigInt(Math.min(500, Math.max(2, v)));
+    } catch {
+      return DEFAULT_FEE_RATE;
+    }
+  }
+}
+/** Esplora's page size for address/:addr/txs/chain. */
+export const PAGE = 25;
+
+/** An Esplora endpoint (mempool.space / Blockstream Esplora, as litecoinspace.org runs it). */
+export class Esplora extends ChainApi {
+  readonly base: string;
   readonly timeoutMs: number;
-  private chain = new Map<string, boolean>();
-  constructor(base: string, network: Network | null = null, timeoutMs = TIMEOUT_MS) {
-    this.bases = base.split(",").map((b) => b.trim().replace(/\/$/, "")).filter(Boolean);
-    if (this.bases.length === 0) throw new Error("no explorer endpoint");
-    this.network = network;
+  constructor(base: string, timeoutMs = TIMEOUT_MS) {
+    super();
+    this.base = base.trim().replace(/\/$/, "");
     this.timeoutMs = timeoutMs;
   }
 
-  get base(): string {
-    return this.bases[0];
-  }
-
-  /** Whether a fallback endpoint serves this chain: its genesis block says.
-   *  Only a positive match with the other chain rules it out — an endpoint
-   *  that cannot answer that question is left to fail on its own. */
-  private async sameChain(base: string): Promise<boolean> {
-    if (this.bases.length === 1 || !this.network) return true;
-    const known = this.chain.get(base);
-    if (known !== undefined) return known;
-    try {
-      const r = await fetch(`${base}/block-height/0`, { cache: "no-store", signal: AbortSignal.timeout(this.timeoutMs) });
-      const hash = (await r.text()).trim();
-      if (!/^[0-9a-f]{64}$/.test(hash)) return true;
-      const ok = hash !== GENESIS[this.network === "main" ? "test" : "main"];
-      this.chain.set(base, ok);
-      return ok;
-    } catch {
-      return true;
-    }
-  }
-
   private async request(path: string, init: RequestInit = {}): Promise<Response> {
-    let lastError: Error | null = null;
-    for (const [i, base] of this.bases.entries()) {
-      if (!(await this.sameChain(base))) continue;
-      try {
-        const r = await fetch(`${base}/${path}`, { ...init, cache: "no-store", signal: AbortSignal.timeout(this.timeoutMs) });
-        // the explorer, or the road to it, is down: the next endpoint may do
-        if (r.status >= 500 && i < this.bases.length - 1) {
-          lastError = new Error(`${path}: HTTP ${r.status} ${(await r.text()).slice(0, 120)}`);
-          continue;
-        }
-        return r;
-      } catch (e) {
-        lastError = new Error(`${path}: ${(e as Error).message}`);
-      }
+    try {
+      return await fetch(`${this.base}/${path}`, { ...init, cache: "no-store", signal: AbortSignal.timeout(this.timeoutMs) });
+    } catch (e) {
+      throw new ApiError(`${path}: ${(e as Error).message}`);
     }
-    throw lastError ?? new Error(`${path}: no explorer endpoint on this chain`);
   }
 
   private async get<T>(path: string): Promise<T> {
     const r = await this.request(path);
     const text = await r.text();
-    if (!r.ok) throw new Error(`${path}: HTTP ${r.status} ${text.slice(0, 120)}`);
+    if (!r.ok) throw new ApiError(`${path}: HTTP ${r.status} ${text.slice(0, 120)}`, r.status);
     try {
       return JSON.parse(text) as T;
     } catch {
@@ -125,6 +135,10 @@ export class Esplora {
 
   tipHeight(): Promise<number> {
     return this.get<number>("blocks/tip/height").then(Number);
+  }
+
+  blockHash(height: number): Promise<string> {
+    return this.get<string>(`block-height/${height}`).then((h) => String(h).trim());
   }
 
   /** Confirmed transactions of an address, newest first, 25 per page. */
@@ -148,9 +162,8 @@ export class Esplora {
     return this.get(`block/${hash}/txids`);
   }
 
-  async utxos(address: string): Promise<Utxo[]> {
-    const list = await this.get<EsploraUtxo[]>(`address/${address}/utxo`);
-    return list.map((u) => ({ txid: u.txid, vout: u.vout, value: BigInt(u.value), confirmed: !!u.status?.confirmed }));
+  rawUtxos(address: string): Promise<EsploraUtxo[]> {
+    return this.get(`address/${address}/utxo`);
   }
 
   async broadcast(rawHex: string): Promise<string> {
@@ -158,20 +171,18 @@ export class Esplora {
     const text = (await r.text()).trim();
     if (r.ok) return text.replace(/^"|"$/g, "");
     // relayed already (by an endpoint that then failed, or by an earlier try): that is a success
-    if (/already/i.test(text)) return parseTx(rawHex, this.network ?? "main").txid;
-    throw new Error(`broadcast rejected: ${text.slice(0, 200)}`);
+    if (/already/i.test(text)) return txidOf(rawHex);
+    throw new ApiError(`broadcast rejected: ${text.slice(0, 200)}`, r.status);
   }
 
-  /** Recommended fee rate in lit/vB, clamped to something sane. */
-  async feeRate(): Promise<bigint> {
-    try {
-      const f = await this.get<{ hourFee?: number; halfHourFee?: number; fastestFee?: number }>("v1/fees/recommended");
-      const v = Math.ceil(f.halfHourFee ?? f.hourFee ?? f.fastestFee ?? Number(DEFAULT_FEE_RATE));
-      return BigInt(Math.min(500, Math.max(2, v)));
-    } catch {
-      return DEFAULT_FEE_RATE;
-    }
+  fees(): Promise<Fees> {
+    return this.get("v1/fees/recommended");
   }
+}
+
+/** The id of a raw transaction (what a broadcast would have answered). */
+export function txidOf(rawHex: string): string {
+  return parseTx(rawHex, "main").txid; // the network only matters for addresses, not the id
 }
 
 const PUBKEY = /^0[23][0-9a-f]{64}$/;

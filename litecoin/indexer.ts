@@ -17,7 +17,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { PARAMS, replay, snapshot, type Network, type TxEvent } from "../web/lib/litecoin/ledger.ts";
-import { Esplora, PUBLIC_API, eventFromTx, pendingFromTx, type EsploraTx, type PendingTx } from "../web/lib/litecoin/esplora.ts";
+import { PUBLIC_API, eventFromTx, pendingFromTx, type ChainApi, type EsploraTx, type PendingTx } from "../web/lib/litecoin/esplora.ts";
+import { chainApi } from "../web/lib/litecoin/chain.ts";
 import { walletFromSecret } from "../web/lib/litecoin/tx.ts";
 
 const ROOT = import.meta.dirname;
@@ -66,7 +67,7 @@ function saveCache(c: Cache) {
 
 /** Walk the address history newest-first. A full walk refreshes everything;
  *  an incremental one stops at the first settled transaction it already has. */
-async function fetchTxs(api: Esplora, desk: string, cache: Cache, tip: number, full: boolean) {
+async function fetchTxs(api: ChainApi, desk: string, cache: Cache, tip: number, full: boolean) {
   const fresh: EsploraTx[] = [];
   let last: string | undefined;
   for (;;) {
@@ -90,7 +91,7 @@ async function fetchTxs(api: Esplora, desk: string, cache: Cache, tip: number, f
 }
 
 /** Block order matters when two instructions land in the same block. */
-async function placeInBlocks(api: Esplora, cache: Cache) {
+async function placeInBlocks(api: ChainApi, cache: Cache) {
   const byBlock = new Map<string, EsploraTx[]>();
   for (const tx of Object.values(cache.txs)) {
     const hash = tx.status.block_hash!;
@@ -117,7 +118,7 @@ let firstPass = true;
 /** One indexer pass: sync (unless told not to), replay, write the snapshot. */
 export async function pass(sync: boolean) {
   const desk = deskAddress();
-  const api = new Esplora(API, NETWORK);
+  const api = chainApi(API, NETWORK);
   const cache = loadCache(desk);
   let tip: number | null = null;
   let pending: PendingTx[] = [];

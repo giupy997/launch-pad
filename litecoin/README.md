@@ -177,10 +177,12 @@ sudo systemctl daemon-reload && sudo systemctl enable --now notus-desk-main
 sudo cp litecoin/deploy/Caddyfile /etc/caddy/Caddyfile && sudo systemctl reload caddy   # adds /main/state.json
 ```
 
-If the mainnet API answers 5xx from the server while it works elsewhere, it
-is the route: the unit reaches litecoinspace.org over IPv6 first
-(`NODE_OPTIONS=--dns-result-order=ipv6first`), since from some hosts only
-one address family gets through Cloudflare to their mainnet backend.
+litecoinspace.org's mainnet backend has had long outages (5xx and timeouts
+for everyone, or over one address family only — the unit reaches it over
+IPv6 first, `NODE_OPTIONS=--dns-result-order=ipv6first`). The unit therefore
+lists a Blockbook explorer after it in `NOTUS_LTC_API`, and the site should
+do the same in `LTC_API_UPSTREAM`, so neither the desk nor the wallets
+depend on one service.
 
 Fund the mainnet desk with a little LTC for payout fees (the `fund`
 instruction, or a plain payment you then leave as the sender's credit). On
@@ -201,16 +203,20 @@ address with a little LTC for payout fees; back the key file up; the
 process exposes only the snapshot, never the key.
 
 Needs Node ≥ 22.18 (runs the TypeScript directly). Environment variables:
-`NOTUS_LTC_NETWORK` (`test`, default, or `main`), `NOTUS_LTC_API` (an Esplora
-endpoint; default `https://litecoinspace.org/testnet/api`; several, comma
-separated, are tried in order when one is down, and one serving the other
-chain is skipped), `NOTUS_LTC_DESK`
+`NOTUS_LTC_NETWORK` (`test`, default, or `main`), `NOTUS_LTC_API` (the
+explorer: an Esplora endpoint, default `https://litecoinspace.org/testnet/api`,
+or a Blockbook one ending in `/api/v2` — Trezor's `https://ltc1.trezor.io/api/v2`,
+NowNodes with `NOTUS_LTC_API_KEY` — and several, comma separated, tried in
+order when one times out or answers 5xx; one serving the other chain is
+skipped), `NOTUS_LTC_DESK`
 (the desk address, for verifiers without the key), `NOTUS_LTC_STATE`,
 `NOTUS_LTC_CACHE`, `NOTUS_LTC_CONFIRMATIONS`; for the desk process also
 `PORT`, `NOTUS_LTC_INDEX_EVERY`, `NOTUS_LTC_PAYOUT_EVERY`. For the website:
 `LTC_STATE_URL` (the desk's snapshot URL), `NEXT_PUBLIC_LTC_NETWORK`,
-`LTC_API_UPSTREAM` (where `/api/ltc` forwards), `NEXT_PUBLIC_LTC_API` (to
-bypass the proxy).
+`LTC_API_UPSTREAM` (what `/api/ltc` reads the chain through, same syntax as
+`NOTUS_LTC_API`: Esplora, Blockbook or several in fallback — the proxy
+speaks Esplora to the browser whatever answers it; `LTC_API_KEY` for a
+Blockbook that wants one), `NEXT_PUBLIC_LTC_API` (to bypass the proxy).
 
 To verify the published ledger you need no key at all:
 
