@@ -12,10 +12,10 @@ const fmtM = (units: string) => `${(Number(units) / 1e8 / 1e6).toFixed(2)}M`;
 
 export default async function Image({ params }: { params: { ticker: string } }) {
   const ticker = decodeURIComponent(params.ticker).toUpperCase();
-  const [found, serif, italic] = await Promise.all([
+  const [found, regular, bold] = await Promise.all([
     readCoin(ticker),
-    fetch(`${SITE_URL}/fonts/InstrumentSerif-Regular.ttf`, { cache: "force-cache" }).then((r) => r.arrayBuffer()),
-    fetch(`${SITE_URL}/fonts/InstrumentSerif-Italic.ttf`, { cache: "force-cache" }).then((r) => r.arrayBuffer()),
+    fetch(`${SITE_URL}/fonts/Geist-Regular.ttf`, { cache: "force-cache" }).then((r) => r.arrayBuffer()),
+    fetch(`${SITE_URL}/fonts/Geist-Bold.ttf`, { cache: "force-cache" }).then((r) => r.arrayBuffer()),
   ]);
   const coin = found?.coin;
   const capLtc = coin ? spotPrice(coin) * 1_000_000_000 : 0;
@@ -34,7 +34,7 @@ export default async function Image({ params }: { params: { ticker: string } }) 
     : null;
   return new ImageResponse(
     (
-      <div style={{ width: "100%", height: "100%", display: "flex", background: "#07080b", color: "#f4f4f5", position: "relative", fontFamily: "Instrument Serif" }}>
+      <div style={{ width: "100%", height: "100%", display: "flex", background: "#07080b", color: "#f4f4f5", position: "relative", fontFamily: "Geist" }}>
         {/* the statue, lit from above, fading into the card (the renderer has no CSS masks: a gradient sits on top) */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
@@ -48,7 +48,7 @@ export default async function Image({ params }: { params: { ticker: string } }) 
         <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(7,8,11,0.7) 0%, rgba(7,8,11,0) 25%, rgba(7,8,11,0) 75%, rgba(7,8,11,0.8) 100%)" }} />
         <div style={{ position: "absolute", inset: 0, background: "radial-gradient(60% 50% at 30% 0%, rgba(255,255,255,0.12), transparent 70%)" }} />
         <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", padding: 64, width: "100%", height: "100%" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 28, letterSpacing: 8, color: "#b3b9c6" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 24, letterSpacing: 10, fontWeight: 700, color: "#b3b9c6" }}>
             <span>NOTUS</span>
             <span style={{ fontSize: 22, letterSpacing: 4, color: "#6b7383" }}>ON LITECOIN</span>
           </div>
@@ -62,7 +62,7 @@ export default async function Image({ params }: { params: { ticker: string } }) 
               </div>
             )}
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <div style={{ fontSize: 88, lineHeight: 0.95 }}>{coin?.name ?? `$${ticker}`}</div>
+              <div style={{ fontSize: 76, lineHeight: 1, letterSpacing: -2, fontWeight: 700 }}>{coin?.name ?? `$${ticker}`}</div>
               <div style={{ display: "flex", gap: 18, fontSize: 34, color: "#8b93a3", letterSpacing: 2 }}>
                 <span>${ticker}</span>
                 {coin?.graduated && <span>· graduated</span>}
@@ -72,19 +72,19 @@ export default async function Image({ params }: { params: { ticker: string } }) 
           <div style={{ display: "flex", gap: 56 }}>
             <div style={{ display: "flex", flexDirection: "column" }}>
               <span style={{ fontSize: 20, letterSpacing: 4, color: "#6b7383" }}>MARKET CAP</span>
-              <span style={{ fontSize: 48 }}>{coin ? `${cap} LTC` : "—"}</span>
+              <span style={{ fontSize: 44, fontWeight: 700, letterSpacing: -1 }}>{coin ? `${cap} LTC` : "—"}</span>
             </div>
             <div style={{ display: "flex", flexDirection: "column" }}>
               <span style={{ fontSize: 20, letterSpacing: 4, color: "#6b7383" }}>{coin?.graduated ? "IN THE POOL" : "IN THE CURVE"}</span>
-              <span style={{ fontSize: 48 }}>{coin ? `${(Number(coin.graduated ? coin.poolLit : coin.realLit) / 1e8).toFixed(3)} LTC` : "—"}</span>
+              <span style={{ fontSize: 44, fontWeight: 700, letterSpacing: -1 }}>{coin ? `${(Number(coin.graduated ? coin.poolLit : coin.realLit) / 1e8).toFixed(3)} LTC` : "—"}</span>
             </div>
             <div style={{ display: "flex", flexDirection: "column" }}>
               <span style={{ fontSize: 20, letterSpacing: 4, color: "#6b7383" }}>HOLDERS</span>
-              <span style={{ fontSize: 48 }}>{coin ? coin.holders : "—"}</span>
+              <span style={{ fontSize: 44, fontWeight: 700, letterSpacing: -1 }}>{coin ? coin.holders : "—"}</span>
             </div>
             <div style={{ display: "flex", flexDirection: "column" }}>
               <span style={{ fontSize: 20, letterSpacing: 4, color: "#6b7383" }}>{coin?.graduated ? "HELD" : "SOLD"}</span>
-              <span style={{ fontSize: 48 }}>{coin ? fmtM(coin.graduated ? String(1_000_000_000n * 100_000_000n - BigInt(coin.poolToken)) : coin.sold) : "—"}</span>
+              <span style={{ fontSize: 44, fontWeight: 700, letterSpacing: -1 }}>{coin ? fmtM(coin.graduated ? String(1_000_000_000n * 100_000_000n - BigInt(coin.poolToken)) : coin.sold) : "—"}</span>
             </div>
           </div>
         </div>
@@ -93,8 +93,8 @@ export default async function Image({ params }: { params: { ticker: string } }) 
     {
       ...size,
       fonts: [
-        { name: "Instrument Serif", data: serif, style: "normal", weight: 400 },
-        { name: "Instrument Serif Italic", data: italic, style: "italic", weight: 400 },
+        { name: "Geist", data: regular, style: "normal", weight: 400 },
+        { name: "Geist", data: bold, style: "normal", weight: 700 },
       ],
     }
   );

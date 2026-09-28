@@ -23,14 +23,6 @@ const geistMono = localFont({
   variable: "--font-geist-mono",
   weight: "100 900",
 });
-const instrumentSerif = localFont({
-  src: [
-    { path: "./fonts/InstrumentSerif-Regular.ttf", weight: "400", style: "normal" },
-    { path: "./fonts/InstrumentSerif-Italic.ttf", weight: "400", style: "italic" },
-  ],
-  variable: "--font-instrument-serif",
-  display: "swap",
-});
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") || "https://notuspad.com";
 const DESCRIPTION =
@@ -60,7 +52,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} ${instrumentSerif.variable} font-sans antialiased bg-ink text-marble min-h-screen`}
+        className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased bg-ink text-marble min-h-screen`}
       >
         <Providers initialState={initialState}>
           <header className="sticky top-0 z-30 glass border-x-0 border-t-0">
@@ -70,7 +62,7 @@ export default function RootLayout({
                   <LogoVideo className="h-9 w-9 rounded-full object-cover pointer-events-none select-none ring-1 ring-white/20 group-hover:ring-white/50 transition" />
                   <span className="absolute -inset-1 -z-10 rounded-full bg-white/10 blur-md opacity-0 group-hover:opacity-100 transition" />
                 </span>
-                <span className="display text-[22px] leading-none tracking-[0.18em] text-white">NOTUS</span>
+                <span className="font-mono text-lg font-bold leading-none tracking-[0.28em] text-white">NOTUS</span>
               </Link>
               <Nav />
               <div className="flex items-center gap-2 shrink-0">
@@ -84,7 +76,7 @@ export default function RootLayout({
           <footer className="mt-10 border-t border-white/[0.06]">
             <div className="mx-auto max-w-6xl px-4 sm:px-5 py-10 mb-16 md:mb-0 grid gap-6 md:grid-cols-[1fr_2fr]">
               <div className="space-y-2">
-                <div className="display text-2xl tracking-[0.18em] text-white">NOTUS</div>
+                <div className="font-mono text-xl font-bold tracking-[0.28em] text-white">NOTUS</div>
                 <div className="label">Litecoin · LitVM</div>
                 <div className="font-mono text-xs text-zinc-500">
                   {SOURCE_URL ? (

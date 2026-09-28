@@ -10,7 +10,6 @@
   --ink: 7 8 11;
   --marble: 244 244 245;
   --accent: 120 170 255;
-  --font-display: var(--font-instrument-serif);
 }
 
 html {
@@ -81,8 +80,9 @@ body::after {
   .label {
     @apply font-mono text-[10px] tracking-[0.2em] uppercase text-zinc-500;
   }
+  /* headlines: Geist, heavy and tight */
   .display {
-    @apply font-display tracking-[-0.01em];
+    @apply font-sans font-semibold tracking-[-0.035em];
   }
   .bar-fill {
     @apply h-full rounded-full bg-gradient-to-r from-zinc-200 via-white to-[rgb(var(--accent))] shadow-[0_0_12px_rgba(var(--accent),0.45)];

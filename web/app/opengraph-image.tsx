@@ -8,11 +8,11 @@ export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
 export default async function Image() {
-  const serif = await fetch(`${SITE_URL}/fonts/InstrumentSerif-Regular.ttf`, { cache: "force-cache" }).then((r) => r.arrayBuffer());
-  const italic = await fetch(`${SITE_URL}/fonts/InstrumentSerif-Italic.ttf`, { cache: "force-cache" }).then((r) => r.arrayBuffer());
+  const regular = await fetch(`${SITE_URL}/fonts/Geist-Regular.ttf`, { cache: "force-cache" }).then((r) => r.arrayBuffer());
+  const bold = await fetch(`${SITE_URL}/fonts/Geist-Bold.ttf`, { cache: "force-cache" }).then((r) => r.arrayBuffer());
   return new ImageResponse(
     (
-      <div style={{ width: "100%", height: "100%", display: "flex", background: "#07080b", color: "#f4f4f5", position: "relative", fontFamily: "Instrument Serif" }}>
+      <div style={{ width: "100%", height: "100%", display: "flex", background: "#07080b", color: "#f4f4f5", position: "relative", fontFamily: "Geist" }}>
         {/* the statue, lit from above, fading into the card (the renderer has no CSS masks: a gradient sits on top) */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
@@ -26,13 +26,13 @@ export default async function Image() {
         <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(7,8,11,0.7) 0%, rgba(7,8,11,0) 25%, rgba(7,8,11,0) 75%, rgba(7,8,11,0.8) 100%)" }} />
         <div style={{ position: "absolute", inset: 0, background: "radial-gradient(60% 50% at 30% 0%, rgba(255,255,255,0.12), transparent 70%)" }} />
         <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", padding: 64, width: "100%", height: "100%" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 14, fontSize: 30, letterSpacing: 8 }}>NOTUS</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 14, fontSize: 26, letterSpacing: 10, fontWeight: 700 }}>NOTUS</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-            <div style={{ display: "flex", flexDirection: "column", fontSize: 96, lineHeight: 0.95, letterSpacing: -1 }}>
+            <div style={{ display: "flex", flexDirection: "column", fontSize: 84, lineHeight: 1, letterSpacing: -3, fontWeight: 700 }}>
               <span>Launch your coin</span>
               <div style={{ display: "flex" }}>
                 <span style={{ whiteSpace: "pre" }}>{"on "}</span>
-                <span style={{ fontFamily: "Instrument Serif Italic", color: "#d6dae2" }}>Litecoin</span>
+                <span style={{ fontWeight: 400, color: "#b3b9c6" }}>Litecoin</span>
                 <span>.</span>
               </div>
             </div>
@@ -53,8 +53,8 @@ export default async function Image() {
     {
       ...size,
       fonts: [
-        { name: "Instrument Serif", data: serif, style: "normal", weight: 400 },
-        { name: "Instrument Serif Italic", data: italic, style: "italic", weight: 400 },
+        { name: "Geist", data: regular, style: "normal", weight: 400 },
+        { name: "Geist", data: bold, style: "normal", weight: 700 },
       ],
     }
   );

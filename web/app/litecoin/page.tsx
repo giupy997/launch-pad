@@ -31,9 +31,9 @@ export default function LitecoinExplore() {
             <span className="h-1.5 w-1.5 rounded-full bg-accent shadow-[0_0_10px_rgba(var(--accent),0.9)]" />
             {LTC_NETWORK === "main" ? "Litecoin mainnet · live" : "Litecoin testnet"}
           </div>
-          <h1 className="display fade-up text-5xl sm:text-7xl leading-[0.95] text-white glow-text text-balance">
+          <h1 className="display fade-up text-4xl sm:text-6xl leading-[1.02] text-white glow-text text-balance">
             Launch your coin <br className="hidden sm:block" />
-            on <em className="text-zinc-200">Litecoin</em>.
+            on <span className="font-light text-zinc-300">Litecoin</span>.
           </h1>
           <p className="fade-up-2 max-w-xl text-base sm:text-lg leading-relaxed text-zinc-400">
             Litecoin has no smart contracts, so a coin here begins as an OP_RETURN: one desk address, plain Litecoin
