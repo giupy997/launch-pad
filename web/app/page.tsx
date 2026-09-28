@@ -37,9 +37,10 @@ export default function Explore() {
     <div className="space-y-10">
       <NotDeployedNotice />
       <section className="relative overflow-hidden rounded-3xl border border-white/10 px-6 py-14 sm:px-12 sm:py-20 card">
+        {/* the light through the open head; black dissolves into the card */}
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-y-0 right-0 w-[70%] sm:w-[55%] bg-[url('/profile-bg.jpg')] bg-cover bg-[center_20%] opacity-[0.28] mix-blend-screen"
+          className="pointer-events-none absolute inset-y-0 right-0 w-[70%] sm:w-[55%] bg-[url('/art/statue-beam.webp')] bg-cover bg-[45%_0%] sm:bg-[center_top] opacity-60 sm:opacity-75 mix-blend-screen"
           style={{ maskImage: "linear-gradient(to left, rgba(0,0,0,0.9), transparent 90%)", WebkitMaskImage: "linear-gradient(to left, rgba(0,0,0,0.9), transparent 90%)" }}
         />
         <div className="relative max-w-2xl space-y-6">

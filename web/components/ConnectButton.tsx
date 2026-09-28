@@ -39,18 +39,46 @@ export function ConnectButton() {
   }
 
   if (!isConnected) {
+    // The generic injected connector stands in for whatever extension is
+    // installed; once EIP-6963 has named them, it only duplicates the list.
+    const named = connectors.some((c) => c.type === "injected" && c.id !== "injected");
+    const choices = connectors.filter((c) => !(named && c.id === "injected"));
+    const pick = (c: (typeof connectors)[number]) => {
+      setOpen(false);
+      connect({ connector: c, chainId: appChain.id });
+    };
     return (
-      <button
-        onClick={() => connect({ connector: connectors[0] })}
-        disabled={isPending || connectors.length === 0}
-        className="btn-primary px-4 sm:px-5 py-2 text-sm disabled:opacity-50 whitespace-nowrap"
-      >
-        {isPending ? "Connecting…" : (
-          <>
-            Connect<span className="hidden sm:inline"> wallet</span>
-          </>
+      <div ref={ref} className="relative">
+        <button
+          onClick={() => (choices.length === 1 ? pick(choices[0]) : setOpen((o) => !o))}
+          disabled={isPending || choices.length === 0}
+          className="btn-primary px-4 sm:px-5 py-2 text-sm disabled:opacity-50 whitespace-nowrap"
+        >
+          {isPending ? "Connecting…" : (
+            <>
+              Connect<span className="hidden sm:inline"> wallet</span>
+            </>
+          )}
+        </button>
+        {open && choices.length > 1 && (
+          <div className="absolute right-0 top-full mt-2 w-64 rounded-xl input p-1.5 z-30 shadow-lg shadow-black/60">
+            {choices.map((c) => (
+              <MenuItem key={c.uid} onClick={() => pick(c)}>
+                <span className="flex items-center gap-2.5">
+                  {c.icon ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={c.icon} alt="" className="h-4 w-4 rounded" />
+                  ) : (
+                    <span className="h-4 w-4 rounded-full border border-white/30" />
+                  )}
+                  <span>{c.id === "injected" ? "Browser wallet" : c.name}</span>
+                  {c.type === "walletConnect" && <span className="ml-auto text-[10px] text-zinc-500">mobile · QR</span>}
+                </span>
+              </MenuItem>
+            ))}
+          </div>
         )}
-      </button>
+      </div>
     );
   }
 

@@ -13,20 +13,23 @@ export default async function Image() {
   return new ImageResponse(
     (
       <div style={{ width: "100%", height: "100%", display: "flex", background: "#07080b", color: "#f4f4f5", position: "relative", fontFamily: "Geist" }}>
-        {/* the statue, lit from above, fading into the card (the renderer has no CSS masks: a gradient sits on top) */}
+        {/* the profile under its crown, looking at the words (the renderer has no CSS masks: gradients sit on top) */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={`${SITE_URL}/profile-bg.jpg`}
+          src={`${SITE_URL}/art/og-profile.jpg`}
           alt=""
-          width={820}
-          height={820}
-          style={{ position: "absolute", right: -70, top: -90, width: 820, height: 820, objectFit: "cover", opacity: 0.55 }}
+          width={600}
+          height={763}
+          style={{ position: "absolute", right: 0, top: -30, width: 600, height: 763 }}
         />
-        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, #07080b 42%, rgba(7,8,11,0.85) 56%, rgba(7,8,11,0.2) 80%, rgba(7,8,11,0) 100%)" }} />
-        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(7,8,11,0.7) 0%, rgba(7,8,11,0) 25%, rgba(7,8,11,0) 75%, rgba(7,8,11,0.8) 100%)" }} />
-        <div style={{ position: "absolute", inset: 0, background: "radial-gradient(60% 50% at 30% 0%, rgba(255,255,255,0.12), transparent 70%)" }} />
+        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, #07080b 40%, rgba(7,8,11,0.8) 52%, rgba(7,8,11,0.15) 68%, rgba(7,8,11,0) 100%)" }} />
+        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(7,8,11,0.35) 0%, rgba(7,8,11,0) 22%, rgba(7,8,11,0) 68%, rgba(7,8,11,0.92) 100%)" }} />
+        <div style={{ position: "absolute", inset: 0, background: "radial-gradient(60% 50% at 30% 0%, rgba(255,255,255,0.1), transparent 70%)" }} />
         <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", padding: 64, width: "100%", height: "100%" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 14, fontSize: 26, letterSpacing: 10, fontWeight: 700 }}>NOTUS</div>
+          <div style={{ display: "flex", alignItems: "center" }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={`${SITE_URL}/art/wordmark.png`} alt="Notus" width={155} height={28} style={{ width: 155, height: 28 }} />
+          </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
             <div style={{ display: "flex", flexDirection: "column", fontSize: 84, lineHeight: 1, letterSpacing: -3, fontWeight: 700 }}>
               <span>Launch your coin</span>
@@ -36,7 +39,7 @@ export default async function Image() {
                 <span>.</span>
               </div>
             </div>
-            <div style={{ fontSize: 28, color: "#8b93a3", maxWidth: 720, lineHeight: 1.3 }}>
+            <div style={{ fontSize: 28, color: "#8b93a3", maxWidth: 600, lineHeight: 1.3 }}>
               No smart contracts: an OP_RETURN ledger, a bonding curve, a locked pool. Coins migrate to LitVM automatically at mainnet.
             </div>
           </div>

@@ -20,10 +20,10 @@ export default function LitecoinExplore() {
     <div className="space-y-10">
       <FrozenNotice state={state} />
       <section className="relative overflow-hidden rounded-3xl border border-white/10 px-6 py-14 sm:px-12 sm:py-20 card">
-        {/* the statue, lit from above, dissolving into the page */}
+        {/* the profile under its crown, looking at the words; black dissolves into the card */}
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-y-0 right-0 w-[70%] sm:w-[55%] bg-[url('/profile-bg.jpg')] bg-cover bg-[center_20%] opacity-[0.28] mix-blend-screen"
+          className="pointer-events-none absolute inset-y-0 right-0 w-[70%] sm:w-[55%] bg-[url('/art/statue-profile.webp')] bg-cover bg-[30%_0%] sm:bg-[center_top] opacity-60 sm:opacity-75 mix-blend-screen"
           style={{ maskImage: "linear-gradient(to left, rgba(0,0,0,0.9), transparent 90%)", WebkitMaskImage: "linear-gradient(to left, rgba(0,0,0,0.9), transparent 90%)" }}
         />
         <div className="relative max-w-2xl space-y-6">
@@ -116,6 +116,41 @@ export default function LitecoinExplore() {
           {coins.map((c) => (
             <CoinCard key={c.ticker} coin={c} usd={usd} />
           ))}
+        </div>
+      </section>
+
+      {/* the bust in the water: where the coins go next */}
+      <section className="relative overflow-hidden rounded-3xl border border-white/10 card">
+        {/* phones stack it, the statue above the words; wider screens put them side by side */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-0 h-72 bg-[url('/art/statue-water.webp')] bg-cover bg-[center_30%] opacity-80 mix-blend-screen sm:hidden"
+          style={{ maskImage: "linear-gradient(to bottom, rgba(0,0,0,0.95) 45%, transparent 100%)", WebkitMaskImage: "linear-gradient(to bottom, rgba(0,0,0,0.95) 45%, transparent 100%)" }}
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 left-0 hidden w-[58%] bg-[url('/art/statue-water.webp')] bg-cover bg-[center_42%] opacity-75 mix-blend-screen sm:block"
+          style={{ maskImage: "linear-gradient(to right, rgba(0,0,0,0.95) 55%, transparent 100%)", WebkitMaskImage: "linear-gradient(to right, rgba(0,0,0,0.95) 55%, transparent 100%)" }}
+        />
+        <div className="relative max-w-xl space-y-5 px-6 pb-12 pt-56 sm:ml-[46%] sm:px-12 sm:py-20">
+          <div className="pill">Road to LitVM</div>
+          <h2 className="display text-3xl sm:text-5xl leading-[1.05] text-white text-balance">
+            Carved on Litecoin.
+            <br />
+            Carried to LitVM.
+          </h2>
+          <p className="text-sm sm:text-base leading-relaxed text-zinc-400">
+            A coin here is a set of Litecoin transactions anyone can replay. When LitVM mainnet goes live, the ledger is
+            snapshotted and every coin is recreated there: same holders, same price, its pool on a DEX.
+          </p>
+          <div className="flex flex-wrap gap-3 pt-1">
+            <Link href="/litecoin/ledger" className="btn-ghost px-5 py-2.5 text-sm">
+              Read the ledger
+            </Link>
+            <Link href="/" className="btn-ghost px-5 py-2.5 text-sm">
+              Notus on LitVM
+            </Link>
+          </div>
         </div>
       </section>
     </div>

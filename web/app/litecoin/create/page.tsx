@@ -199,7 +199,17 @@ export default function LitecoinCreate() {
       </div>
 
       <aside className="order-1 lg:order-2">
-        <div className="lg:sticky lg:top-24 card p-5 space-y-4">
+        <div className="lg:sticky lg:top-24 space-y-4">
+        {/* the head with its astrolabe, above the summary */}
+        <div className="relative hidden h-44 overflow-hidden rounded-2xl border border-white/10 card lg:block">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 bg-[url('/art/statue-orbit.webp')] bg-cover bg-[center_18%] opacity-90 mix-blend-screen"
+          />
+          <div aria-hidden className="pointer-events-none absolute inset-0 bg-gradient-to-t from-ink/90 via-transparent to-transparent" />
+          <div className="absolute bottom-3 left-4 label">See the next rotation</div>
+        </div>
+        <div className="card p-5 space-y-4">
           <div className="flex items-center gap-3">
             <TokenLogo uri={logoOk ? logoUrl : ""} symbol={ticker || "?"} size={56} />
             <div className="min-w-0">
@@ -225,6 +235,7 @@ export default function LitecoinCreate() {
             The desk holds the LTC sent to the curve and the ledger is the only record of balances.{" "}
             <Link href="/litecoin/ledger" className="underline">Check the arithmetic.</Link>
           </p>
+        </div>
         </div>
       </aside>
     </div>

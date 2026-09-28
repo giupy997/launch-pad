@@ -35,21 +35,22 @@ export default async function Image({ params }: { params: { ticker: string } }) 
   return new ImageResponse(
     (
       <div style={{ width: "100%", height: "100%", display: "flex", background: "#07080b", color: "#f4f4f5", position: "relative", fontFamily: "Geist" }}>
-        {/* the statue, lit from above, fading into the card (the renderer has no CSS masks: a gradient sits on top) */}
+        {/* the light through the open head, faint behind the coin (the renderer has no CSS masks: gradients sit on top) */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={`${SITE_URL}/profile-bg.jpg`}
+          src={`${SITE_URL}/art/og-beam.jpg`}
           alt=""
-          width={820}
-          height={820}
-          style={{ position: "absolute", right: -70, top: -90, width: 820, height: 820, objectFit: "cover", opacity: 0.55 }}
+          width={640}
+          height={814}
+          style={{ position: "absolute", right: -40, top: -60, width: 640, height: 814, opacity: 0.55 }}
         />
-        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, #07080b 42%, rgba(7,8,11,0.85) 56%, rgba(7,8,11,0.2) 80%, rgba(7,8,11,0) 100%)" }} />
-        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(7,8,11,0.7) 0%, rgba(7,8,11,0) 25%, rgba(7,8,11,0) 75%, rgba(7,8,11,0.8) 100%)" }} />
-        <div style={{ position: "absolute", inset: 0, background: "radial-gradient(60% 50% at 30% 0%, rgba(255,255,255,0.12), transparent 70%)" }} />
+        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, #07080b 38%, rgba(7,8,11,0.85) 52%, rgba(7,8,11,0.25) 72%, rgba(7,8,11,0.05) 100%)" }} />
+        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(7,8,11,0.5) 0%, rgba(7,8,11,0) 22%, rgba(7,8,11,0) 62%, rgba(7,8,11,0.92) 100%)" }} />
+        <div style={{ position: "absolute", inset: 0, background: "radial-gradient(60% 50% at 30% 0%, rgba(255,255,255,0.1), transparent 70%)" }} />
         <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", padding: 64, width: "100%", height: "100%" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 24, letterSpacing: 10, fontWeight: 700, color: "#b3b9c6" }}>
-            <span>NOTUS</span>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={`${SITE_URL}/art/wordmark.png`} alt="Notus" width={133} height={24} style={{ width: 133, height: 24 }} />
             <span style={{ fontSize: 22, letterSpacing: 4, color: "#6b7383" }}>ON LITECOIN</span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 36 }}>

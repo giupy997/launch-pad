@@ -32,7 +32,7 @@ export default function ProfilePage() {
       <div className="text-center py-20 space-y-4">
       <div
         aria-hidden
-        className="fixed inset-0 -z-10 pointer-events-none bg-[url('/profile-bg.jpg')] bg-cover bg-center opacity-25"
+        className="fixed inset-0 -z-10 pointer-events-none bg-[url('/art/statue-beam.webp')] bg-cover bg-top opacity-20"
       />
 
         <h1 className="display text-4xl text-white">Profile</h1>
@@ -65,7 +65,7 @@ export default function ProfilePage() {
     <div className="space-y-12">
       <div
         aria-hidden
-        className="fixed inset-0 -z-10 pointer-events-none bg-[url('/profile-bg.jpg')] bg-cover bg-center opacity-25"
+        className="fixed inset-0 -z-10 pointer-events-none bg-[url('/art/statue-beam.webp')] bg-cover bg-top opacity-20"
       />
 
       <section className="flex items-center justify-between flex-wrap gap-4">

@@ -62,7 +62,8 @@ export default function RootLayout({
                   <LogoVideo className="h-9 w-9 rounded-full object-cover pointer-events-none select-none ring-1 ring-white/20 group-hover:ring-white/50 transition" />
                   <span className="absolute -inset-1 -z-10 rounded-full bg-white/10 blur-md opacity-0 group-hover:opacity-100 transition" />
                 </span>
-                <span className="font-mono text-lg font-bold leading-none tracking-[0.28em] text-white">NOTUS</span>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/art/wordmark.png" alt="Notus" draggable={false} className="h-[17px] sm:h-5 w-auto select-none opacity-90 group-hover:opacity-100 transition" />
               </Link>
               <Nav />
               <div className="flex items-center gap-2 shrink-0">
@@ -76,7 +77,8 @@ export default function RootLayout({
           <footer className="mt-10 border-t border-white/[0.06]">
             <div className="mx-auto max-w-6xl px-4 sm:px-5 py-10 mb-16 md:mb-0 grid gap-6 md:grid-cols-[1fr_2fr]">
               <div className="space-y-2">
-                <div className="font-mono text-xl font-bold tracking-[0.28em] text-white">NOTUS</div>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/art/wordmark.png" alt="Notus" draggable={false} className="h-6 w-auto select-none" />
                 <div className="label">Litecoin · LitVM</div>
                 <div className="font-mono text-xs text-zinc-500">
                   {SOURCE_URL ? (

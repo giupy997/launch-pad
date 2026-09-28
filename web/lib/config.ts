@@ -1,6 +1,7 @@
 import { defineChain } from "viem";
 import { mainnet, sepolia } from "viem/chains";
 import { cookieStorage, createConfig, createStorage, http, injected } from "wagmi";
+import { walletConnect } from "wagmi/connectors";
 
 export const giwaSepolia = defineChain({
   id: 91342,
@@ -217,13 +218,30 @@ export const L1_STANDARD_BRIDGE: `0x${string}` =
 // parallel requests come back in a fraction of the time.
 const transport = () => http(undefined, { batch: { batchSize: 30, wait: 16 } });
 
+/** WalletConnect (mobile wallets, over a QR code or a deep link) needs a Reown
+ *  Cloud project id (cloud.reown.com, free). Without one only wallets injected
+ *  into the browser connect. */
+export const WC_PROJECT_ID = process.env.NEXT_PUBLIC_WC_PROJECT_ID?.trim() || "";
+const SITE = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") || "https://notuspad.com";
+
 export const config = createConfig({
   // Cookie-backed state + ssr: the server renders with the persisted chain,
   // so selection survives reloads without hydration mismatches.
   ssr: true,
   storage: createStorage({ storage: cookieStorage }),
   chains: [litvmTestnet, giwaSepolia, robinhood, sepolia, mainnet], // the first is the default before a wallet connects
-  connectors: [injected()],
+  connectors: [
+    injected(),
+    ...(WC_PROJECT_ID
+      ? [
+          walletConnect({
+            projectId: WC_PROJECT_ID,
+            showQrModal: true,
+            metadata: { name: "Notus", description: "Token launchpad on Litecoin and LitVM", url: SITE, icons: [`${SITE}/icon.png`] },
+          }),
+        ]
+      : []),
+  ],
   batch: { multicall: { wait: 16 } },
   transports: {
     [giwaSepolia.id]: transport(),
