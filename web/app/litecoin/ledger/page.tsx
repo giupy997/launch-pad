@@ -2,6 +2,7 @@
 
 import { LTC_NETWORK, addressLink, fmtLtc, shortAddr, txLink, useLitecoinState } from "@/lib/litecoin/client";
 import { Copyable } from "@/components/litecoin/Copyable";
+import { CLONE_LINE } from "@/lib/site";
 
 export default function LitecoinLedger() {
   const { data: state } = useLitecoinState();
@@ -43,11 +44,18 @@ export default function LitecoinLedger() {
         )}
         <details className="text-xs text-zinc-500">
           <summary className="cursor-pointer text-zinc-400">How to rebuild this ledger</summary>
-          <pre className="mt-2 overflow-x-auto rounded-lg border border-zinc-800 p-3 font-mono text-[11px] leading-relaxed text-zinc-400">{`git clone https://github.com/giupy997/launchpadgiwa && cd launchpadgiwa
+          {CLONE_LINE ? (
+            <pre className="mt-2 overflow-x-auto rounded-lg border border-zinc-800 p-3 font-mono text-[11px] leading-relaxed text-zinc-400">{`${CLONE_LINE}
 (cd web && npm install)
 # reads every transaction of the desk from litecoinspace.org (or NOTUS_LTC_API=<your Esplora/electrs>),
 # replays web/lib/litecoin/ledger.ts and prints the state root:
 NOTUS_LTC_DESK=${state.desk.address ?? "<desk address>"} node litecoin/indexer.ts`}</pre>
+          ) : (
+            <p className="mt-2 text-zinc-500">
+              The ledger is a pure function of the desk&apos;s transactions on Litecoin: the code that replays them and prints these
+              state roots is published at launch, so anyone can rerun it against the chain and compare.
+            </p>
+          )}
         </details>
       </section>
 

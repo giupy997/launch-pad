@@ -230,6 +230,10 @@ skipped), `NOTUS_LTC_DESK`
 `NOTUS_LTC_API`: Esplora, Blockbook or several in fallback — the proxy
 speaks Esplora to the browser whatever answers it; `LTC_API_KEY` for a
 Blockbook that wants one), `NEXT_PUBLIC_LTC_API` (to bypass the proxy),
+`NEXT_PUBLIC_SOURCE_URL` (the public repository, e.g.
+`https://github.com/giupy997/launch-pad`: with it the footer links the
+source and the ledger pages print the rebuild commands; unset while the
+repository is private, the site says the code is published at launch),
 `PINATA_JWT` (optional). The deploy and coin pages offer a logo upload:
 the image is squared and compressed in the browser and kept by the site —
 on Netlify in the site's own blob store, served at `/i/<id>` (nothing to

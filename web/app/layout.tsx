@@ -6,6 +6,7 @@ import "./globals.css";
 import { config } from "@/lib/config";
 import { Providers } from "./providers";
 import { HeaderWallet } from "@/components/HeaderWallet";
+import { SOURCE_URL } from "@/lib/site";
 import { ChainSwitcher } from "@/components/ChainSwitcher";
 import { Nav } from "@/components/Nav";
 import { LogoVideo } from "@/components/LogoVideo";
@@ -58,15 +59,15 @@ export default function RootLayout({
           <footer className="border-t border-zinc-900">
             <div className="mx-auto max-w-5xl px-4 py-8 mb-14 md:mb-0 text-xs text-zinc-600 font-mono tracking-wide">
               NOTUS · MULTICHAIN ·{" "}
-              <a
-                className="underline hover:text-zinc-300"
-                href="https://github.com/giupy997/launchpadgiwa"
-                target="_blank"
-              >
-                SOURCE
-              </a>
+              {SOURCE_URL ? (
+                <a className="underline hover:text-zinc-300" href={SOURCE_URL} target="_blank">
+                  SOURCE
+                </a>
+              ) : (
+                <span title="The code is published at launch">SOURCE AT LAUNCH</span>
+              )}
               <p className="mt-2 normal-case tracking-normal font-sans text-zinc-700">
-                Notus is an independent, open-source token launchpad. It is not
+                Notus is an independent token launchpad{SOURCE_URL ? ", open source" : "; its code is published at launch"}. It is not
                 affiliated with, endorsed by, or operated by Robinhood Markets,
                 GIWA, Dunamu, Uniswap, Zcash, the Electric Coin Company, Litecoin or the Litecoin Foundation — their names identify the public
                 blockchain networks and protocols this app connects to.

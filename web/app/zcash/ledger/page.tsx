@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { fmtZec, shortKey, useZcashState } from "@/lib/zcash/client";
+import { CLONE_LINE } from "@/lib/site";
 
 export default function ZcashLedger() {
   const { data: state } = useZcashState();
@@ -37,13 +38,15 @@ export default function ZcashLedger() {
         <Copyable value={state.desk.address ?? "—"} />
         <Label>Viewing key — read every memo yourself (it cannot spend)</Label>
         <Copyable value={state.desk.ufvk ?? "—"} />
-        <details className="text-xs text-zinc-500">
-          <summary className="cursor-pointer text-zinc-400">How to rebuild this ledger</summary>
-          <pre className="mt-2 overflow-x-auto rounded-lg border border-zinc-800 p-3 font-mono text-[11px] leading-relaxed text-zinc-400">{`git clone https://github.com/giupy997/launchpadgiwa && cd launchpadgiwa
+        {CLONE_LINE && (
+          <details className="text-xs text-zinc-500">
+            <summary className="cursor-pointer text-zinc-400">How to rebuild this ledger</summary>
+            <pre className="mt-2 overflow-x-auto rounded-lg border border-zinc-800 p-3 font-mono text-[11px] leading-relaxed text-zinc-400">{`${CLONE_LINE}
 # build zcash-devtool into zcash/tool, then a view-only wallet from the key above:
 zcash-devtool wallet -w zcash/desk init-fvk --name check --fvk <viewing key> --birthday ${state.desk.birthday ?? "<desk birthday>"}
 node zcash/indexer.ts        # syncs, replays web/lib/zcash/ledger.ts, prints the state root`}</pre>
-        </details>
+          </details>
+        )}
       </section>
 
       <section>
