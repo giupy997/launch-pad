@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { CURVE_SUPPLY } from "@/lib/litecoin/ledger";
 import { LTC_NETWORK, fmtLtc, fmtMcap, marketCapLtc, shortAddr, txLink, useLitecoinState, useLtcPrice, type LCoin } from "@/lib/litecoin/client";
+import { FrozenNotice } from "@/components/litecoin/FrozenNotice";
 import { TokenLogo } from "@/components/TokenLogo";
 
 export default function LitecoinExplore() {
@@ -17,6 +18,7 @@ export default function LitecoinExplore() {
 
   return (
     <div className="space-y-10">
+      <FrozenNotice state={state} />
       <section className="text-center space-y-4 py-6">
         <h1 className="font-mono text-3xl sm:text-4xl font-bold tracking-[0.15em] uppercase leading-snug">
           Launch your coin

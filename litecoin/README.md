@@ -95,7 +95,11 @@ coin on this ledger can move over with its holders and its price:
 - **Freeze.** `NOTUS_LTC_FREEZE=<height>` on the indexer: past that block
   the ledger takes no deploy, buy, sell, send or logo (the LTC they carry is
   credited back); claims and payouts keep working, so the desk settles what
-  it owes on Litecoin. The frozen state root is what gets re-created.
+  it owes on Litecoin. The frozen state root is what gets re-created. The
+  site shows the freeze on every Litecoin page and sends trading to LitVM:
+  publish `web/public/litecoin/migrated.json` (`{ chainId, launchpad,
+  tokens: { TICKER: 0x… } }`, from the migration script's `symbol -> token`
+  lines) and each coin page links straight to its LitVM token.
 - **The file.** `node litecoin/migration-snapshot.ts` turns the frozen
   snapshot into `litecoin/migration/<network>-<height>.json`: per coin the
   curve (virtual and real reserve, sold — for a graduated coin the pool's

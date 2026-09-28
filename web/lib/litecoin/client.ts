@@ -38,6 +38,8 @@ export type LPayout = {
 };
 export type LState = {
   protocol: string; network: Network; height: number; stateRoot: string | null; txsRead: number;
+  /** Set once the ledger is frozen for the migration to LitVM: no more trading here. */
+  freezeHeight?: number | null;
   treasuryLit: string; liabilitiesLit: string; coins: LCoin[];
   balances: Record<string, Record<string, string>>; claimable: Record<string, string>;
   payouts: LPayout[]; trades: LTrade[];
@@ -224,6 +226,23 @@ export function fmtCoins(units: bigint | string): string {
   if (n >= 1e6) return (n / 1e6).toFixed(2) + "M";
   if (n >= 1e3) return (n / 1e3).toFixed(2) + "k";
   return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
+}
+
+/** Where the migrated coins live on LitVM, published with the site after the
+ *  migration as /litecoin/migrated.json (absent until then). */
+export type Migrated = { chainId: number; launchpad: string; tokens: Record<string, `0x${string}`> };
+export function useMigrated() {
+  return useQuery({
+    queryKey: ["ltc-migrated"],
+    queryFn: async (): Promise<Migrated | null> => {
+      try {
+        const r = await fetch("/litecoin/migrated.json");
+        if (r.ok) return (await r.json()) as Migrated;
+      } catch {}
+      return null;
+    },
+    staleTime: 5 * 60_000,
+  });
 }
 
 /** LTC in fiat, from the site (five-minute cache); null while unknown. */

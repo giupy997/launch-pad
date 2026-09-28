@@ -9,6 +9,7 @@ import { NeedsLtcWallet } from "@/components/litecoin/Wallet";
 import { TokenLogo } from "@/components/TokenLogo";
 import { Copyable } from "@/components/litecoin/Copyable";
 import { LogoUpload } from "@/components/litecoin/LogoUpload";
+import { FrozenNotice } from "@/components/litecoin/FrozenNotice";
 import { PriceChart } from "@/components/PriceChart";
 
 const URL_OK = /^(https?:\/\/|ipfs:\/\/)\S{1,300}$/;
@@ -133,8 +134,14 @@ export default function LitecoinCoinPage({ params }: { params: { ticker: string 
       </div>
 
       <div className="order-1 lg:order-2 space-y-4">
-        <TradeBox coin={coin} state={state} />
-        <CreatorPanel coin={coin} state={state} />
+        {state.freezeHeight ? (
+          <FrozenNotice state={state} ticker={coin.ticker} />
+        ) : (
+          <>
+            <TradeBox coin={coin} state={state} />
+            <CreatorPanel coin={coin} state={state} />
+          </>
+        )}
       </div>
     </div>
   );

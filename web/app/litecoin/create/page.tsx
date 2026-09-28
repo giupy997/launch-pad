@@ -9,6 +9,7 @@ import { NeedsLtcWallet } from "@/components/litecoin/Wallet";
 import { TokenLogo } from "@/components/TokenLogo";
 import { Copyable } from "@/components/litecoin/Copyable";
 import { LogoUpload } from "@/components/litecoin/LogoUpload";
+import { FrozenNotice } from "@/components/litecoin/FrozenNotice";
 
 const inputCls =
   "w-full rounded-lg bg-black border border-zinc-700 px-3 py-2 text-sm focus:border-white outline-none placeholder:text-zinc-600";
@@ -37,7 +38,8 @@ export default function LitecoinCreate() {
   const nameFits = memoBytes(bare) <= MEMO_MAX_BYTES;
   const logoFits = memoBytes(withLogo) <= MEMO_MAX_BYTES;
   const desk = state?.desk.address ?? null;
-  const valid = tickerOk && !taken && name.trim().length > 0 && nameFits && logoOk && !!address && !!desk;
+  const frozen = !!state?.freezeHeight;
+  const valid = tickerOk && !taken && name.trim().length > 0 && nameFits && logoOk && !!address && !!desk && !frozen;
   const est = devBuyLit > 0n
     ? quoteBuy({ vLit: P.virtualLit, vToken: VIRTUAL_TOKEN, realLit: 0n, sold: 0n, graduated: false, poolLit: 0n, poolToken: 0n }, devBuyLit).tokensOut
     : 0n;
@@ -54,6 +56,7 @@ export default function LitecoinCreate() {
         </div>
 
         {ready && !address && <NeedsLtcWallet />}
+        <FrozenNotice state={state} />
         {state && !desk && (
           <p className="rounded-xl border border-dashed border-zinc-700 p-3 text-xs text-zinc-400">
             The desk is not live yet — deploys open once the indexer publishes its address.
