@@ -10,6 +10,7 @@
 //   node litecoin/migration-snapshot.ts                    from web/public/litecoin/state.json
 //   node litecoin/migration-snapshot.ts --vault 0x...      unresolved holders' coins go to this address
 //   node litecoin/migration-snapshot.ts --allow-unfrozen   for a dry run on a live ledger
+//   node litecoin/migration-snapshot.ts --only LESTER      a partial run (rehearsals); the real migration takes every coin
 //
 // A holder without a known public key (they only ever received coins by
 // `send`, never spent from that address) cannot be minted to directly: their
@@ -30,6 +31,8 @@ const flag = (name: string) => {
   return i >= 0 ? args[i + 1] : undefined;
 };
 const vault = flag("--vault");
+/** --only LESTER,LCAT: a partial run (rehearsals on a testnet with little gas); the real migration takes every coin. */
+const only = flag("--only")?.split(",").map((t) => t.trim().toUpperCase()).filter(Boolean);
 if (vault !== undefined && !/^0x[0-9a-fA-F]{40}$/.test(vault)) throw new Error("--vault must be an EVM address");
 
 type Snapshot = {
@@ -49,7 +52,9 @@ const evm = (ltcAddress: string) => (s.pubkeys[ltcAddress] ? evmAddressOfPubkey(
 const unresolved: { ticker: string; address: string; balance: string }[] = [];
 let bridgeWei = 0n;
 
-const coins = s.coins.map((c) => {
+const picked = only ? s.coins.filter((c) => only.includes(c.ticker)) : s.coins;
+if (only && picked.length !== only.length) throw new Error(`--only: unknown ticker(s) ${only.filter((t) => !picked.some((c) => c.ticker === t)).join(", ")}`);
+const coins = picked.map((c) => {
   const creator = evm(c.creator);
   if (!creator) throw new Error(`${c.ticker}: the creator ${c.creator} has no public key on record — impossible, the deploy was signed`);
   const holders: string[] = [];
