@@ -1,33 +1,83 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { LTC_NETWORK, addressLink, fmtLtc, shortAddr, useLtcWallet, useUtxos } from "@/lib/litecoin/client";
 
-/** Header chip on the Litecoin pages: the browser wallet stands in for "connect". */
+/** Header chip on the Litecoin pages: the browser wallet stands in for
+ *  "connect". Open, it is a small menu: address, balance, the wallet page,
+ *  funding, and forgetting the wallet on this device. */
 export function LtcWalletChip() {
-  const { ready, address } = useLtcWallet();
+  const { ready, address, forget } = useLtcWallet();
   const { balance } = useUtxos(address);
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    function onClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, []);
   if (!ready) return null;
+  if (!address) {
+    return (
+      <Link href="/litecoin/wallet" className="rounded-full bg-white px-4 sm:px-5 py-2 text-sm font-semibold text-black hover:bg-zinc-200 whitespace-nowrap">
+        Make a wallet
+      </Link>
+    );
+  }
+  const item = "flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm text-zinc-300 hover:bg-zinc-900 hover:text-white";
   return (
-    <Link
-      href="/litecoin/wallet"
-      className={
-        address
-          ? "rounded-full border border-zinc-700 px-3 sm:px-4 py-2 text-sm font-mono text-zinc-300 hover:border-white hover:text-white whitespace-nowrap"
-          : "rounded-full bg-white px-4 sm:px-5 py-2 text-sm font-semibold text-black hover:bg-zinc-200 whitespace-nowrap"
-      }
-    >
-      {address ? (
-        <>
-          <span className="hidden sm:inline">{fmtLtc(balance)} LTC · </span>
-          {shortAddr(address)}
-        </>
-      ) : (
-        "Make a wallet"
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="rounded-full border border-zinc-700 px-3 sm:px-4 py-2 text-sm font-mono text-zinc-300 hover:border-white hover:text-white whitespace-nowrap"
+        title="Wallet"
+      >
+        <span className="hidden sm:inline">{fmtLtc(balance)} LTC · </span>
+        {shortAddr(address)}
+      </button>
+      {open && (
+        <div className="absolute right-0 mt-2 w-72 rounded-xl border border-zinc-700 bg-black p-1 z-20 shadow-lg shadow-black/60">
+          <div className="px-3 pt-2 pb-1">
+            <div className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">Litecoin wallet · {fmtLtc(balance)} LTC</div>
+            <button
+              type="button"
+              onClick={() => { navigator.clipboard.writeText(address); setCopied(true); setTimeout(() => setCopied(false), 1200); }}
+              className="mt-1 block w-full break-all text-left font-mono text-xs text-zinc-300 hover:text-white"
+              title="Copy address"
+            >
+              {address} <span className="text-zinc-600">{copied ? "· copied ✓" : "· copy"}</span>
+            </button>
+          </div>
+          <Link href="/litecoin/wallet" onClick={() => setOpen(false)} className={item}>
+            Wallet page <span className="text-zinc-600">claims · withdraw · secret</span>
+          </Link>
+          <Link href="/litecoin/fund" onClick={() => setOpen(false)} className={item}>
+            Fund with ETH, BNB… <span className="text-zinc-600">swap to LTC</span>
+          </Link>
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              if (
+                window.confirm(
+                  "Forget this wallet on this device?\n\nThe coins stay on its address; only the saved 64-hex secret (wallet page → reveal) brings it back. Without that copy they are lost."
+                )
+              )
+                forget();
+            }}
+            className={`${item} text-zinc-500`}
+          >
+            Forget on this device <span className="text-zinc-700">needs your saved secret to restore</span>
+          </button>
+        </div>
       )}
-    </Link>
+    </div>
   );
 }
 

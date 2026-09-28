@@ -48,6 +48,10 @@ export default function LitecoinWallet() {
       <h1 className="font-mono text-2xl font-bold tracking-[0.15em] uppercase">Wallet</h1>
 
       <FundPanel address={address} />
+      <p className="text-xs text-zinc-500 -mt-4">
+        Holding ETH, BNB or stablecoins instead of LTC?{" "}
+        <Link href="/litecoin/fund" className="underline text-zinc-300">Fund this wallet with a swap</Link>.
+      </p>
       <FrozenNotice state={state} compact />
 
       <section className="rounded-xl border border-zinc-800 bg-black p-5 space-y-3">
