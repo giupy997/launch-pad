@@ -66,14 +66,14 @@ export const DEFAULT_CHAIN = litvmTestnet;
 export const LAUNCHPAD_ADDRESS: Record<number, `0x${string}` | undefined> = {
   [giwaSepolia.id]: "0x8E1a1308E3b176528Ee9278d7a531F185F9fBeFD",
   [robinhood.id]: "0x4A84c7B0dc45a473eA67f56617BC5903CA2c001c", // v7.4
-  [litvmTestnet.id]: "0x2cF3e6281dddD13f4351781c584C3585e08d9580", // v7.5 (migrateToken), no migrator yet
+  [litvmTestnet.id]: "0xcdF15b651650e53547006207404051c0c24b6725", // v7.6 (migrateToken + poolToken); UniV2Migrator 0xeC9D772Fd2565680B18C99E63d3133Bf10294145 → Lester Labs v2 router
 };
 
 // Launchpad deployment blocks: where on-chain event scans start.
 export const LAUNCHPAD_DEPLOY_BLOCK: Record<number, bigint> = {
   [giwaSepolia.id]: 31_997_798n, // v7.1
   [robinhood.id]: 61_447_720n, // v7.4
-  [litvmTestnet.id]: 55_262_418n,
+  [litvmTestnet.id]: 55_461_046n, // v7.6 (the v7.5 pad, 0x2cF3…9580, block 55_262_418, was never used)
 };
 
 // Quote assets offered at launch per chain. address null = native ETH.

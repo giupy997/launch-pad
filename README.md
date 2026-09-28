@@ -99,7 +99,7 @@ future multichain deployments (Monad, MegaETH, ...).
 | Robinhood Chain (4663) | Launchpad | [`0x4A84c7B0dc45a473eA67f56617BC5903CA2c001c`](https://robinhoodchain.blockscout.com/address/0x4A84c7B0dc45a473eA67f56617BC5903CA2c001c) — v7.4, 64 quote assets |
 | Robinhood Chain (4663) | NotusV4Hook | [`0x11E98A9d691B8730990d9bE1da9CD012f4e320cC`](https://robinhoodchain.blockscout.com/address/0x11E98A9d691B8730990d9bE1da9CD012f4e320cC) — v4 graduation + pool fees |
 | Robinhood Chain (4663) | ZapRouter | [`0xfd0C942E3DB34672715B862A8e19838bC9EDa7B5`](https://robinhoodchain.blockscout.com/address/0xfd0C942E3DB34672715B862A8e19838bC9EDa7B5) — ETH zap buys |
-| LitVM Liteforge (4441) | Launchpad | [`0x2cF3e6281dddD13f4351781c584C3585e08d9580`](https://liteforge.explorer.caldera.xyz/address/0x2cF3e6281dddD13f4351781c584C3585e08d9580) — quoted in zkLTC, `migrateToken` for the Litecoin ledger; graduation manual until a v2 router is wired (`UniV2Migrator`). Deployed before `LedgerCoin.poolToken`: redeploy before migrating the ledger's graduated coins |
+| LitVM Liteforge (4441) | Launchpad | [`0xcdF15b651650e53547006207404051c0c24b6725`](https://liteforge.explorer.caldera.xyz/address/0xcdF15b651650e53547006207404051c0c24b6725) — v7.6, quoted in zkLTC, `migrateToken` (with `poolToken`) for the Litecoin ledger; graduation seeds a locked pool on Lester Labs' Uniswap v2 through `UniV2Migrator` [`0xeC9D772Fd2565680B18C99E63d3133Bf10294145`](https://liteforge.explorer.caldera.xyz/address/0xeC9D772Fd2565680B18C99E63d3133Bf10294145) (router `0xD56a…FA62`). The first pad, `0x2cF3…9580`, predates `poolToken` and was never used |
 
 ### Pair assets (Robinhood Chain)
 
