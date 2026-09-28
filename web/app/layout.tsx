@@ -80,7 +80,10 @@ export default function RootLayout({
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src="/art/wordmark.png" alt="Notus" draggable={false} className="h-6 w-auto select-none" />
                 <div className="label">Litecoin · LitVM</div>
-                <div className="font-mono text-xs text-zinc-500">
+                <div className="font-mono text-xs text-zinc-500 flex flex-wrap gap-x-3 gap-y-1">
+                  <Link className="underline hover:text-zinc-200" href="/about">
+                    About
+                  </Link>
                   {SOURCE_URL ? (
                     <a className="underline hover:text-zinc-200" href={SOURCE_URL} target="_blank">
                       Source
@@ -88,6 +91,9 @@ export default function RootLayout({
                   ) : (
                     <span title="The code is published at launch">Source published at launch</span>
                   )}
+                  <a className="underline hover:text-zinc-200" href="https://x.com/Notuspad" target="_blank" rel="noreferrer">
+                    X
+                  </a>
                 </div>
               </div>
               <p className="text-xs leading-relaxed text-zinc-500">

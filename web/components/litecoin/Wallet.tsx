@@ -84,14 +84,17 @@ export function LtcWalletChip() {
 /** Inline prompt for pages that need a wallet before they can send anything. */
 export function NeedsLtcWallet() {
   const { create, restore } = useLtcWallet();
+  // The restore field only appears on request: a landing page with a box
+  // asking for a key looks like phishing, to people and to link scanners.
+  const [restoring, setRestoring] = useState(false);
   const [value, setValue] = useState("");
   const [bad, setBad] = useState(false);
   return (
     <div className="card p-4 space-y-3">
       <p className="text-sm text-zinc-300">
         Every action here is a Litecoin transaction you sign yourself, so the site keeps an ordinary
-        Litecoin <b>wallet</b> in this browser. Its address owns your coins. It never leaves the browser,
-        nobody can reset it, and whoever has the key owns the balance.
+        Litecoin <b>wallet</b> in this browser. It is created here, it never leaves the browser and nobody
+        can reset it: whoever holds its backup owns the balance. Notus never asks for the keys of any other wallet.
       </p>
       <button
         type="button"
@@ -100,25 +103,32 @@ export function NeedsLtcWallet() {
       >
         Make a wallet
       </button>
-      <div className="flex gap-2">
-        <input
-          value={value}
-          onChange={(e) => {
-            setValue(e.target.value);
-            setBad(false);
-          }}
-          placeholder="…or paste a saved secret (64 hex) or WIF"
-          className="flex-1 min-w-0 rounded-lg input px-3 py-1.5 text-xs font-mono outline-none focus:border-white placeholder:text-zinc-600"
-        />
-        <button
-          type="button"
-          onClick={() => setBad(!restore(value))}
-          className="rounded-full border border-white/15 px-3 text-xs text-zinc-300 hover:border-white"
-        >
-          Restore
+      {restoring ? (
+        <div className="flex gap-2">
+          <input
+            value={value}
+            autoFocus
+            onChange={(e) => {
+              setValue(e.target.value);
+              setBad(false);
+            }}
+            placeholder="…paste the backup copied from your wallet page"
+            className="flex-1 min-w-0 rounded-lg input px-3 py-1.5 text-xs font-mono outline-none focus:border-white placeholder:text-zinc-600"
+          />
+          <button
+            type="button"
+            onClick={() => setBad(!restore(value))}
+            className="rounded-full border border-white/15 px-3 text-xs text-zinc-300 hover:border-white"
+          >
+            Restore
+          </button>
+        </div>
+      ) : (
+        <button type="button" onClick={() => setRestoring(true)} className="w-full text-center text-xs text-zinc-500 hover:text-zinc-200">
+          Made one on another device? Restore it from its backup
         </button>
-      </div>
-      {bad && <p className="text-xs text-zinc-400">⚠ Not a valid secret or WIF for this network.</p>}
+      )}
+      {bad && <p className="text-xs text-zinc-400">⚠ That backup does not belong to a Notus wallet on this network.</p>}
     </div>
   );
 }
