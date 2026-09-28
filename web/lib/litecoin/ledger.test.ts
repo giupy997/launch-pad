@@ -14,6 +14,7 @@ import {
   replay,
   snapshot,
   spotPrice,
+  virtualLitAt,
   type TxEvent,
 } from "./ledger.ts";
 
@@ -401,4 +402,14 @@ test("fuzz: solvent after every transaction", () => {
   const s = assertSolvent(events);
   assert.ok(s.trades.length > 50 && s.payouts.length > 5, "the fuzz actually traded and paid out");
   assert.ok(s.payouts.some((p) => p.paidTxid), "and the desk settled some");
+});
+
+test("a rule change only ever applies to coins deployed from its block on", () => {
+  const p = { ...PARAMS.test, virtualLitChanges: [{ fromHeight: 1_000, virtualLit: 60_000_000n }] };
+  assert.equal(virtualLitAt(p, 999), 20_000_000n);
+  assert.equal(virtualLitAt(p, 1_000), 60_000_000n);
+  assert.equal(virtualLitAt(PARAMS.test, 5_000_000), 20_000_000n, "no changes: the base reserve");
+  // mainnet: the first coins keep 10 LTC, later ones open with 30
+  assert.equal(virtualLitAt(PARAMS.main, 3_185_405), 1_000_000_000n);
+  assert.equal(virtualLitAt(PARAMS.main, 3_186_200), 3_000_000_000n);
 });

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { MEMO_MAX_BYTES, PARAMS, VIRTUAL_TOKEN, memo, memoBytes, quoteBuy } from "@/lib/litecoin/ledger";
+import { MEMO_MAX_BYTES, PARAMS, VIRTUAL_TOKEN, memo, memoBytes, quoteBuy, virtualLitAt } from "@/lib/litecoin/ledger";
 import { LTC_NETWORK, fmtCoins, fmtLtc, parseLtc, txLink, useLitecoinState, useLtcWallet } from "@/lib/litecoin/client";
 import { SendPanel } from "@/components/litecoin/SendPanel";
 import { NeedsLtcWallet } from "@/components/litecoin/Wallet";
@@ -39,9 +39,13 @@ export default function LitecoinCreate() {
   const logoFits = memoBytes(withLogo) <= MEMO_MAX_BYTES;
   const desk = state?.desk.address ?? null;
   const frozen = !!state?.freezeHeight;
+  // the reserve a coin deployed now opens with (a rule change may be a few blocks away)
+  const tip = state?.chainTip ?? Number.MAX_SAFE_INTEGER;
+  const virtualLit = virtualLitAt(P, tip + 1);
+  const upcoming = (P.virtualLitChanges ?? []).find((c) => c.fromHeight > tip + 1);
   const valid = tickerOk && !taken && name.trim().length > 0 && nameFits && logoOk && !!address && !!desk && !frozen;
   const est = devBuyLit > 0n
-    ? quoteBuy({ vLit: P.virtualLit, vToken: VIRTUAL_TOKEN, realLit: 0n, sold: 0n, graduated: false, poolLit: 0n, poolToken: 0n }, devBuyLit).tokensOut
+    ? quoteBuy({ vLit: virtualLit, vToken: VIRTUAL_TOKEN, realLit: 0n, sold: 0n, graduated: false, poolLit: 0n, poolToken: 0n }, devBuyLit).tokensOut
     : 0n;
 
   return (
@@ -181,7 +185,11 @@ export default function LitecoinCreate() {
             <Row k="Trading fees" v="1% buy · 1% sell" />
             <Row k="Fee split" v={feesToHolders ? "80% holders · 20% desk" : "80% you · 20% desk"} strong />
             <Row k="Supply" v="1B fixed · 800M on the curve" />
-            <Row k="Curve raises" v={`~${fmtLtc((P.virtualLit * 32n) / 10n, 2)} LTC, then it graduates`} />
+            <Row k="Opens with" v={`${fmtLtc(virtualLit, 0)} LTC virtual reserve`} />
+            <Row k="Curve raises" v={`~${fmtLtc((virtualLit * 32n) / 10n, 2)} LTC, then it graduates`} />
+            {upcoming && (
+              <Row k={`From block ${upcoming.fromHeight.toLocaleString("en-US")}`} v={`new coins open with ${fmtLtc(upcoming.virtualLit, 0)} LTC (a deploy mined before keeps ${fmtLtc(virtualLit, 0)})`} />
+            )}
             <Row k="After graduation" v="Locked pool: no price ceiling, sells always fill" strong />
             <Row k="Reserve" v="200M seed the pool with the LTC raised" />
             <Row k="Migration" v="Automatic to LitVM at its mainnet: same holders, same price" strong />

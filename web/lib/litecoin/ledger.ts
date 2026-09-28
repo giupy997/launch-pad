@@ -52,6 +52,11 @@ export type Params = {
   /** Virtual LTC reserve at curve start: sets the opening price and the raise
    *  (~3.2x this). Small on testnet, where faucet LTC is scarce. */
   virtualLit: bigint;
+  /** Rule changes, each from a block height on: a coin deployed at or after
+   *  `fromHeight` opens with that reserve. Every coin keeps the reserve it was
+   *  born with (it is part of its state), so a change never touches a live
+   *  curve or the history before it. */
+  virtualLitChanges?: { fromHeight: number; virtualLit: bigint }[];
   deployFeeLit: bigint;
   /** Smallest payout the desk will send — below this a network fee eats it. */
   minPayoutLit: bigint;
@@ -64,10 +69,27 @@ export type Params = {
 
 export const PARAMS: Record<Network, Params> = {
   test: { network: "test", virtualLit: 20_000_000n, deployFeeLit: 100_000n, minPayoutLit: 50_000n, freezeHeight: null },
-  // mainnet: 10 LTC virtual → a curve raises ~32 LTC to sell out. Fixed the
-  // moment the first mainnet transaction is folded in; never change it after.
-  main: { network: "main", virtualLit: 1_000_000_000n, deployFeeLit: 1_000_000n, minPayoutLit: 50_000n, freezeHeight: null },
+  // mainnet: 10 LTC virtual for the first coins (a curve raises ~32 LTC to
+  // sell out). Once folded in, history is fixed: a parameter only ever
+  // changes for coins deployed from a future block on (virtualLitChanges).
+  main: {
+    network: "main",
+    virtualLit: 1_000_000_000n,
+    deployFeeLit: 1_000_000n,
+    minPayoutLit: 50_000n,
+    freezeHeight: null,
+    // from block 3,186,200: 30 LTC virtual → opens at ~$2K of market cap
+    // (LTC at $70), raises ~96 LTC to graduate into a ~$6.7K pool
+    virtualLitChanges: [{ fromHeight: 3_186_200, virtualLit: 3_000_000_000n }],
+  },
 };
+
+/** The virtual reserve a coin deployed at `height` opens with. */
+export function virtualLitAt(p: Pick<Params, "virtualLit" | "virtualLitChanges">, height: number): bigint {
+  let v = p.virtualLit;
+  for (const c of p.virtualLitChanges ?? []) if (height >= c.fromHeight) v = c.virtualLit;
+  return v;
+}
 
 /** One output of a transaction, as the ledger needs to see it. */
 export type TxOutput = {
@@ -465,7 +487,7 @@ function apply(s: State, p: Params, e: TxEvent): string | null {
     if (s.coins.has(ticker)) return credited(s, sender, e, "ticker taken");
     const coin: Coin = {
       ticker, name, logo: logo ?? "", creator: sender, feesToHolders: mode === "h",
-      vLit: p.virtualLit, vToken: VIRTUAL_TOKEN, realLit: 0n, sold: 0n, graduated: false, poolLit: 0n, poolToken: 0n, acc: 0n,
+      vLit: virtualLitAt(p, e.height), vToken: VIRTUAL_TOKEN, realLit: 0n, sold: 0n, graduated: false, poolLit: 0n, poolToken: 0n, acc: 0n,
       volumeLit: 0n, trades: 0, createdHeight: e.height, createdTime: e.time, txid: e.txid,
     };
     s.coins.set(ticker, coin);

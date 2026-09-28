@@ -172,7 +172,11 @@ updating the server is always `git pull && sudo systemctl restart notus-desk`.
 
 Same code, `NOTUS_LTC_NETWORK=main`, its own desk key and process next to
 the testnet one. The parameters in `PARAMS.main` are part of the rules:
-fixed once the first mainnet transaction is folded in.
+history is fixed once folded in, so a parameter only ever changes for coins
+deployed from a future block on (`virtualLitChanges`: the first coins opened
+with 10 LTC of virtual reserve, coins deployed from block 3,186,200 open with
+30 LTC — a coin keeps the reserve it was born with). Every replayer runs the
+same code, so the rule change is the same for everyone.
 
 ```bash
 NOTUS_LTC_NETWORK=main node litecoin/keygen.ts desk-main   # litecoin/desk-main/key.json — back it up, this one holds real LTC
