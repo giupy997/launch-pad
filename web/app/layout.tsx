@@ -24,7 +24,7 @@ const geistMono = localFont({
   weight: "100 900",
 });
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") || "https://notuspad.com";
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") || "https://notus-pad.fun";
 const DESCRIPTION =
   "Launch and trade coins on Litecoin itself — an OP_RETURN ledger, no smart contracts — and on LitVM, Litecoin's EVM layer. Every coin on Litecoin migrates to LitVM automatically at mainnet: same holders, same price.";
 

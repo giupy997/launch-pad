@@ -1,8 +1,8 @@
 # Notus
 
-**https://notuspad.com** — a token launchpad on Litecoin and on LitVM,
+**https://notus-pad.fun** — a token launchpad on Litecoin and on LitVM,
 Litecoin's EVM layer. What it is, how keys are handled and how to reach us:
-[notuspad.com/about](https://notuspad.com/about).
+[notus-pad.fun/about](https://notus-pad.fun/about).
 
 On Litecoin there are no smart contracts, so Notus runs as an OP_RETURN
 ledger: one desk address, instructions in the memos of ordinary Litecoin
@@ -61,7 +61,7 @@ Sepolia, Robinhood Chain); those integrations stay in the repository.
   shielded address, a published viewing key and a bonding-curve ledger
   replayed from encrypted memos. See [zcash/README.md](zcash/README.md)
 - `litecoin/` — **Notus on Litecoin** (mainnet, live at
-  [notuspad.com/litecoin](https://notuspad.com/litecoin)): the same idea on a
+  [notus-pad.fun/litecoin](https://notus-pad.fun/litecoin)): the same idea on a
   transparent chain — one desk address, instructions in OP_RETURN, balances
   owned by the paying address, an in-browser Litecoin wallet that signs
   every transaction. See [litecoin/README.md](litecoin/README.md)

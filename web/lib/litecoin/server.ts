@@ -21,4 +21,4 @@ export async function readCoin(ticker: string): Promise<{ coin: LCoin; state: LS
   return coin && state ? { coin, state } : null;
 }
 
-export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") || "https://notuspad.com";
+export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") || "https://notus-pad.fun";

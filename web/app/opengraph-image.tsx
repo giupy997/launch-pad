@@ -48,7 +48,7 @@ export default async function Image() {
             <span>·</span>
             <span>LITVM</span>
             <span>·</span>
-            <span>NOTUSPAD.COM</span>
+            <span>{new URL(SITE_URL).host.toUpperCase()}</span>
           </div>
         </div>
       </div>

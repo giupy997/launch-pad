@@ -1,7 +1,7 @@
-# Notus — https://notuspad.com
+# Notus — https://notus-pad.fun
 Contact: https://github.com/giupy997/launch-pad/security
 Contact: https://x.com/Notuspad
 Expires: 2027-09-28T00:00:00.000Z
 Preferred-Languages: en, it
-Canonical: https://notuspad.com/.well-known/security.txt
-Policy: https://notuspad.com/about#security
+Canonical: https://notus-pad.fun/.well-known/security.txt
+Policy: https://notus-pad.fun/about#security

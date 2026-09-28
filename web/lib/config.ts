@@ -222,7 +222,7 @@ const transport = () => http(undefined, { batch: { batchSize: 30, wait: 16 } });
  *  Cloud project id (cloud.reown.com, free). Without one only wallets injected
  *  into the browser connect. */
 export const WC_PROJECT_ID = process.env.NEXT_PUBLIC_WC_PROJECT_ID?.trim() || "";
-const SITE = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") || "https://notuspad.com";
+const SITE = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") || "https://notus-pad.fun";
 
 export const config = createConfig({
   // Cookie-backed state + ssr: the server renders with the persisted chain,
