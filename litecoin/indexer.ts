@@ -149,7 +149,7 @@ export async function pass(sync: boolean) {
   }
   const maxHeight = tip === null ? Number.MAX_SAFE_INTEGER : tip - (CONFIRMATIONS - 1);
   const events = eventsFromCache(cache, desk, maxHeight);
-  const state = replay(NETWORK, events, { ...PARAMS[NETWORK], freezeHeight: FREEZE });
+  const state = replay(NETWORK, events, { ...PARAMS[NETWORK], freezeHeight: FREEZE }, tip === null ? undefined : maxHeight);
   const out = {
     ...snapshot(state),
     desk: { address: desk, network: NETWORK },

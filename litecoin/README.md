@@ -175,8 +175,12 @@ the testnet one. The parameters in `PARAMS.main` are part of the rules:
 history is fixed once folded in, so a parameter only ever changes for coins
 deployed from a future block on (`virtualLitChanges`: the first coins opened
 with 10 LTC of virtual reserve, coins deployed from block 3,186,200 open with
-30 LTC — a coin keeps the reserve it was born with). Every replayer runs the
-same code, so the rule change is the same for everyone.
+30 LTC — a coin keeps the reserve it was born with). At that same block the
+one-off `retireEmptyCoinsAt` rule retires the coins deployed before it that
+nobody holds any more (the first coins, sold back to empty), freeing their
+tickers for a redeploy under the new rules; cashback still owed on them stays
+claimable. Every replayer runs the same code, so a rule change is the same
+for everyone.
 
 ```bash
 NOTUS_LTC_NETWORK=main node litecoin/keygen.ts desk-main   # litecoin/desk-main/key.json — back it up, this one holds real LTC

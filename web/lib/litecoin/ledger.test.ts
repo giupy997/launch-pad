@@ -413,3 +413,56 @@ test("a rule change only ever applies to coins deployed from its block on", () =
   assert.equal(virtualLitAt(PARAMS.main, 3_185_405), 1_000_000_000n);
   assert.equal(virtualLitAt(PARAMS.main, 3_186_200), 3_000_000_000n);
 });
+
+test("retireEmptyCoinsAt: coins nobody holds any more make room at that block, nothing else moves", () => {
+  const p = { ...PARAMS.test, retireEmptyCoinsAt: 5_000, virtualLitChanges: [{ fromHeight: 5_000, virtualLit: 60_000_000n }] };
+  const fee = PARAMS.test.deployFeeLit;
+  const events: TxEvent[] = [
+    ev(ALICE, memo.deploy("CAT", "Cat", true), fee, [], { height: 1_001 }), // holders mode, sold back to empty below
+    ev(ALICE, memo.deploy("DOG", "Dog", false), fee, [], { height: 1_002 }), // stays held
+    ev(ALICE, memo.deploy("EMPTY", "Empty", false), fee, [], { height: 1_003 }), // never bought
+    ev(BOB, memo.buy("CAT"), 5_000_000n, [], { height: 1_010 }),
+    ev(CAROL, memo.buy("CAT"), 5_000_000n, [], { height: 1_011 }), // carol's fee is bob's cashback
+    ev(BOB, memo.buy("DOG"), 5_000_000n, [], { height: 1_012 }),
+  ];
+  let s = replay("test", events, p);
+  const catBob = s.balances.get("CAT")!.get(BOB)!;
+  const catCarol = s.balances.get("CAT")!.get(CAROL)!;
+  events.push(ev(BOB, memo.sell("CAT", catBob, 0n), CARRY, [], { height: 1_020 }));
+  events.push(ev(CAROL, memo.sell("CAT", catCarol, 0n), CARRY, [], { height: 1_021 }));
+  s = replay("test", events, p);
+  assert.equal(s.coins.get("CAT")!.sold, 0n, "CAT is empty");
+  const owedBob = claimableLit(s, BOB);
+  assert.ok(owedBob > 0n, "bob has unclaimed cashback from carol's buy");
+  const treasuryBefore = s.treasuryLit;
+  const dust = s.coins.get("CAT")!.realLit + s.coins.get("EMPTY")!.realLit;
+
+  // the block has not come: nothing happens, even when the caller says the chain is at 4,999
+  s = replay("test", events, p, 4_999);
+  assert.deepEqual([...s.coins.keys()], ["CAT", "DOG", "EMPTY"]);
+  assert.equal(s.retiredAt, null);
+
+  // the chain reaches the block with no transaction to the desk: the rule still fires
+  s = replay("test", events, p, 5_000);
+  assert.deepEqual([...s.coins.keys()], ["DOG"], "CAT and EMPTY retired, DOG kept (bob holds it)");
+  assert.equal(s.retiredAt, 5_000);
+  assert.equal(claimableLit(s, BOB), owedBob, "cashback owed on a retired coin is still claimable");
+  assert.equal(s.treasuryLit, treasuryBefore + dust, "the dust left in the emptied curves went to the treasury");
+  assert.equal(s.roots.at(-1)!.height, 5_000, "the retirement is a root of its own");
+  assert.equal(liabilitiesLit(s) <= 20_000_000n, true);
+
+  // the tickers are free again, and a redeploy opens under the new rules
+  events.push(ev(ALICE, memo.deploy("CAT", "Cat", true), fee, [], { height: 5_100 }));
+  events.push(ev(ALICE, memo.deploy("LATE", "Late", false), fee, [], { height: 5_101 })); // empty, but born after the block
+  s = replay("test", events, p, 6_000);
+  assert.equal(s.coins.get("CAT")!.vLit, 60_000_000n, "the new CAT opens with the new reserve");
+  assert.equal(s.coins.get("CAT")!.createdHeight, 5_100);
+  assert.deepEqual([...s.coins.keys()].sort(), ["CAT", "DOG", "LATE"], "a coin born after the block is never retired");
+  assert.equal(s.rejected.filter((r) => r.reason === "ticker taken").length, 0);
+  // and the rule fires once: an old coin that empties later stays
+  const dogBob = s.balances.get("DOG")!.get(BOB)!;
+  events.push(ev(BOB, memo.sell("DOG", dogBob, 0n), CARRY, [], { height: 6_500 }));
+  s = replay("test", events, p, 7_000);
+  assert.equal(s.coins.get("DOG")!.sold, 0n);
+  assert.ok(s.coins.has("DOG"), "emptied after the block: kept");
+});

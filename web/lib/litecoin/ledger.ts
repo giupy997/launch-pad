@@ -57,6 +57,12 @@ export type Params = {
    *  born with (it is part of its state), so a change never touches a live
    *  curve or the history before it. */
   virtualLitChanges?: { fromHeight: number; virtualLit: bigint }[];
+  /** One-off rule: when the ledger reaches this block, coins deployed before
+   *  it that nobody holds any more are retired and their tickers freed, so
+   *  they can be deployed again under the rules of that block. Cashback still
+   *  owed to their past holders becomes claimable credit; the rounding dust
+   *  left in their curves goes to the treasury. */
+  retireEmptyCoinsAt?: number;
   deployFeeLit: bigint;
   /** Smallest payout the desk will send — below this a network fee eats it. */
   minPayoutLit: bigint;
@@ -81,6 +87,8 @@ export const PARAMS: Record<Network, Params> = {
     // from block 3,186,200: 30 LTC virtual → opens at ~$2K of market cap
     // (LTC at $70), raises ~96 LTC to graduate into a ~$6.7K pool
     virtualLitChanges: [{ fromHeight: 3_186_200, virtualLit: 3_000_000_000n }],
+    // …and the first coins, sold back to empty by then, make room for a redeploy
+    retireEmptyCoinsAt: 3_186_200,
   },
 };
 
@@ -184,6 +192,8 @@ export type State = {
    *  (not part of the state root: it is chain data, not ownership). */
   pubkeys: Map<string, string>;
   freezeHeight: number | null;
+  /** The block at which retireEmptyCoinsAt was applied, once (not in the root). */
+  retiredAt: number | null;
   treasuryLit: bigint;
   payouts: Payout[];
   trades: Trade[];
@@ -203,6 +213,7 @@ export function emptyState(network: Network): State {
     credit: new Map(),
     pubkeys: new Map(),
     freezeHeight: null,
+    retiredAt: null,
     treasuryLit: 0n,
     payouts: [],
     trades: [],
@@ -621,7 +632,28 @@ export function liabilitiesLit(s: State): bigint {
   return total;
 }
 
-export function replay(network: Network, events: TxEvent[], params: Params = PARAMS[network]): State {
+/** The one-off rule of Params.retireEmptyCoinsAt, applied the moment the
+ *  ledger reaches that block (before that block's own transactions). */
+function retireEmptyCoins(s: State, p: Params, height: number) {
+  const at = p.retireEmptyCoinsAt;
+  if (at === undefined || s.retiredAt !== null || height < at) return;
+  s.retiredAt = at;
+  for (const [ticker, coin] of [...s.coins.entries()]) {
+    if (coin.createdHeight >= at || coin.sold !== 0n || coin.graduated) continue;
+    for (const [holder, lit] of s.pending.get(ticker) ?? []) addCredit(s, holder, lit); // still owed, still claimable
+    s.treasuryLit += coin.realLit; // rounding dust an emptied curve keeps
+    s.coins.delete(ticker);
+    s.balances.delete(ticker);
+    s.debts.delete(ticker);
+    s.pending.delete(ticker);
+  }
+  if (s.roots.at(-1)?.height !== at) s.roots.push({ height: at, root: stateRoot(s) });
+}
+
+/** Rebuilds the ledger from its events. `upTo` is the last block the caller
+ *  considers final: a rule that fires at a block fires even when that block
+ *  carried no transaction to the desk. */
+export function replay(network: Network, events: TxEvent[], params: Params = PARAMS[network], upTo?: number): State {
   const s = emptyState(network);
   s.freezeHeight = params.freezeHeight;
   const seen = new Set<string>();
@@ -631,6 +663,7 @@ export function replay(network: Network, events: TxEvent[], params: Params = PAR
   let i = 0;
   while (i < ordered.length) {
     const height = ordered[i].height;
+    retireEmptyCoins(s, params, height);
     for (; i < ordered.length && ordered[i].height === height; i++) {
       const e = ordered[i];
       s.txsRead++;
@@ -640,6 +673,7 @@ export function replay(network: Network, events: TxEvent[], params: Params = PAR
     s.height = height;
     s.roots.push({ height, root: stateRoot(s) });
   }
+  if (upTo !== undefined) retireEmptyCoins(s, params, upTo);
   return s;
 }
 
