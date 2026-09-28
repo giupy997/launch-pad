@@ -84,11 +84,11 @@ export const PARAMS: Record<Network, Params> = {
     deployFeeLit: 1_000_000n,
     minPayoutLit: 50_000n,
     freezeHeight: null,
-    // from block 3,186,200: 30 LTC virtual → opens at ~$2K of market cap
+    // from block 3,185,930: 30 LTC virtual → opens at ~$2K of market cap
     // (LTC at $70), raises ~96 LTC to graduate into a ~$6.7K pool
-    virtualLitChanges: [{ fromHeight: 3_186_200, virtualLit: 3_000_000_000n }],
+    virtualLitChanges: [{ fromHeight: 3_185_930, virtualLit: 3_000_000_000n }],
     // …and the first coins, sold back to empty by then, make room for a redeploy
-    retireEmptyCoinsAt: 3_186_200,
+    retireEmptyCoinsAt: 3_185_930,
   },
 };
 

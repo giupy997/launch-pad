@@ -174,7 +174,7 @@ Same code, `NOTUS_LTC_NETWORK=main`, its own desk key and process next to
 the testnet one. The parameters in `PARAMS.main` are part of the rules:
 history is fixed once folded in, so a parameter only ever changes for coins
 deployed from a future block on (`virtualLitChanges`: the first coins opened
-with 10 LTC of virtual reserve, coins deployed from block 3,186,200 open with
+with 10 LTC of virtual reserve, coins deployed from block 3,185,930 open with
 30 LTC — a coin keeps the reserve it was born with). At that same block the
 one-off `retireEmptyCoinsAt` rule retires the coins deployed before it that
 nobody holds any more (the first coins, sold back to empty), freeing their
