@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { CURVE_SUPPLY, MEMO_MAX_BYTES, PARAMS, TOTAL_SUPPLY, memo, memoBytes, quoteBuy, quoteSell, spotPrice } from "@/lib/litecoin/ledger";
+import { useEffect, useState } from "react";
+import { CURVE_SUPPLY, MEMO_MAX_BYTES, PARAMS, TOTAL_SUPPLY, memo, memoBytes, normalizeLink, quoteBuy, quoteSell, spotPrice, type CoinLinks } from "@/lib/litecoin/ledger";
 import { CARRY_LIT } from "@/lib/litecoin/tx";
 import { LTC_NETWORK, addressLink, curveOf, fmtCoins, fmtLtc, fmtMcap, fmtPrice, marketCapLtc, parseLtc, shortAddr, txLink, useLitecoinState, useLtcPrice, useLtcWallet, type LCoin, type LState } from "@/lib/litecoin/client";
 import { SendPanel } from "@/components/litecoin/SendPanel";
@@ -64,6 +64,25 @@ export default function LitecoinCoinPage({ params }: { params: { ticker: string 
               </a>{" "}
               · born in block {coin.createdHeight.toLocaleString("en-US")} · paired with <span className="text-zinc-300">LTC</span>
             </p>
+            {coin.links && (coin.links.web || coin.links.x || coin.links.tg) && (
+              <p className="mt-1 flex flex-wrap gap-x-3 text-sm text-zinc-400">
+                {coin.links.web && (
+                  <a href={/^https?:\/\//i.test(coin.links.web) ? coin.links.web : `https://${coin.links.web}`} target="_blank" rel="noreferrer nofollow" className="underline hover:text-white">
+                    {coin.links.web.replace(/^https?:\/\//i, "")}
+                  </a>
+                )}
+                {coin.links.x && (
+                  <a href={`https://x.com/${coin.links.x}`} target="_blank" rel="noreferrer nofollow" className="underline hover:text-white">
+                    x.com/{coin.links.x}
+                  </a>
+                )}
+                {coin.links.tg && (
+                  <a href={`https://t.me/${coin.links.tg}`} target="_blank" rel="noreferrer nofollow" className="underline hover:text-white">
+                    t.me/{coin.links.tg}
+                  </a>
+                )}
+              </p>
+            )}
             <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
               <Copyable label="link" value={`${typeof window === "undefined" ? "" : window.location.origin}/litecoin/c/${coin.ticker}`} />
               <Copyable label="coin id" value={coin.txid} />
@@ -140,6 +159,7 @@ export default function LitecoinCoinPage({ params }: { params: { ticker: string 
           <>
             <TradeBox coin={coin} state={state} />
             <CreatorPanel coin={coin} state={state} />
+            <LinksPanel coin={coin} state={state} />
           </>
         )}
       </div>
@@ -298,6 +318,67 @@ function CreatorPanel({ coin, state }: { coin: LCoin; state: LState }) {
           {ok && (
             <SendPanel payments={[{ address: desk, lit: CARRY_LIT }]} memo={m} title={`Set $${coin.ticker} logo`}
               note="Only a transaction paid from the creator address changes the logo; the dust is credited back." />
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/** The creator sets X, Telegram and website in one instruction (only the
+ *  fields that change are sent; an empty field clears). Prefilled from the
+ *  deploy page's query string when it comes from there. */
+function LinksPanel({ coin, state }: { coin: LCoin; state: LState }) {
+  const { address } = useLtcWallet();
+  const [open, setOpen] = useState(false);
+  const [x, setX] = useState(coin.links?.x ?? "");
+  const [tg, setTg] = useState(coin.links?.tg ?? "");
+  const [web, setWeb] = useState(coin.links?.web ?? "");
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    if (q.has("x") || q.has("tg") || q.has("web")) {
+      setX(q.get("x") ?? "");
+      setTg(q.get("tg") ?? "");
+      setWeb(q.get("web") ?? "");
+      setOpen(true);
+    }
+  }, []);
+  const desk = state.desk.address;
+  if (!address || !desk || address !== coin.creator) return null;
+  const norm = { x: normalizeLink("x", x), tg: normalizeLink("tg", tg), web: normalizeLink("web", web) };
+  const bad = (["x", "tg", "web"] as const).filter((k) => norm[k] === null);
+  const changes: CoinLinks = {};
+  for (const k of ["x", "tg", "web"] as const) {
+    const v = norm[k];
+    if (v !== null && v !== (coin.links?.[k] ?? "")) changes[k] = v;
+  }
+  const m = memo.links(coin.ticker, changes);
+  const ok = bad.length === 0 && Object.keys(changes).length > 0 && memoBytes(m) <= MEMO_MAX_BYTES;
+  const has = !!(coin.links?.x || coin.links?.tg || coin.links?.web);
+  const inputCls = "w-full rounded-lg bg-black border border-zinc-700 px-3 py-2 text-xs font-mono focus:border-white outline-none placeholder:text-zinc-600";
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-black p-4 space-y-3">
+      <div className="flex items-baseline justify-between">
+        <span className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">Creator · links</span>
+        <button type="button" onClick={() => setOpen((o) => !o)} className="text-xs text-zinc-400 underline">
+          {open ? "close" : has ? "change" : "set X, Telegram, website"}
+        </button>
+      </div>
+      {open && (
+        <>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <input value={x} onChange={(e) => setX(e.target.value)} placeholder="X · @handle" className={inputCls} />
+            <input value={tg} onChange={(e) => setTg(e.target.value)} placeholder="Telegram · @handle" className={inputCls} />
+            <input value={web} onChange={(e) => setWeb(e.target.value)} placeholder="Website · https://…" className={inputCls} />
+          </div>
+          {bad.length > 0 && <p className="text-[11px] text-zinc-500">⚠ {bad.join(", ")}: handles are letters, digits and _ (no URL), the website a plain address.</p>}
+          {bad.length === 0 && Object.keys(changes).length === 0 && <p className="text-[11px] text-zinc-500">Nothing changed. Clear a field to remove that link.</p>}
+          {bad.length === 0 && Object.keys(changes).length > 0 && memoBytes(m) > MEMO_MAX_BYTES && (
+            <p className="text-[11px] text-zinc-500">⚠ {memoBytes(m)}/{MEMO_MAX_BYTES} bytes — shorten the website, or send the links in two transactions.</p>
+          )}
+          {ok && (
+            <SendPanel payments={[{ address: desk, lit: CARRY_LIT }]} memo={m} title={`Set $${coin.ticker} links`}
+              note="Only a transaction paid from the creator address changes the links; the dust is credited back." />
           )}
         </>
       )}

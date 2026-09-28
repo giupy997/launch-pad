@@ -63,6 +63,8 @@ export type Params = {
    *  owed to their past holders becomes claimable credit; the rounding dust
    *  left in their curves goes to the treasury. */
   retireEmptyCoinsAt?: number;
+  /** The `links` instruction (X, Telegram, website) counts from this block on. */
+  linksFrom?: number;
   deployFeeLit: bigint;
   /** Smallest payout the desk will send — below this a network fee eats it. */
   minPayoutLit: bigint;
@@ -89,6 +91,7 @@ export const PARAMS: Record<Network, Params> = {
     virtualLitChanges: [{ fromHeight: 3_185_910, virtualLit: 3_000_000_000n }],
     // …and the first coins, sold back to empty by then, make room for a redeploy
     retireEmptyCoinsAt: 3_185_910,
+    linksFrom: 3_185_910,
   },
 };
 
@@ -135,6 +138,8 @@ export type Coin = {
   ticker: string;
   name: string;
   logo: string;
+  /** X handle, Telegram handle, website — set by the creator with `links`. */
+  links?: CoinLinks;
   creator: string; // Litecoin address
   feesToHolders: boolean;
   vLit: bigint;
@@ -304,10 +309,42 @@ export function memoBytes(m: string): number {
 }
 
 /** The instructions. `o` values are output indexes of the same transaction. */
+export type CoinLinks = { x?: string; tg?: string; web?: string };
+const HANDLE = /^[A-Za-z0-9_]{1,32}$/;
+const WEBSITE = /^(https?:\/\/)?([a-z0-9-]+\.)+[a-z]{2,}(\/\S*)?$/i;
+
+/** A link as the ledger stores it (handles without the @, sites without a
+ *  trailing slash), or null if it is not one. Empty clears the field. */
+export function normalizeLink(kind: keyof CoinLinks, raw: string): string | null {
+  const v = raw.trim();
+  if (v === "") return "";
+  if (kind === "web") return WEBSITE.test(v) && v.length <= 60 ? v.replace(/\/$/, "") : null;
+  const h = v.replace(/^@/, "").replace(/^https?:\/\/(www\.)?(x\.com|twitter\.com|t\.me|telegram\.me)\//i, "").replace(/\/$/, "");
+  return HANDLE.test(h) ? h : null;
+}
+
+/** `x=handle tg=handle web=site` — each key given is set, an empty value clears it. */
+export function parseLinks(tokens: string[]): CoinLinks | null {
+  if (tokens.length === 0 || tokens.length > 3) return null;
+  const out: CoinLinks = {};
+  for (const t of tokens) {
+    const eq = t.indexOf("=");
+    if (eq < 1) return null;
+    const k = t.slice(0, eq);
+    if (k !== "x" && k !== "tg" && k !== "web") return null;
+    const v = normalizeLink(k, t.slice(eq + 1));
+    if (v === null) return null;
+    out[k] = v;
+  }
+  return out;
+}
+
 export const memo = {
   deploy: (ticker: string, name: string, feesToHolders: boolean, logo = "") =>
     [PROTOCOL, "deploy", ticker, enc(name), feesToHolders ? "h" : "c", ...(logo ? [logo] : [])].join(" "),
   logo: (ticker: string, url: string) => [PROTOCOL, "logo", ticker, url].join(" "),
+  links: (ticker: string, links: CoinLinks) =>
+    [PROTOCOL, "links", ticker, ...(["x", "tg", "web"] as const).filter((k) => links[k] !== undefined).map((k) => `${k}=${links[k]}`)].join(" "),
   buy: (ticker: string, minOut = 0n) => [PROTOCOL, "buy", ticker, ...(minOut > 0n ? [minOut] : [])].join(" "),
   sell: (ticker: string, amount: bigint, minLit: bigint, payoutOutput?: number) =>
     [PROTOCOL, "sell", ticker, amount, minLit, ...(payoutOutput === undefined ? [] : [payoutOutput])].join(" "),
@@ -523,6 +560,25 @@ function apply(s: State, p: Params, e: TxEvent): string | null {
     if (coin.creator !== sender) return "only the creator sets the logo";
     if (!url || !URL_FIELD.test(url)) return "bad logo";
     coin.logo = url;
+    return null;
+  }
+
+  if (cmd === "links" && (p.linksFrom === undefined || e.height >= p.linksFrom)) {
+    const [, , ticker, ...rest] = f;
+    const coin = s.coins.get(ticker ?? "");
+    addCredit(s, sender, e.valueLit); // the dust that carried the memo
+    if (!coin) return "unknown coin";
+    if (coin.creator !== sender) return "only the creator sets the links";
+    const links = parseLinks(rest);
+    if (!links) return "bad links";
+    const next: CoinLinks = { ...coin.links };
+    for (const k of ["x", "tg", "web"] as const) {
+      if (links[k] === undefined) continue;
+      if (links[k] === "") delete next[k];
+      else next[k] = links[k];
+    }
+    if (Object.keys(next).length) coin.links = next;
+    else delete coin.links;
     return null;
   }
 

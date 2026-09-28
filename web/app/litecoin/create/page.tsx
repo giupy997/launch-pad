@@ -22,6 +22,8 @@ export default function LitecoinCreate() {
   const [name, setName] = useState("");
   const [symbol, setSymbol] = useState("");
   const [logo, setLogo] = useState("");
+  /** X, Telegram, website: sent from the coin page as a second instruction once the coin is in the ledger. */
+  const [links, setLinks] = useState({ x: "", tg: "", web: "" });
   const [feesToHolders, setFeesToHolders] = useState(false);
   const [devBuy, setDevBuy] = useState("");
   /** txid of the deploy just broadcast: the same ticker must not be sent twice. */
@@ -94,6 +96,18 @@ export default function LitecoinCreate() {
           <LogoUpload name={ticker || "coin"} onUploaded={setLogo} />
           <input value={logo} onChange={(e) => setLogo(e.target.value)} placeholder="…or paste an image URL: https://… or ipfs://…" type="url" className={`${inputCls} mt-2`} />
           {logoUrl && !logoOk && <Hint>⚠ http(s) or ipfs URL, no spaces.</Hint>}
+        </div>
+
+        <div>
+          <Label>
+            Links <span className="normal-case text-zinc-600">optional · X, Telegram, website · set from the coin page right after the deploy</span>
+          </Label>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <input value={links.x} onChange={(e) => setLinks({ ...links, x: e.target.value })} placeholder="X · @handle" className={inputCls} />
+            <input value={links.tg} onChange={(e) => setLinks({ ...links, tg: e.target.value })} placeholder="Telegram · @handle" className={inputCls} />
+            <input value={links.web} onChange={(e) => setLinks({ ...links, web: e.target.value })} placeholder="Website · https://…" className={inputCls} />
+          </div>
+          <Hint>An OP_RETURN holds 80 bytes: the deploy carries name and logo, the links go in their own instruction, one click on the coin page.</Hint>
           {logoUrl && logoOk && !logoFits && (
             <Hint>
               ⚠ It does not fit next to this name ({memoBytes(withLogo)}/{MEMO_MAX_BYTES} bytes). The coin deploys without it —
@@ -131,6 +145,18 @@ export default function LitecoinCreate() {
               <div className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">Share</div>
               <Copyable label="link" value={`${typeof window === "undefined" ? "" : window.location.origin}/litecoin/c/${deployed.ticker}`} />
               <Copyable label="coin id" value={deployed.txid} />
+              {(links.x || links.tg || links.web) && (
+                <p className="text-[11px] text-zinc-400">
+                  Your links are not on the coin yet:{" "}
+                  <Link
+                    href={`/litecoin/c/${deployed.ticker}?${new URLSearchParams({ x: links.x, tg: links.tg, web: links.web }).toString()}`}
+                    className="underline text-zinc-200"
+                  >
+                    set them from the coin page
+                  </Link>{" "}
+                  once it is in the ledger (~5 minutes), prefilled — one more signed transaction.
+                </p>
+              )}
               <p className="text-[11px] text-zinc-600">
                 There is no contract address on Litecoin: the ticker is the coin, and this transaction is its birth certificate — anyone can
                 verify the coin from it. Buyers only need the link.
@@ -143,6 +169,7 @@ export default function LitecoinCreate() {
                 setName("");
                 setSymbol("");
                 setLogo("");
+                setLinks({ x: "", tg: "", web: "" });
                 setDevBuy("");
               }}
               className="text-xs text-zinc-500 underline"

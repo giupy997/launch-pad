@@ -15,6 +15,8 @@ export const api = new Esplora(process.env.NEXT_PUBLIC_LTC_API ?? "/api/ltc");
 
 export type LCoin = {
   ticker: string; name: string; logo: string; creator: string; feesToHolders: boolean;
+  /** X handle, Telegram handle, website, as the creator set them. */
+  links?: { x?: string; tg?: string; web?: string };
   vLit: string; vToken: string; realLit: string; sold: string; volumeLit: string;
   /** Graduated coins trade in their locked pool (real reserves, no ceiling). */
   graduated: boolean; poolLit: string; poolToken: string;

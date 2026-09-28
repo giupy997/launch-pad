@@ -38,6 +38,7 @@ exchange's address would own the coins.
 ```
 deploy TICKER name c|h [logo]     value ≥ deploy fee; the excess is a dev buy
 logo   TICKER url                 creator only: set or change the logo
+links  TICKER x=h tg=h web=site   creator only: X and Telegram handles, website (empty value clears)
 buy    TICKER [minOut]            value = the LTC to spend
 sell   TICKER amount minLit [o]   LTC paid to output o's address (default: the sender)
 send   TICKER amount o            coins to the address of output o

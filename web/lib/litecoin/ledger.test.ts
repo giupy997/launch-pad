@@ -16,6 +16,8 @@ import {
   spotPrice,
   virtualLitAt,
   type TxEvent,
+  normalizeLink,
+  parseLinks,
 } from "./ledger.ts";
 
 const LTC = 100_000_000n;
@@ -465,4 +467,36 @@ test("retireEmptyCoinsAt: coins nobody holds any more make room at that block, n
   s = replay("test", events, p, 7_000);
   assert.equal(s.coins.get("DOG")!.sold, 0n);
   assert.ok(s.coins.has("DOG"), "emptied after the block: kept");
+});
+
+test("links: the creator sets X, Telegram and website; handles are normalised, empty clears", () => {
+  const fee = PARAMS.test.deployFeeLit;
+  assert.equal(normalizeLink("x", "@Notus_Pad"), "Notus_Pad");
+  assert.equal(normalizeLink("tg", "https://t.me/notuspad/"), "notuspad");
+  assert.equal(normalizeLink("web", "https://notuspad.com/"), "https://notuspad.com");
+  assert.equal(normalizeLink("web", "notuspad.com"), "notuspad.com");
+  assert.equal(normalizeLink("x", "not a handle"), null);
+  assert.equal(normalizeLink("web", "no-dot"), null);
+  assert.deepEqual(parseLinks(["x=notuspad", "web=notuspad.com"]), { x: "notuspad", web: "notuspad.com" });
+  assert.equal(parseLinks(["ig=notuspad"]), null);
+  assert.equal(parseLinks([]), null);
+  const m = memo.links("LESTER", { x: "notuspad", tg: "notuspad", web: "https://notuspad.com" });
+  assert.equal(m, "NOTUS1 links LESTER x=notuspad tg=notuspad web=https://notuspad.com");
+  assert.ok(memoBytes(m) <= MEMO_MAX_BYTES);
+
+  const events: TxEvent[] = [
+    ev(ALICE, memo.deploy("CAT", "Cat", true), fee),
+    ev(BOB, memo.links("CAT", { x: "bob" }), CARRY), // not the creator
+    ev(ALICE, memo.links("CAT", { x: "@cat_coin", web: "cat.example" }), CARRY),
+    ev(ALICE, "NOTUS1 links CAT x=has space", CARRY), // rejected, nothing changes
+    ev(ALICE, memo.links("CAT", { tg: "catcoin", web: "" }), CARRY), // adds tg, clears web
+  ];
+  const s = replay("test", events);
+  assert.deepEqual(s.coins.get("CAT")!.links, { x: "cat_coin", tg: "catcoin" });
+  assert.deepEqual(s.rejected.map((r) => r.reason), ["only the creator sets the links", "bad links"]);
+  assert.equal(claimableLit(s, BOB), CARRY, "the dust that carried a refused instruction is credited back");
+  // gated by height on a network that says so
+  const gated = replay("test", events, { ...PARAMS.test, linksFrom: 10_000 });
+  assert.equal(gated.coins.get("CAT")!.links, undefined, "before the block the instruction is unknown");
+  assert.equal(gated.coins.get("CAT")!.links, undefined);
 });
