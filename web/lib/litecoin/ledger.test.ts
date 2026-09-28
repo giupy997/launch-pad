@@ -411,7 +411,7 @@ test("a rule change only ever applies to coins deployed from its block on", () =
   assert.equal(virtualLitAt(PARAMS.test, 5_000_000), 20_000_000n, "no changes: the base reserve");
   // mainnet: the first coins keep 10 LTC, later ones open with 30
   assert.equal(virtualLitAt(PARAMS.main, 3_185_405), 1_000_000_000n);
-  assert.equal(virtualLitAt(PARAMS.main, 3_185_930), 3_000_000_000n);
+  assert.equal(virtualLitAt(PARAMS.main, 3_185_910), 3_000_000_000n);
 });
 
 test("retireEmptyCoinsAt: coins nobody holds any more make room at that block, nothing else moves", () => {
