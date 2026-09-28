@@ -1,9 +1,10 @@
-# HTTPS in front of the desks (Caddy fetches the certificate itself).
-# Point a DNS record, e.g. desk.notuspad.com, at the server, then:
+# HTTPS in front of the desks (Caddy fetches the certificates itself).
+# Point a DNS record for each hostname below at the server, then:
 #   sudo cp litecoin/deploy/Caddyfile /etc/caddy/Caddyfile && sudo systemctl reload caddy
 # Testnet desk (:8787) at /state.json and /health; mainnet desk (:8788) under /main/.
 # Everything else gets a 404. (`handle` blocks are mutually exclusive.)
-desk.notuspad.com {
+# Two hostnames: the site moved to notus-pad.fun, the old one stays until it lapses.
+desk.notuspad.com, desk.notus-pad.fun {
 	@main path /main/state.json /main/health
 	handle @main {
 		uri strip_prefix /main

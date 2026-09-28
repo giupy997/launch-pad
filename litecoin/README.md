@@ -201,15 +201,15 @@ Fund the mainnet desk with a little LTC for payout fees (the `fund`
 instruction, or a plain payment you then leave as the sender's credit). On
 Netlify, the production site becomes the mainnet site with
 `NEXT_PUBLIC_LTC_NETWORK=main` and
-`LTC_STATE_URL=https://desk.notuspad.com/main/state.json`; a second Netlify
+`LTC_STATE_URL=https://desk.notus-pad.fun/main/state.json`; a second Netlify
 site from the same repository with the defaults and
-`LTC_STATE_URL=https://desk.notuspad.com/state.json` keeps the testnet
+`LTC_STATE_URL=https://desk.notus-pad.fun/state.json` keeps the testnet
 reachable. Before opening it to the public: the desk custodies real LTC, the
 software is unaudited, and a public launchpad may need a legal review (MiCA).
 
 Put HTTPS in front with Caddy (`litecoin/deploy/Caddyfile`, a DNS record
-such as `desk.notuspad.com` pointing at the server), then on Netlify set
-`LTC_STATE_URL=https://desk.notuspad.com/state.json` and redeploy: the pages
+such as `desk.notus-pad.fun` pointing at the server), then on Netlify set
+`LTC_STATE_URL=https://desk.notus-pad.fun/state.json` and redeploy: the pages
 read the live snapshot through `/api/ltc-state`, and the committed
 `web/public/litecoin/state.json` only serves as a fallback. Fund the desk
 address with a little LTC for payout fees; back the key file up; the
