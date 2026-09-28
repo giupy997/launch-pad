@@ -8,7 +8,7 @@ export function NotDeployedNotice() {
   const pad = useLaunchpadAddress();
   if (pad) return null;
   return (
-    <div className="rounded-xl border border-zinc-700 bg-black p-4 mb-8 text-sm text-zinc-300">
+    <div className="card p-4 mb-8 text-sm text-zinc-300">
       <span className="font-mono text-[10px] tracking-widest uppercase text-zinc-500 block mb-1">
         {chain.name}
       </span>

@@ -18,7 +18,7 @@ import { processLogoFile, dataUriBytes } from "@/lib/image";
 import { fmtTokens } from "@/lib/format";
 
 const inputCls =
-  "w-full rounded-lg bg-black border border-zinc-700 px-3 py-2 text-sm focus:border-white outline-none placeholder:text-zinc-600";
+  "w-full rounded-lg input px-3 py-2 text-sm focus:border-white outline-none placeholder:text-zinc-600";
 
 // fresh-curve constants for the dev-buy estimate (mirror the contract)
 const V_ETH = 1.25e18;
@@ -146,7 +146,7 @@ export function CreateTokenForm() {
           </div>
           <div>
             <Label>Ticker</Label>
-            <div className="flex items-center rounded-lg bg-black border border-zinc-700 focus-within:border-white">
+            <div className="flex items-center rounded-lg input focus-within:border-white">
               <span className="pl-3 text-zinc-500 text-sm">$</span>
               <input
                 value={symbol}
@@ -179,7 +179,7 @@ export function CreateTokenForm() {
         <div>
           <Label>Token image</Label>
           <div className="flex gap-3 items-center">
-            <label className="flex-1 cursor-pointer rounded-lg border border-dashed border-zinc-700 px-3 py-3 text-sm text-zinc-400 hover:border-white hover:text-white text-center">
+            <label className="flex-1 cursor-pointer rounded-lg border border-dashed border-white/15 px-3 py-3 text-sm text-zinc-400 hover:border-white hover:text-white text-center">
               {logoProcessing
                 ? "Processing…"
                 : logoURI.startsWith("data:")
@@ -255,7 +255,7 @@ export function CreateTokenForm() {
                 className={`rounded-full px-3 py-1.5 text-xs font-mono ${
                   (v === "0" && !initialBuy) || initialBuy === v
                     ? "bg-white text-black"
-                    : "border border-zinc-700 text-zinc-400 hover:border-white hover:text-white"
+                    : "border border-white/15 text-zinc-400 hover:border-white hover:text-white"
                 }`}
               >
                 {v === "0" ? "Off" : `${v} ${native}`}
@@ -268,7 +268,7 @@ export function CreateTokenForm() {
               type="number"
               step="any"
               min="0"
-              className="w-24 rounded-full bg-black border border-zinc-700 px-3 py-1.5 text-xs font-mono focus:border-white outline-none text-right"
+              className="w-24 rounded-full input px-3 py-1.5 text-xs font-mono focus:border-white outline-none text-right"
             />
           </div>
           {isEthQuote && devBuyNum > 0 && (
@@ -279,7 +279,7 @@ export function CreateTokenForm() {
           )}
         </div>
 
-        <div className="rounded-lg border border-zinc-800 px-4 py-3 font-mono text-[11px] tracking-wide text-zinc-400">
+        <div className="rounded-lg border border-white/10 px-4 py-3 font-mono text-[11px] tracking-wide text-zinc-400">
           1% TRADING FEE →{" "}
           <span className="text-white">{feesToHolders ? "80% HOLDERS" : "80% YOU"}</span> · 20%
           TREASURY
@@ -288,7 +288,7 @@ export function CreateTokenForm() {
         <button
           type="submit"
           disabled={!deployed || !isConnected || isPending || isConfirming}
-          className="w-full rounded-full bg-white py-3 font-semibold text-black hover:bg-zinc-200 disabled:opacity-40"
+          className="btn-primary w-full py-3"
         >
           {!deployed
             ? "Not deployed on this chain"
@@ -302,7 +302,7 @@ export function CreateTokenForm() {
         </button>
 
         {isSuccess && hash && (
-          <div className="rounded-xl border border-zinc-700 bg-black p-4 space-y-3">
+          <div className="card p-4 space-y-3">
             <p className="text-sm text-white font-semibold">🎉 Token created!</p>
             {newToken && (
               <>
@@ -315,14 +315,14 @@ export function CreateTokenForm() {
                       setCopied(true);
                       setTimeout(() => setCopied(false), 1500);
                     }}
-                    className="rounded-full border border-zinc-700 px-2.5 py-0.5 text-xs text-zinc-300 hover:border-white hover:text-white shrink-0"
+                    className="rounded-full border border-white/15 px-2.5 py-0.5 text-xs text-zinc-300 hover:border-white hover:text-white shrink-0"
                   >
                     {copied ? "Copied ✓" : "Copy CA"}
                   </button>
                 </div>
                 <Link
                   href={`/token/${newToken}`}
-                  className="block w-full rounded-full bg-white py-2 text-center text-sm font-semibold text-black hover:bg-zinc-200"
+                  className="block w-full rounded-full bg-white py-2 text-center text-sm font-semibold text-black hover:bg-zinc-100 transition-colors"
                 >
                   Open trading page →
                 </Link>
@@ -339,7 +339,7 @@ export function CreateTokenForm() {
           </div>
         )}
         {error && (
-          <p className="text-sm text-zinc-400 break-all border border-zinc-700 rounded-lg p-2">
+          <p className="text-sm text-zinc-400 break-all border border-white/15 rounded-lg p-2">
             ⚠ {(error as { shortMessage?: string }).shortMessage ?? error.message}
           </p>
         )}
@@ -347,7 +347,7 @@ export function CreateTokenForm() {
 
       {/* ------------------------------------------------ live preview */}
       <aside className="order-1 lg:order-2">
-        <div className="lg:sticky lg:top-24 rounded-xl border border-zinc-800 bg-black p-5 space-y-4">
+        <div className="lg:sticky lg:top-24 card p-5 space-y-4">
           <div className="flex items-center justify-between">
             <span className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">
               Your coin
@@ -368,7 +368,7 @@ export function CreateTokenForm() {
             {description || "Your description will appear here."}
           </p>
 
-          <div className="divide-y divide-zinc-900 font-mono text-xs">
+          <div className="divide-y divide-white/[0.06] font-mono text-xs">
             <Row k="Trading fees" v="1% buy · 1% sell" />
             <Row
               k="Fee split"
@@ -499,7 +499,7 @@ function PairSelect({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full sm:w-72 items-center justify-between rounded-lg bg-black border border-zinc-700 px-3 py-2 text-sm text-white hover:border-white focus:border-white outline-none"
+        className="flex w-full sm:w-72 items-center justify-between rounded-lg input px-3 py-2 text-sm text-white hover:border-white focus:border-white outline-none"
       >
         <span className="flex items-center gap-2 min-w-0">
           <AssetLogo asset={value} size={20} />
@@ -510,13 +510,13 @@ function PairSelect({
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full mt-2 w-full sm:w-80 rounded-xl border border-zinc-700 bg-black p-1.5 z-30 shadow-lg shadow-black/60">
+        <div className="absolute left-0 top-full mt-2 w-full sm:w-80 rounded-xl input p-1.5 z-30 shadow-lg shadow-black/60">
           <input
             autoFocus
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder={`Search ${assets.length} assets — ticker, name or CA`}
-            className="w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-1.5 text-xs outline-none focus:border-white placeholder:text-zinc-600 mb-1"
+            className="w-full rounded-lg bg-zinc-950 border border-white/10 px-3 py-1.5 text-xs outline-none focus:border-white placeholder:text-zinc-600 mb-1"
           />
           <div className="max-h-72 overflow-y-auto">
             {groups.length === 0 && (
@@ -590,7 +590,7 @@ function FeeModeCard({
       className={`rounded-xl border px-4 py-3 text-left ${
         selected
           ? "border-white bg-white text-black"
-          : "border-zinc-700 text-zinc-400 hover:border-white hover:text-white"
+          : "border-white/15 text-zinc-400 hover:border-white hover:text-white"
       }`}
     >
       <div className="font-mono text-xs font-bold tracking-widest uppercase">{title}</div>
@@ -632,7 +632,7 @@ function PrefixInput({
   onChange: (v: string) => void;
 }) {
   return (
-    <div className="flex items-center rounded-lg bg-black border border-zinc-700 focus-within:border-white">
+    <div className="flex items-center rounded-lg input focus-within:border-white">
       <span className="pl-3 text-zinc-600 text-sm whitespace-nowrap">{base}</span>
       <input
         value={value}

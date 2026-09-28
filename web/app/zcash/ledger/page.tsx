@@ -14,7 +14,7 @@ export default function ZcashLedger() {
   return (
     <div className="max-w-3xl mx-auto space-y-8">
       <div>
-        <h1 className="font-mono text-2xl font-bold tracking-[0.15em] uppercase">Ledger</h1>
+        <h1 className="display text-4xl text-white">Ledger</h1>
         <p className="mt-2 text-sm text-zinc-500">
           Zcash cannot enforce these balances, so they are made checkable instead. Everything below was
           read off the chain with the viewing key published here. Run the same rules over the same blocks
@@ -41,7 +41,7 @@ export default function ZcashLedger() {
         {CLONE_LINE && (
           <details className="text-xs text-zinc-500">
             <summary className="cursor-pointer text-zinc-400">How to rebuild this ledger</summary>
-            <pre className="mt-2 overflow-x-auto rounded-lg border border-zinc-800 p-3 font-mono text-[11px] leading-relaxed text-zinc-400">{`${CLONE_LINE}
+            <pre className="mt-2 overflow-x-auto rounded-lg border border-white/10 p-3 font-mono text-[11px] leading-relaxed text-zinc-400">{`${CLONE_LINE}
 # build zcash-devtool into zcash/tool, then a view-only wallet from the key above:
 zcash-devtool wallet -w zcash/desk init-fvk --name check --fvk <viewing key> --birthday ${state.desk.birthday ?? "<desk birthday>"}
 node zcash/indexer.ts        # syncs, replays web/lib/zcash/ledger.ts, prints the state root`}</pre>
@@ -91,7 +91,7 @@ node zcash/indexer.ts        # syncs, replays web/lib/zcash/ledger.ts, prints th
         </div>
       </section>
 
-      <section className="rounded-xl border border-zinc-800 p-4 text-xs text-zinc-500 space-y-1.5">
+      <section className="rounded-xl border border-white/10 p-4 text-xs text-zinc-500 space-y-1.5">
         <p className="text-zinc-300 font-semibold">What could cost you</p>
         <p>— The desk holds the ZEC. There is no escrow contract on Zcash: what sits in a curve sits with the desk until it is sold back or claimed.</p>
         <p>— This ledger is the only record of balances until Zcash ships native shielded assets.</p>
@@ -108,7 +108,7 @@ function Label({ children }: { children: React.ReactNode }) {
 }
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-zinc-800 bg-black p-3">
+    <div className="card p-3">
       <div className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">{label}</div>
       <div className="mt-1 font-semibold text-sm font-mono">{value}</div>
     </div>
@@ -119,7 +119,7 @@ function Copyable({ value }: { value: string }) {
   return (
     <button type="button" title="Copy"
       onClick={() => { navigator.clipboard.writeText(value); setCopied(true); setTimeout(() => setCopied(false), 1200); }}
-      className="block w-full rounded-lg border border-zinc-800 px-3 py-2 text-left font-mono text-xs text-zinc-300 break-all hover:border-white">
+      className="block w-full rounded-lg border border-white/10 px-3 py-2 text-left font-mono text-xs text-zinc-300 break-all hover:border-white">
       {value} <span className="text-zinc-600">{copied ? "· copied ✓" : "· copy"}</span>
     </button>
   );

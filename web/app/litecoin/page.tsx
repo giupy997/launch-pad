@@ -19,42 +19,55 @@ export default function LitecoinExplore() {
   return (
     <div className="space-y-10">
       <FrozenNotice state={state} />
-      <section className="text-center space-y-4 py-6">
-        <h1 className="font-mono text-3xl sm:text-4xl font-bold tracking-[0.15em] uppercase leading-snug">
-          Launch your coin
-          <br />
-          on Litecoin
-        </h1>
-        <p className="text-zinc-400 max-w-xl mx-auto">
-          Litecoin has no smart contracts — so a coin here begins as an OP_RETURN. One desk address,
-          plain Litecoin transactions signed by you, a bonding curve that graduates into a locked pool with
-          no price ceiling, and a ledger anyone can recompute from the chain.
-        </p>
-        <p className="text-zinc-300 max-w-xl mx-auto text-sm">
-          When LitVM mainnet goes live, every coin here <span className="text-white">migrates to LitVM automatically</span>:
-          same holders, same price, and its pool moves to a DEX.
-        </p>
-        <Link
-          href="/litecoin/create"
-          className="inline-block rounded-full bg-white px-6 py-2.5 font-semibold text-black hover:bg-zinc-200"
-        >
-          Deploy a coin
-        </Link>
+      <section className="relative overflow-hidden rounded-3xl border border-white/10 px-6 py-14 sm:px-12 sm:py-20 card">
+        {/* the statue, lit from above, dissolving into the page */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 right-0 w-[70%] sm:w-[55%] bg-[url('/profile-bg.jpg')] bg-cover bg-[center_20%] opacity-[0.28] mix-blend-screen"
+          style={{ maskImage: "linear-gradient(to left, rgba(0,0,0,0.9), transparent 90%)", WebkitMaskImage: "linear-gradient(to left, rgba(0,0,0,0.9), transparent 90%)" }}
+        />
+        <div className="relative max-w-2xl space-y-6">
+          <div className="pill fade-up">
+            <span className="h-1.5 w-1.5 rounded-full bg-accent shadow-[0_0_10px_rgba(var(--accent),0.9)]" />
+            {LTC_NETWORK === "main" ? "Litecoin mainnet · live" : "Litecoin testnet"}
+          </div>
+          <h1 className="display fade-up text-5xl sm:text-7xl leading-[0.95] text-white glow-text text-balance">
+            Launch your coin <br className="hidden sm:block" />
+            on <em className="text-zinc-200">Litecoin</em>.
+          </h1>
+          <p className="fade-up-2 max-w-xl text-base sm:text-lg leading-relaxed text-zinc-400">
+            Litecoin has no smart contracts, so a coin here begins as an OP_RETURN: one desk address, plain Litecoin
+            transactions you sign yourself, a bonding curve that graduates into a locked pool with no price ceiling,
+            and a ledger anyone can recompute from the chain.
+          </p>
+          <p className="fade-up-2 max-w-xl text-sm leading-relaxed text-zinc-300">
+            When LitVM mainnet goes live, every coin here <span className="text-white">migrates to LitVM automatically</span>:
+            same holders, same price, its pool on a DEX.
+          </p>
+          <div className="fade-up-3 flex flex-wrap items-center gap-3 pt-1">
+            <Link href="/litecoin/create" className="btn-primary px-6 py-3 text-sm">
+              Deploy a coin
+            </Link>
+            <Link href="/litecoin/fund" className="btn-ghost px-5 py-3 text-sm">
+              Get LTC from ETH or BNB
+            </Link>
+          </div>
+        </div>
       </section>
 
       {state?.demo && (
-        <p className="rounded-xl border border-dashed border-zinc-700 p-3 text-center text-xs text-zinc-400">
+        <p className="rounded-xl border border-dashed border-white/15 p-3 text-center text-xs text-zinc-400">
           Demo data — synthetic transactions run through the real rules, not the chain.
         </p>
       )}
       {state && !state.desk.address && (
-        <p className="rounded-xl border border-dashed border-zinc-700 p-3 text-center text-xs text-zinc-400">
+        <p className="rounded-xl border border-dashed border-white/15 p-3 text-center text-xs text-zinc-400">
           The desk is not live yet: the indexer has not published a desk address. Nothing can be deployed or bought until it does.
         </p>
       )}
 
       {!!state?.pending?.length && (
-        <section className="rounded-xl border border-dashed border-zinc-700 p-4">
+        <section className="rounded-xl border border-dashed border-white/15 p-4">
           <h2 className="font-mono text-[10px] tracking-widest uppercase text-zinc-500 mb-2">
             Waiting for a block <span className="text-zinc-600">({state.pending.length})</span>
           </h2>
@@ -70,7 +83,7 @@ export default function LitecoinExplore() {
         </section>
       )}
 
-      <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <section className="grid grid-cols-2 sm:grid-cols-4 gap-3 fade-up-3">
         <Stat label="Ledger height" value={state?.height ? state.height.toLocaleString("en-US") : "—"} />
         <Stat label="Coins" value={String(state?.coins.length ?? 0)} />
         <Stat label="Transactions read" value={String(state?.txsRead ?? 0)} />
@@ -83,14 +96,14 @@ export default function LitecoinExplore() {
 
       <section>
         <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
-          <h2 className="font-mono text-sm font-semibold tracking-[0.2em] uppercase text-zinc-400">
-            Explore <span className="text-zinc-600">({coins.length})</span>
+          <h2 className="display text-3xl text-white">
+            Coins <span className="text-zinc-600">({coins.length})</span>
           </h2>
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search name / ticker"
-            className="rounded-full bg-black border border-zinc-700 px-4 py-1.5 text-sm focus:border-white outline-none placeholder:text-zinc-600 w-full sm:w-56"
+            className="input rounded-full px-4 py-2 text-sm w-full sm:w-64"
           />
         </div>
         {!isLoading && !state && (
@@ -112,52 +125,55 @@ export default function LitecoinExplore() {
 function CoinCard({ coin: c, usd }: { coin: LCoin; usd: number | null }) {
   const progress = Number((BigInt(c.sold) * 10_000n) / CURVE_SUPPLY) / 100;
   return (
-    <Link
-      href={`/litecoin/c/${c.ticker}`}
-      className="rounded-xl border border-zinc-800 bg-black p-4 hover:border-white transition-colors"
-    >
-      <div className="flex items-center gap-3">
-        <TokenLogo uri={c.logo} symbol={c.ticker} size={44} />
-        <div className="min-w-0">
-          <div className="font-semibold truncate flex items-center gap-2">
-            {c.name}
-            {c.feesToHolders && (
-              <span className="font-mono text-[9px] tracking-widest uppercase border border-white rounded-full px-1.5 py-px shrink-0">
-                ✦ Rewards
-              </span>
-            )}
+    <Link href={`/litecoin/c/${c.ticker}`} className="card card-hover group block p-5">
+      <div className="flex items-center gap-4">
+        <div className="relative shrink-0">
+          <TokenLogo uri={c.logo} symbol={c.ticker} size={52} />
+          <span className="pointer-events-none absolute -inset-1 -z-10 rounded-2xl bg-white/10 blur-md opacity-0 transition group-hover:opacity-100" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="truncate text-lg font-semibold text-white">{c.name}</span>
+            {c.graduated && <span className="pill shrink-0 border-accent/40 text-accent">Graduated</span>}
+            {c.feesToHolders && <span className="pill shrink-0">✦ Rewards</span>}
           </div>
-          <div className="font-mono text-xs text-zinc-400">${c.ticker}</div>
+          <div className="font-mono text-xs text-zinc-500">${c.ticker} · by {shortAddr(c.creator)}</div>
         </div>
       </div>
-      <div className="mt-3 text-xs text-zinc-500">creator {shortAddr(c.creator)}</div>
-      <div className="mt-3 flex justify-between text-sm">
-        <span className="text-zinc-300">{fmtMcap(marketCapLtc(c), usd)} <span className="text-zinc-600">mcap</span></span>
-        <span className="text-zinc-500">{c.graduated ? `pool ${fmtLtc(c.poolLit)} LTC` : `raised ${fmtLtc(c.realLit)} LTC`}</span>
+      <div className="mt-5 flex items-end justify-between gap-3">
+        <div>
+          <div className="label">Market cap</div>
+          <div className="mt-0.5 display text-3xl leading-none text-white">{fmtMcap(marketCapLtc(c), usd)}</div>
+        </div>
+        <div className="text-right">
+          <div className="label">{c.graduated ? "In the pool" : "In the curve"}</div>
+          <div className="mt-0.5 font-mono text-sm text-zinc-300">{fmtLtc(c.graduated ? c.poolLit : c.realLit)} LTC</div>
+        </div>
       </div>
-      <div className="mt-3 h-1 rounded bg-zinc-800 overflow-hidden">
-        <div className="h-full bg-white" style={{ width: `${Math.min(progress, 100)}%` }} />
+      <div className="mt-4 bar-track">
+        <div className="bar-fill" style={{ width: `${c.graduated ? 100 : Math.min(progress, 100)}%` }} />
       </div>
-      <div className="mt-1.5 font-mono text-[10px] tracking-widest uppercase text-zinc-500">
-        {c.graduated ? `graduated · pool ${fmtLtc(c.poolLit)} LTC` : `curve ${progress.toFixed(1)}%`} · {c.holders} holders
+      <div className="mt-2 flex justify-between font-mono text-[10px] tracking-widest uppercase text-zinc-500">
+        <span>{c.graduated ? "locked pool · no ceiling" : `curve ${progress.toFixed(1)}%`}</span>
+        <span>{c.holders} holders</span>
       </div>
     </Link>
   );
 }
 
 function Stat({ label, value, href }: { label: string; value: string; href?: string }) {
-  const body = (
+  const inner = (
     <>
-      <div className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">{label}</div>
-      <div className="mt-1 font-semibold text-sm font-mono">{value}</div>
+      <div className="label">{label}</div>
+      <div className="mt-1.5 font-mono text-lg text-white">{value}</div>
     </>
   );
-  const cls = "rounded-lg border border-zinc-800 bg-black p-3 block";
+  const cls = "card p-4";
   return href ? (
-    <Link href={href} className={`${cls} hover:border-white`}>
-      {body}
+    <Link href={href} className={`${cls} card-hover block`}>
+      {inner}
     </Link>
   ) : (
-    <div className={cls}>{body}</div>
+    <div className={cls}>{inner}</div>
   );
 }

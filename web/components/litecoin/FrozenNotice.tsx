@@ -17,7 +17,7 @@ export function FrozenNotice({ state, ticker, compact = false }: { state: LState
         This ledger stopped taking buys, sells and deploys at that block: {ticker ? `$${ticker} now trades` : "the coins now trade"} on
         LitVM, with the same holders and the same price. What the desk still owes here (claims, payouts) is paid on Litecoin as usual.
       </p>
-      <Link href={href} className="inline-block rounded-full bg-white px-4 py-1.5 text-xs font-semibold text-black hover:bg-zinc-200">
+      <Link href={href} className="inline-block btn-primary px-4 py-1.5 text-xs">
         {token ? `Trade $${ticker} on LitVM` : "Open Notus on LitVM"}
       </Link>
     </div>

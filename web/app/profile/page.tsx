@@ -35,7 +35,7 @@ export default function ProfilePage() {
         className="fixed inset-0 -z-10 pointer-events-none bg-[url('/profile-bg.jpg')] bg-cover bg-center opacity-25"
       />
 
-        <h1 className="font-mono text-2xl font-bold tracking-[0.15em] uppercase">Profile</h1>
+        <h1 className="display text-4xl text-white">Profile</h1>
         <p className="text-zinc-500">Connect your wallet to see your tokens and holdings.</p>
       </div>
     );
@@ -70,7 +70,7 @@ export default function ProfilePage() {
 
       <section className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h1 className="font-mono text-2xl font-bold tracking-[0.15em] uppercase">Profile</h1>
+          <h1 className="display text-4xl text-white">Profile</h1>
           <p className="mt-1 font-mono text-sm text-zinc-400">
             <a href={`${explorer}/address/${user}`} target="_blank" className="underline">
               {shortAddr(user)}
@@ -78,7 +78,7 @@ export default function ProfilePage() {
           </p>
         </div>
         <div className="flex gap-3 flex-wrap">
-          <div className="rounded-xl border border-zinc-800 px-5 py-3">
+          <div className="rounded-xl border border-white/10 px-5 py-3">
             <div className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">
               Balance
             </div>
@@ -107,7 +107,7 @@ export default function ProfilePage() {
             <Link
               key={t.address}
               href={`/token/${t.address}`}
-              className="flex items-center gap-4 rounded-xl border border-zinc-800 p-3 hover:border-white transition-colors"
+              className="flex items-center gap-4 rounded-xl border border-white/10 p-3 hover:border-white transition-colors"
             >
               <TokenLogo uri={t.meta.logoURI} symbol={t.symbol} size={40} />
               <div className="min-w-0 flex-1">

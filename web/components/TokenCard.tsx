@@ -12,12 +12,12 @@ export function TokenCard({ token: t }: { token: TokenInfo }) {
   return (
     <Link
       href={`/token/${t.address}`}
-      className="rounded-xl border border-zinc-800 bg-black p-4 hover:border-white transition-colors"
+      className="card card-hover group block p-5"
     >
       <div className="flex items-center gap-3">
-        <TokenLogo uri={t.meta.logoURI} symbol={t.symbol} size={44} />
+        <TokenLogo uri={t.meta.logoURI} symbol={t.symbol} size={52} />
         <div className="min-w-0">
-          <div className="font-semibold truncate flex items-center gap-2">
+          <div className="text-lg font-semibold text-white truncate flex items-center gap-2">
             {t.name}
             {t.meta.livestream && (
               <span className="font-mono text-[9px] tracking-widest uppercase border border-white rounded-full px-1.5 py-px shrink-0">
@@ -41,16 +41,22 @@ export function TokenCard({ token: t }: { token: TokenInfo }) {
           <div className="font-mono text-xs text-zinc-400">${t.symbol}</div>
         </div>
       </div>
-      <div className="mt-3 text-xs text-zinc-500">creator {shortAddr(t.curve.creator)}</div>
-      <div className="mt-3 flex justify-between text-sm">
-        <span className="text-zinc-300">{fmtUnits(spotPrice(t.curve), q.decimals)} {q.symbol}</span>
-        <span className="text-zinc-500">raised {fmtUnits(t.curve.realEth, q.decimals)} {q.symbol}</span>
+      <div className="mt-1 font-mono text-xs text-zinc-500">by {shortAddr(t.curve.creator)}</div>
+      <div className="mt-5 flex items-end justify-between gap-3">
+        <div>
+          <div className="label">Price</div>
+          <div className="mt-0.5 display text-2xl leading-none text-white">{fmtUnits(spotPrice(t.curve), q.decimals)} <span className="text-base text-zinc-400">{q.symbol}</span></div>
+        </div>
+        <div className="text-right">
+          <div className="label">Raised</div>
+          <div className="mt-0.5 font-mono text-sm text-zinc-300">{fmtUnits(t.curve.realEth, q.decimals)} {q.symbol}</div>
+        </div>
       </div>
-      <div className="mt-3 h-1 rounded bg-zinc-800 overflow-hidden">
-        <div className="h-full bg-white" style={{ width: `${Math.min(progress, 100)}%` }} />
+      <div className="mt-4 bar-track">
+        <div className="bar-fill" style={{ width: `${Math.min(progress, 100)}%` }} />
       </div>
-      <div className="mt-1.5 font-mono text-[10px] tracking-widest uppercase text-zinc-500">
-        {t.curve.graduated ? "Graduated" : `curve ${progress.toFixed(1)}%`}
+      <div className="mt-2 font-mono text-[10px] tracking-widest uppercase text-zinc-500">
+        {t.curve.graduated ? "graduated · locked pool" : `curve ${progress.toFixed(1)}%`}
       </div>
     </Link>
   );

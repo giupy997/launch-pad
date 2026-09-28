@@ -16,7 +16,7 @@ export default function ZcashCoinPage({ params }: { params: { ticker: string } }
   const { data: state, isLoading } = useZcashState();
   const coin = state?.coins.find((c) => c.ticker === ticker);
 
-  if (isLoading && !state) return <div className="h-64 rounded-xl bg-zinc-900 animate-pulse" />;
+  if (isLoading && !state) return <div className="h-64 rounded-xl bg-white/[0.04] animate-pulse" />;
   if (!state || !coin) {
     return (
       <p className="text-zinc-500">
@@ -59,8 +59,8 @@ export default function ZcashCoinPage({ params }: { params: { ticker: string } }
         </div>
 
         <div>
-          <div className="h-2 rounded bg-zinc-800 overflow-hidden">
-            <div className="h-full bg-white" style={{ width: `${Math.min(progress, 100)}%` }} />
+          <div className="h-2 rounded bg-white/[0.08] overflow-hidden">
+            <div className="bar-fill" style={{ width: `${Math.min(progress, 100)}%` }} />
           </div>
           <p className="mt-2 text-xs text-zinc-500">
             {progress.toFixed(1)}% of the 800M on the curve. There is no DEX to graduate to on Zcash: the curve
@@ -70,7 +70,7 @@ export default function ZcashCoinPage({ params }: { params: { ticker: string } }
 
         <PriceChart points={points} quoteSymbol="ZEC" />
 
-        <div className="rounded-xl border border-zinc-800 bg-black p-4">
+        <div className="card p-4">
           <h2 className="font-mono text-[10px] tracking-widest uppercase text-zinc-500 mb-3">Trades</h2>
           {trades.length === 0 && <p className="text-sm text-zinc-600">No trades yet.</p>}
           <div className="space-y-1.5">
@@ -86,7 +86,7 @@ export default function ZcashCoinPage({ params }: { params: { ticker: string } }
           </div>
         </div>
 
-        <div className="rounded-xl border border-zinc-800 bg-black p-4">
+        <div className="card p-4">
           <h2 className="font-mono text-[10px] tracking-widest uppercase text-zinc-500 mb-3">Holders</h2>
           <div className="space-y-1.5">
             {holders.slice(0, 20).map(([h, v]) => (
@@ -134,7 +134,7 @@ function TradeBox({ coin, state }: { coin: ZCoin; state: ZState }) {
   const nonce = BigInt(state.nonces[holder] ?? "0") + 1n;
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-black p-5 space-y-4 lg:sticky lg:top-24">
+    <div className="card p-5 space-y-4 lg:sticky lg:top-24">
       <div className="grid grid-cols-2 rounded-lg bg-zinc-900 p-1 text-sm font-semibold">
         {(["buy", "sell"] as const).map((m) => (
           <button key={m} type="button" onClick={() => setMode(m)} className={`rounded-md py-1.5 capitalize ${mode === m ? "bg-white text-black" : "text-zinc-400"}`}>
@@ -147,13 +147,13 @@ function TradeBox({ coin, state }: { coin: ZCoin; state: ZState }) {
         <>
           <div className="flex gap-2 flex-wrap">
             {["0.01", "0.05", "0.1"].map((v) => (
-              <button key={v} type="button" onClick={() => setAmount(v)} className="rounded-full border border-zinc-700 px-3 py-1 text-xs font-mono text-zinc-400 hover:border-white hover:text-white">
+              <button key={v} type="button" onClick={() => setAmount(v)} className="rounded-full border border-white/15 px-3 py-1 text-xs font-mono text-zinc-400 hover:border-white hover:text-white">
                 {v} ZEC
               </button>
             ))}
           </div>
           <input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.0 ZEC" type="number" min="0" step="any"
-            className="w-full rounded-lg bg-black border border-zinc-700 px-3 py-2 text-sm focus:border-white outline-none text-right" />
+            className="w-full rounded-lg input px-3 py-2 text-sm focus:border-white outline-none text-right" />
           {buyQ && buyQ.tokensOut > 0n && (
             <>
               <p className="text-sm text-zinc-400">
@@ -179,7 +179,7 @@ function TradeBox({ coin, state }: { coin: ZCoin; state: ZState }) {
           <div className="flex gap-2">
             {[25, 50, 75, 100].map((p) => (
               <button key={p} type="button" onClick={() => setPercent(p)}
-                className={`flex-1 rounded-full py-1 text-xs font-mono ${percent === p ? "bg-white text-black" : "border border-zinc-700 text-zinc-400 hover:border-white"}`}>
+                className={`flex-1 rounded-full py-1 text-xs font-mono ${percent === p ? "bg-white text-black" : "border border-white/15 text-zinc-400 hover:border-white"}`}>
                 {p}%
               </button>
             ))}
@@ -191,7 +191,7 @@ function TradeBox({ coin, state }: { coin: ZCoin; state: ZState }) {
               try { localStorage.setItem("notus.zcash.payout", e.target.value.trim()); } catch {}
             }}
             placeholder="Your Zcash address — where the ZEC is paid"
-            className="w-full rounded-lg bg-black border border-zinc-700 px-3 py-2 text-xs font-mono focus:border-white outline-none placeholder:text-zinc-600"
+            className="w-full rounded-lg input px-3 py-2 text-xs font-mono focus:border-white outline-none placeholder:text-zinc-600"
           />
           {sellQ && payoutOk && (
             <>
@@ -220,7 +220,7 @@ function TradeBox({ coin, state }: { coin: ZCoin; state: ZState }) {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-zinc-800 bg-black p-3">
+    <div className="card p-3">
       <div className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">{label}</div>
       <div className="mt-1 font-semibold text-sm">{value}</div>
     </div>

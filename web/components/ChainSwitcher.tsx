@@ -60,7 +60,7 @@ export function ChainSwitcher() {
         type="button"
         onClick={() => setOpen((o) => !o)}
         disabled={isPending}
-        className="flex items-center gap-2 rounded-full bg-black border border-zinc-700 px-3 py-1.5 text-xs font-mono tracking-wider uppercase text-zinc-300 hover:border-white disabled:opacity-50"
+        className="btn-ghost gap-2 px-3 py-1.5 text-xs font-mono tracking-wider uppercase disabled:opacity-50"
         title="Switch chain"
       >
         <ChainLogo id={chain.id} />
@@ -71,7 +71,7 @@ export function ChainSwitcher() {
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-56 rounded-xl border border-zinc-700 bg-black p-1 z-20 shadow-lg shadow-black/60">
+        <div className="absolute right-0 mt-2 w-60 glass rounded-2xl p-1.5 z-20 shadow-2xl shadow-black/70 fade-up">
           {SECTIONS.map((sec) => {
             const active = section?.path === sec.path;
             return (

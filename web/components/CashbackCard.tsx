@@ -43,7 +43,7 @@ export function CashbackCard({
   const amount = claimable as bigint;
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-black p-5">
+    <div className="card p-5">
       <div className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">
         Holder cashback
       </div>
@@ -62,7 +62,7 @@ export function CashbackCard({
               });
             }}
             disabled={isPending || isConfirming}
-            className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-black hover:bg-zinc-200 disabled:opacity-40"
+            className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-black hover:bg-zinc-100 transition-colors disabled:opacity-40"
           >
             {isPending ? "Sign…" : isConfirming ? "Claiming…" : "Claim"}
           </button>

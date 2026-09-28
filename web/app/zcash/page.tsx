@@ -28,7 +28,7 @@ export default function ZcashExplore() {
         </p>
         <Link
           href="/zcash/create"
-          className="inline-block rounded-full bg-white px-6 py-2.5 font-semibold text-black hover:bg-zinc-200"
+          className="inline-block btn-primary px-6 py-2.5"
         >
           Deploy a coin
         </Link>
@@ -54,7 +54,7 @@ export default function ZcashExplore() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search name / ticker"
-            className="rounded-full bg-black border border-zinc-700 px-4 py-1.5 text-sm focus:border-white outline-none placeholder:text-zinc-600 w-full sm:w-56"
+            className="rounded-full input px-4 py-1.5 text-sm focus:border-white outline-none placeholder:text-zinc-600 w-full sm:w-56"
           />
         </div>
         {!isLoading && !state && (
@@ -78,7 +78,7 @@ function CoinCard({ coin: c }: { coin: ZCoin }) {
   return (
     <Link
       href={`/zcash/c/${c.ticker}`}
-      className="rounded-xl border border-zinc-800 bg-black p-4 hover:border-white transition-colors"
+      className="card card-hover p-4"
     >
       <div className="flex items-center gap-3">
         <TokenLogo uri={c.logo} symbol={c.ticker} size={44} />
@@ -99,8 +99,8 @@ function CoinCard({ coin: c }: { coin: ZCoin }) {
         <span className="text-zinc-300">{fmtPrice(spotPrice(c))} ZEC</span>
         <span className="text-zinc-500">raised {fmtZec(c.realZat)} ZEC</span>
       </div>
-      <div className="mt-3 h-1 rounded bg-zinc-800 overflow-hidden">
-        <div className="h-full bg-white" style={{ width: `${Math.min(progress, 100)}%` }} />
+      <div className="mt-3 h-1 rounded bg-white/[0.08] overflow-hidden">
+        <div className="bar-fill" style={{ width: `${Math.min(progress, 100)}%` }} />
       </div>
       <div className="mt-1.5 font-mono text-[10px] tracking-widest uppercase text-zinc-500">
         curve {progress.toFixed(1)}% · {c.holders} holders
@@ -116,7 +116,7 @@ function Stat({ label, value, href }: { label: string; value: string; href?: str
       <div className="mt-1 font-semibold text-sm font-mono">{value}</div>
     </>
   );
-  const cls = "rounded-lg border border-zinc-800 bg-black p-3 block";
+  const cls = "card p-3 block";
   return href ? (
     <Link href={href} className={`${cls} hover:border-white`}>
       {body}

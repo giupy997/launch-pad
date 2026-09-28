@@ -20,7 +20,7 @@ export function TokenLogo({
     return (
       <div
         style={{ width: size, height: size }}
-        className="flex items-center justify-center rounded-lg border border-zinc-700 bg-black font-mono font-bold text-zinc-400 select-none"
+        className="flex items-center justify-center rounded-lg input font-mono font-bold text-zinc-400 select-none"
       >
         {symbol?.slice(0, 1).toUpperCase() || "?"}
       </div>
@@ -36,7 +36,7 @@ export function TokenLogo({
       height={size}
       onError={() => setFailed(true)}
       style={{ width: size, height: size }}
-      className="rounded-lg object-cover aspect-square border border-zinc-800"
+      className="rounded-lg object-cover aspect-square border border-white/10"
     />
   );
 }

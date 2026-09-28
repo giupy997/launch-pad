@@ -14,7 +14,7 @@ export default function LitecoinLedger() {
   return (
     <div className="max-w-3xl mx-auto space-y-8">
       <div>
-        <h1 className="font-mono text-2xl font-bold tracking-[0.15em] uppercase">Ledger</h1>
+        <h1 className="display text-4xl text-white">Ledger</h1>
         <p className="mt-2 text-sm text-zinc-500">
           Litecoin cannot enforce these balances, so they are made checkable instead. Everything below was
           read off the public chain: the transactions paying the desk address, and the OP_RETURN each one
@@ -45,7 +45,7 @@ export default function LitecoinLedger() {
         <details className="text-xs text-zinc-500">
           <summary className="cursor-pointer text-zinc-400">How to rebuild this ledger</summary>
           {CLONE_LINE ? (
-            <pre className="mt-2 overflow-x-auto rounded-lg border border-zinc-800 p-3 font-mono text-[11px] leading-relaxed text-zinc-400">{`${CLONE_LINE}
+            <pre className="mt-2 overflow-x-auto rounded-lg border border-white/10 p-3 font-mono text-[11px] leading-relaxed text-zinc-400">{`${CLONE_LINE}
 (cd web && npm install)
 # reads every transaction of the desk from litecoinspace.org (or NOTUS_LTC_API=<your Esplora/electrs>),
 # replays web/lib/litecoin/ledger.ts and prints the state root:
@@ -105,7 +105,7 @@ NOTUS_LTC_DESK=${state.desk.address ?? "<desk address>"} node litecoin/indexer.t
         </div>
       </section>
 
-      <section className="rounded-xl border border-zinc-800 p-4 text-xs text-zinc-500 space-y-1.5">
+      <section className="rounded-xl border border-white/10 p-4 text-xs text-zinc-500 space-y-1.5">
         <p>
           <span className="text-zinc-300">The road to LitVM.</span> Every buyer&apos;s public key is on record in their own
           transactions, so each Litecoin address maps to an EVM address. When LitVM mainnet goes live the ledger is
@@ -132,7 +132,7 @@ function Label({ children }: { children: React.ReactNode }) {
 }
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-zinc-800 bg-black p-3">
+    <div className="card p-3">
       <div className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">{label}</div>
       <div className="mt-1 font-semibold text-sm font-mono">{value}</div>
     </div>

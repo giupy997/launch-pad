@@ -26,7 +26,7 @@ export function BottomNav() {
   const items = section ? sectionItems(section) : ITEMS;
   const root = section ?? "/";
   return (
-    <nav className="fixed bottom-0 inset-x-0 z-20 md:hidden border-t border-zinc-800 bg-black/95 backdrop-blur pb-[env(safe-area-inset-bottom)]">
+    <nav className="fixed bottom-0 inset-x-0 z-20 md:hidden glass border-x-0 border-b-0 pb-[env(safe-area-inset-bottom)]">
       <div className="flex justify-around">
         {items.map((it) => {
           const active =
@@ -37,10 +37,11 @@ export function BottomNav() {
             <Link
               key={it.href}
               href={it.href}
-              className={`flex flex-col items-center gap-0.5 px-3 py-2 min-w-16 ${
+              className={`relative flex flex-col items-center gap-0.5 px-3 py-2.5 min-w-16 transition-colors ${
                 active ? "text-white" : "text-zinc-500"
               }`}
             >
+              {active && <span className="absolute top-0 h-px w-8 bg-gradient-to-r from-transparent via-white to-transparent" />}
               <span className="text-base leading-none">{it.icon}</span>
               <span className="font-mono text-[9px] tracking-widest uppercase">{it.label}</span>
             </Link>

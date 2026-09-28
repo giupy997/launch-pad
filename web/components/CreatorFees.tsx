@@ -42,7 +42,7 @@ export function CreatorFees() {
     .filter((r, i) => i === 0 || r.amount > 0n); // always show ETH row
 
   return (
-    <div className="rounded-xl border border-zinc-800 px-5 py-3">
+    <div className="rounded-xl border border-white/10 px-5 py-3">
       <div className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">
         Creator earnings
       </div>
@@ -64,7 +64,7 @@ export function CreatorFees() {
                 });
               }}
               disabled={isPending || isConfirming}
-              className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-black hover:bg-zinc-200 disabled:opacity-40"
+              className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-black hover:bg-zinc-100 transition-colors disabled:opacity-40"
             >
               {isPending ? "Sign…" : isConfirming ? "Claiming…" : "Claim"}
             </button>

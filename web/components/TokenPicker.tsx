@@ -62,7 +62,7 @@ export function TokenPicker({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-2 rounded-full bg-black border border-zinc-700 px-3 py-2 text-sm text-white hover:border-white"
+        className="flex items-center gap-2 rounded-full input px-3 py-2 text-sm text-white hover:border-white"
       >
         {value === "ETH" ? (
           <span className="font-semibold">{native}</span>
@@ -78,13 +78,13 @@ export function TokenPicker({
       </button>
 
       {open && (
-        <div className="absolute left-0 mt-2 w-72 rounded-xl border border-zinc-700 bg-black p-2 z-20 shadow-lg shadow-black/60">
+        <div className="absolute left-0 mt-2 w-72 rounded-xl input p-2 z-20 shadow-lg shadow-black/60">
           <input
             ref={inputRef}
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search or paste contract address"
-            className="w-full rounded-lg bg-black border border-zinc-700 px-3 py-2 text-sm focus:border-white outline-none placeholder:text-zinc-600 mb-1"
+            className="w-full rounded-lg input px-3 py-2 text-sm focus:border-white outline-none placeholder:text-zinc-600 mb-1"
           />
           <div className="max-h-56 overflow-y-auto">
             {showEth && (

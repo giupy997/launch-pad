@@ -174,11 +174,11 @@ export default function SwapPage() {
   return (
     <div className="max-w-md mx-auto space-y-6">
       <NotDeployedNotice />
-      <h1 className="font-mono text-2xl font-bold tracking-[0.15em] uppercase text-center py-2">
+      <h1 className="display text-4xl text-white text-center py-2">
         Swap
       </h1>
 
-      <form onSubmit={submit} className="rounded-xl border border-zinc-800 bg-black p-5 space-y-3">
+      <form onSubmit={submit} className="card p-5 space-y-3">
         <div className="space-y-1">
           <label className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">
             From
@@ -192,7 +192,7 @@ export default function SwapPage() {
               type="number"
               step="any"
               min="0"
-              className="flex-1 rounded-lg bg-black border border-zinc-700 px-3 py-2 text-sm focus:border-white outline-none text-right"
+              className="flex-1 rounded-lg input px-3 py-2 text-sm focus:border-white outline-none text-right"
             />
           </div>
           {from !== ETH && fromBalance !== undefined && (
@@ -210,7 +210,7 @@ export default function SwapPage() {
           <button
             type="button"
             onClick={flip}
-            className="rounded-full border border-zinc-700 w-8 h-8 text-zinc-400 hover:border-white hover:text-white"
+            className="rounded-full border border-white/15 w-8 h-8 text-zinc-400 hover:border-white hover:text-white"
             title="Flip"
           >
             <span className="font-mono">↑↓</span>
@@ -223,7 +223,7 @@ export default function SwapPage() {
           </label>
           <div className="flex gap-2 items-center">
             <TokenPicker value={to} onChange={(v) => setTo(v)} tokens={live} />
-            <div className="flex-1 rounded-lg border border-zinc-800 px-3 py-2 text-sm text-right text-zinc-300">
+            <div className="flex-1 rounded-lg border border-white/10 px-3 py-2 text-sm text-right text-zinc-300">
               {invalid || parsed === 0n || outQuote === undefined
                 ? "—"
                 : to === ETH
@@ -242,7 +242,7 @@ export default function SwapPage() {
         <button
           type="submit"
           disabled={!deployed || !isConnected || invalid || parsed === 0n || busy}
-          className="w-full rounded-full bg-white py-2.5 font-semibold text-black hover:bg-zinc-200 disabled:opacity-40"
+          className="w-full rounded-full bg-white py-2.5 font-semibold text-black hover:bg-zinc-100 transition-colors disabled:opacity-40"
         >
           {!deployed
             ? "Not deployed on this chain"
@@ -277,7 +277,7 @@ export default function SwapPage() {
           </p>
         )}
         {error && (
-          <p className="text-sm text-zinc-400 break-all border border-zinc-700 rounded-lg p-2">
+          <p className="text-sm text-zinc-400 break-all border border-white/15 rounded-lg p-2">
             ⚠ {(error as { shortMessage?: string }).shortMessage ?? error.message}
           </p>
         )}

@@ -43,7 +43,7 @@ export function ConnectButton() {
       <button
         onClick={() => connect({ connector: connectors[0] })}
         disabled={isPending || connectors.length === 0}
-        className="rounded-full bg-white px-4 sm:px-5 py-2 text-sm font-semibold text-black hover:bg-zinc-200 disabled:opacity-50 whitespace-nowrap"
+        className="btn-primary px-4 sm:px-5 py-2 text-sm disabled:opacity-50 whitespace-nowrap"
       >
         {isPending ? "Connecting…" : (
           <>
@@ -70,13 +70,13 @@ export function ConnectButton() {
       )}
       <button
         onClick={() => setOpen((o) => !o)}
-        className="rounded-full border border-zinc-700 px-3 sm:px-4 py-2 text-sm font-mono text-zinc-300 hover:border-white hover:text-white"
+        className="rounded-full border border-white/15 px-3 sm:px-4 py-2 text-sm font-mono text-zinc-300 hover:border-white hover:text-white"
       >
         {address?.slice(0, 6)}…{address?.slice(-4)}
       </button>
 
       {open && address && (
-        <div className="absolute right-0 top-full mt-2 w-56 rounded-xl border border-zinc-700 bg-black p-1.5 z-30 shadow-lg shadow-black/60">
+        <div className="absolute right-0 top-full mt-2 w-56 rounded-xl input p-1.5 z-30 shadow-lg shadow-black/60">
           <MenuItem
             onClick={() => {
               navigator.clipboard.writeText(address);

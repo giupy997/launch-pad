@@ -12,7 +12,7 @@ import { LogoUpload } from "@/components/litecoin/LogoUpload";
 import { FrozenNotice } from "@/components/litecoin/FrozenNotice";
 
 const inputCls =
-  "w-full rounded-lg bg-black border border-zinc-700 px-3 py-2 text-sm focus:border-white outline-none placeholder:text-zinc-600";
+  "w-full rounded-lg input px-3 py-2 text-sm focus:border-white outline-none placeholder:text-zinc-600";
 const P = PARAMS[LTC_NETWORK];
 const URL_OK = /^(https?:\/\/|ipfs:\/\/)\S{1,300}$/;
 
@@ -54,7 +54,7 @@ export default function LitecoinCreate() {
     <div className="grid gap-8 lg:grid-cols-[1fr_380px]">
       <div className="space-y-5 order-2 lg:order-1">
         <div>
-          <h1 className="font-mono text-2xl font-bold tracking-[0.15em] uppercase">Deploy a coin</h1>
+          <h1 className="display text-4xl text-white">Deploy a coin</h1>
           <p className="mt-2 text-sm text-zinc-500">
             One transaction claims the ticker. The first paid deploy wins it, and its rules are fixed forever —
             there is no admin key here, only what the OP_RETURN said.
@@ -64,7 +64,7 @@ export default function LitecoinCreate() {
         {ready && !address && <NeedsLtcWallet />}
         <FrozenNotice state={state} />
         {state && !desk && (
-          <p className="rounded-xl border border-dashed border-zinc-700 p-3 text-xs text-zinc-400">
+          <p className="rounded-xl border border-dashed border-white/15 p-3 text-xs text-zinc-400">
             The desk is not live yet — deploys open once the indexer publishes its address.
           </p>
         )}
@@ -131,7 +131,7 @@ export default function LitecoinCreate() {
         </div>
 
         {deployed ? (
-          <div className="rounded-xl border border-white bg-black p-4 space-y-2">
+          <div className="card border-white/40 p-4 space-y-2">
             <div className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">Deploy ${deployed.ticker} · broadcast ✓</div>
             <a href={txLink(deployed.txid)} target="_blank" rel="noreferrer" className="block truncate font-mono text-xs text-zinc-300 underline">
               {deployed.txid}
@@ -186,7 +186,7 @@ export default function LitecoinCreate() {
             onSent={(txid) => setDeployed({ ticker, txid })}
           />
         ) : (
-          <p className="rounded-xl border border-dashed border-zinc-800 p-4 text-sm text-zinc-600">
+          <p className="rounded-xl border border-dashed border-white/10 p-4 text-sm text-zinc-600">
             Fill the coin in and the transaction appears here, ready to sign.
           </p>
         )}
@@ -199,7 +199,7 @@ export default function LitecoinCreate() {
       </div>
 
       <aside className="order-1 lg:order-2">
-        <div className="lg:sticky lg:top-24 rounded-xl border border-zinc-800 bg-black p-5 space-y-4">
+        <div className="lg:sticky lg:top-24 card p-5 space-y-4">
           <div className="flex items-center gap-3">
             <TokenLogo uri={logoOk ? logoUrl : ""} symbol={ticker || "?"} size={56} />
             <div className="min-w-0">
@@ -207,15 +207,15 @@ export default function LitecoinCreate() {
               <div className="text-sm text-zinc-400 truncate">{name || "Your coin name"}</div>
             </div>
           </div>
-          <div className="divide-y divide-zinc-900 font-mono text-xs">
+          <div className="divide-y divide-white/[0.06] font-mono text-xs">
             <Row k="Deploy cost" v={`${fmtLtc(P.deployFeeLit)} LTC + network fee`} />
             <Row k="Trading fees" v="1% buy · 1% sell" />
             <Row k="Fee split" v={feesToHolders ? "80% holders · 20% desk" : "80% you · 20% desk"} strong />
             <Row k="Supply" v="1B fixed · 800M on the curve" />
-            <Row k="Opens with" v={`${fmtLtc(virtualLit, 0)} LTC virtual reserve`} />
+            <Row k="Opens with" v={`${fmtLtc(virtualLit, 2)} LTC virtual reserve`} />
             <Row k="Curve raises" v={`~${fmtLtc((virtualLit * 32n) / 10n, 2)} LTC, then it graduates`} />
             {upcoming && (
-              <Row k={`From block ${upcoming.fromHeight.toLocaleString("en-US")}`} v={`new coins open with ${fmtLtc(upcoming.virtualLit, 0)} LTC (a deploy mined before keeps ${fmtLtc(virtualLit, 0)})`} />
+              <Row k={`From block ${upcoming.fromHeight.toLocaleString("en-US")}`} v={`new coins open with ${fmtLtc(upcoming.virtualLit, 2)} LTC (a deploy mined before keeps ${fmtLtc(virtualLit, 2)})`} />
             )}
             <Row k="After graduation" v="Locked pool: no price ceiling, sells always fill" strong />
             <Row k="Reserve" v="200M seed the pool with the LTC raised" />
@@ -250,7 +250,7 @@ function ModeCard({ title, detail, selected, onClick }: { title: string; detail:
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-xl border px-4 py-3 text-left ${selected ? "border-white bg-white text-black" : "border-zinc-700 text-zinc-400 hover:border-white hover:text-white"}`}
+      className={`rounded-xl border px-4 py-3 text-left ${selected ? "border-white bg-white text-black" : "border-white/15 text-zinc-400 hover:border-white hover:text-white"}`}
     >
       <div className="font-mono text-xs font-bold tracking-widest uppercase">{title}</div>
       <div className={`mt-1 text-[11px] ${selected ? "text-zinc-700" : "text-zinc-500"}`}>{detail}</div>

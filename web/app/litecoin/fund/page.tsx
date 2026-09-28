@@ -44,7 +44,7 @@ export default function FundPage() {
   return (
     <div className="max-w-2xl mx-auto space-y-8">
       <div>
-        <h1 className="font-mono text-2xl font-bold tracking-[0.15em] uppercase">Fund your wallet</h1>
+        <h1 className="display text-4xl text-white">Fund your wallet</h1>
         <p className="mt-2 text-sm text-zinc-500">
           Everything here is paid in LTC. If you hold ETH, BNB or stablecoins instead, a swap service turns them into LTC
           and pays this wallet directly: pick a service, choose what you send, and paste this address as the receiving
@@ -61,13 +61,13 @@ export default function FundPage() {
       <section className="space-y-3">
         <div className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">Step 2 · swap to LTC</div>
         {LTC_NETWORK === "test" && (
-          <p className="rounded-xl border border-dashed border-zinc-700 p-3 text-xs text-zinc-400">
+          <p className="rounded-xl border border-dashed border-white/15 p-3 text-xs text-zinc-400">
             This is the Litecoin testnet: swap services pay mainnet LTC only. Use a testnet faucet instead.
           </p>
         )}
         <div className="grid gap-3 sm:grid-cols-3">
           {PROVIDERS.map((p) => (
-            <div key={p.name} className="rounded-xl border border-zinc-800 bg-black p-4 space-y-3">
+            <div key={p.name} className="card p-4 space-y-3">
               <div>
                 <div className="font-semibold">{p.name}</div>
                 <div className="text-[11px] text-zinc-500">{p.note}</div>
@@ -79,7 +79,7 @@ export default function FundPage() {
                     href={x.href}
                     target="_blank"
                     rel="noreferrer noopener nofollow"
-                    className="rounded-full border border-zinc-700 px-3 py-1 font-mono text-xs text-zinc-300 hover:border-white hover:text-white"
+                    className="rounded-full border border-white/15 px-3 py-1 font-mono text-xs text-zinc-300 hover:border-white hover:text-white"
                   >
                     {x.from} → LTC
                   </a>

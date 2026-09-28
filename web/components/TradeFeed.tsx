@@ -23,14 +23,14 @@ export function TradeFeed({
   const recent = [...trades].reverse().slice(0, 20);
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-black">
-      <div className="px-4 py-3 border-b border-zinc-900 font-mono text-[10px] tracking-widest uppercase text-zinc-500">
+    <div className="rounded-xl border border-white/10 bg-black">
+      <div className="px-4 py-3 border-b border-white/[0.06] font-mono text-[10px] tracking-widest uppercase text-zinc-500">
         Trades {trades.length > 0 && `(${trades.length}${truncated ? "+" : ""})`}
       </div>
       {recent.length === 0 && (
         <p className="px-4 py-6 text-sm text-zinc-600">No trades yet.</p>
       )}
-      <ul className="divide-y divide-zinc-900">
+      <ul className="divide-y divide-white/[0.06]">
         {recent.map((t) => (
           <li key={t.tx + t.type + t.trader} className="px-4 py-2.5 flex items-center gap-3 text-sm">
             <span

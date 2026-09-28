@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useTokens, useAppChain, isQuoteAsset } from "@/lib/hooks";
-import { robinhood, litvmTestnet } from "@/lib/config";
+import { litvmTestnet } from "@/lib/config";
 import { TokenCard } from "@/components/TokenCard";
 import { NotDeployedNotice } from "@/components/NotDeployedNotice";
 
@@ -36,50 +36,59 @@ export default function Explore() {
   return (
     <div className="space-y-10">
       <NotDeployedNotice />
-      <section className="text-center space-y-4 py-6">
-        <h1 className="font-mono text-3xl sm:text-4xl font-bold tracking-[0.15em] uppercase leading-snug">
-          Launch your token
-          <br />
-          on {chain.name.replace(" Sepolia", "").replace(" Chain", "")}
-        </h1>
-        <p className="text-zinc-400 max-w-xl mx-auto">
-          Transparent bonding curve: price rises with every buy, automatic
-          graduation at 800M tokens sold,{" "}
-          {chain.id === robinhood.id
-            ? "liquidity locked forever in Uniswap v4 — where the fees keep flowing."
-            : "liquidity migrated to the DEX."}
-        </p>
-        {chain.id === litvmTestnet.id && (
-          <p className="text-zinc-300 max-w-xl mx-auto text-sm">
-            Litecoin&apos;s EVM layer. The coins launched on{" "}
-            <Link href="/litecoin" className="underline">Notus on Litecoin</Link> migrate here{" "}
-            <span className="text-white">automatically when LitVM mainnet goes live</span>: same holders, same price.
+      <section className="relative overflow-hidden rounded-3xl border border-white/10 px-6 py-14 sm:px-12 sm:py-20 card">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 right-0 w-[70%] sm:w-[55%] bg-[url('/profile-bg.jpg')] bg-cover bg-[center_20%] opacity-[0.28] mix-blend-screen"
+          style={{ maskImage: "linear-gradient(to left, rgba(0,0,0,0.9), transparent 90%)", WebkitMaskImage: "linear-gradient(to left, rgba(0,0,0,0.9), transparent 90%)" }}
+        />
+        <div className="relative max-w-2xl space-y-6">
+          <div className="pill fade-up">
+            <span className="h-1.5 w-1.5 rounded-full bg-accent shadow-[0_0_10px_rgba(var(--accent),0.9)]" />
+            {chain.name}{chain.testnet ? " · testnet" : ""}
+          </div>
+          <h1 className="display fade-up text-5xl sm:text-7xl leading-[0.95] text-white glow-text text-balance">
+            Launch your token <br className="hidden sm:block" />
+            on <em className="text-zinc-200">{chain.name.replace(" Sepolia", "").replace(" Chain", "").replace(" Liteforge", "")}</em>.
+          </h1>
+          <p className="fade-up-2 max-w-xl text-base sm:text-lg leading-relaxed text-zinc-400">
+            A transparent bonding curve: the price rises with every buy, the coin graduates at 800M sold and its liquidity
+            moves into a locked DEX pool. Quoted in {chain.nativeCurrency.symbol}, settled by the contract, no admin key.
           </p>
-        )}
-        <Link
-          href="/create"
-          className="inline-block rounded-full bg-white px-6 py-2.5 font-semibold text-black hover:bg-zinc-200"
-        >
-          Create a token
-        </Link>
+          {chain.id === litvmTestnet.id && (
+            <p className="fade-up-2 max-w-xl text-sm leading-relaxed text-zinc-300">
+              Litecoin&apos;s EVM layer. The coins launched on{" "}
+              <Link href="/litecoin" className="underline hover:text-white">Notus on Litecoin</Link> migrate here{" "}
+              <span className="text-white">automatically when LitVM mainnet goes live</span>: same holders, same price.
+            </p>
+          )}
+          <div className="fade-up-3 flex flex-wrap items-center gap-3 pt-1">
+            <Link href="/create" className="btn-primary px-6 py-3 text-sm">
+              Create a token
+            </Link>
+            <Link href="/litecoin" className="btn-ghost px-5 py-3 text-sm">
+              Notus on Litecoin
+            </Link>
+          </div>
+        </div>
       </section>
 
       <section>
         <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
-          <h2 className="font-mono text-sm font-semibold tracking-[0.2em] uppercase text-zinc-400">
-            Explore {count > 0 && <span className="text-zinc-600">({tokens.length})</span>}
+          <h2 className="display text-3xl text-white">
+            Tokens {count > 0 && <span className="text-zinc-600">({tokens.length})</span>}
           </h2>
           <div className="flex gap-2 w-full sm:w-auto">
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search name / ticker"
-              className="rounded-full bg-black border border-zinc-700 px-4 py-1.5 text-sm focus:border-white outline-none placeholder:text-zinc-600 flex-1 sm:flex-none sm:w-48 min-w-0"
+              className="rounded-full input px-4 py-1.5 text-sm focus:border-white outline-none placeholder:text-zinc-600 flex-1 sm:flex-none sm:w-48 min-w-0"
             />
             <select
               value={sort}
               onChange={(e) => setSort(e.target.value as Sort)}
-              className="rounded-full bg-black border border-zinc-700 px-3 py-1.5 text-sm focus:border-white outline-none text-zinc-300"
+              className="rounded-full input px-3 py-1.5 text-sm focus:border-white outline-none text-zinc-300"
             >
               <option value="newest">Newest</option>
               <option value="raised">Most raised</option>
@@ -91,16 +100,16 @@ export default function Explore() {
         {isLoading && (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="rounded-xl border border-zinc-800 bg-black p-4 animate-pulse">
+              <div key={i} className="card p-4 animate-pulse">
                 <div className="flex items-center gap-3">
                   <div className="w-11 h-11 rounded-lg bg-zinc-900" />
                   <div className="space-y-2">
-                    <div className="h-3 w-24 rounded bg-zinc-900" />
-                    <div className="h-2 w-12 rounded bg-zinc-900" />
+                    <div className="h-3 w-24 rounded bg-white/[0.06]" />
+                    <div className="h-2 w-12 rounded bg-white/[0.06]" />
                   </div>
                 </div>
-                <div className="mt-4 h-2 w-full rounded bg-zinc-900" />
-                <div className="mt-3 h-1 w-full rounded bg-zinc-900" />
+                <div className="mt-4 h-2 w-full rounded bg-white/[0.06]" />
+                <div className="mt-3 h-1 w-full rounded bg-white/[0.06]" />
               </div>
             ))}
           </div>

@@ -54,7 +54,7 @@ export function SendPanel({
 
   if (sent) {
     return (
-      <div className="rounded-xl border border-white bg-black p-4 space-y-2">
+      <div className="card border-white/40 p-4 space-y-2">
         <div className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">{title} · broadcast ✓</div>
         <a href={txLink(sent)} target="_blank" rel="noreferrer" className="block truncate font-mono text-xs text-zinc-300 underline">
           {sent}
@@ -104,12 +104,12 @@ export function SendPanel({
   const short = built.problem?.startsWith("insufficient") || built.problem?.includes("no coins");
 
   return (
-    <div className="rounded-xl border border-zinc-700 bg-black p-4 space-y-3">
+    <div className="card p-4 space-y-3">
       <div className="flex items-baseline justify-between gap-3">
         <span className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">{title}</span>
         <span className="font-mono text-sm text-white">{fmtLtc(total, 8)} LTC</span>
       </div>
-      <div className="divide-y divide-zinc-900 font-mono text-xs">
+      <div className="divide-y divide-white/[0.06] font-mono text-xs">
         {payments.map((p, i) => (
           <Row key={i} k={i === 0 ? "To the desk" : `Output ${i}`} v={`${fmtLtc(p.lit, 8)} LTC → ${p.address.slice(0, 12)}…`} />
         ))}
@@ -131,7 +131,7 @@ export function SendPanel({
         type="button"
         disabled={!built.tx || busy}
         onClick={submit}
-        className="w-full rounded-full bg-white py-2 text-sm font-semibold text-black hover:bg-zinc-200 disabled:opacity-40"
+        className="btn-primary w-full py-2 text-sm"
       >
         {busy ? "Broadcasting…" : confirmLabel}
       </button>

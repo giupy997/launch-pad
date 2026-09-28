@@ -22,7 +22,7 @@ export function PriceChart({
   const show = format ?? ((v: number) => `${fmt(v)} ${quoteSymbol}`);
   if (points.length < 2) {
     return (
-      <div className="rounded-xl border border-zinc-800 p-6 text-center text-sm text-zinc-600">
+      <div className="rounded-xl border border-white/10 p-6 text-center text-sm text-zinc-600">
         Price chart appears after a couple of trades.
       </div>
     );
@@ -42,7 +42,7 @@ export function PriceChart({
   const up = last >= points[0];
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-black p-4">
+    <div className="card p-4">
       <div className="flex items-baseline justify-between mb-2">
         <span className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">
           {label} · last {points.length} trades

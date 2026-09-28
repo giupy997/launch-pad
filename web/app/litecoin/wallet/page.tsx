@@ -24,7 +24,7 @@ export default function LitecoinWallet() {
   if (!address || !secret || !wallet) {
     return (
       <div className="max-w-md mx-auto space-y-4">
-        <h1 className="font-mono text-2xl font-bold tracking-[0.15em] uppercase text-center">Wallet</h1>
+        <h1 className="display text-4xl text-white text-center">Wallet</h1>
         <NeedsLtcWallet />
       </div>
     );
@@ -45,7 +45,7 @@ export default function LitecoinWallet() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-8">
-      <h1 className="font-mono text-2xl font-bold tracking-[0.15em] uppercase">Wallet</h1>
+      <h1 className="display text-4xl text-white">Wallet</h1>
 
       <FundPanel address={address} />
       <p className="text-xs text-zinc-500 -mt-4">
@@ -54,7 +54,7 @@ export default function LitecoinWallet() {
       </p>
       <FrozenNotice state={state} compact />
 
-      <section className="rounded-xl border border-zinc-800 bg-black p-5 space-y-3">
+      <section className="card p-5 space-y-3">
         <div className="flex items-baseline justify-between">
           <Label>Claimable LTC — creator fees, holder cashback, refunds, carried dust</Label>
           <span className="font-mono text-lg">{fmtLtc(claimable, 8)}</span>
@@ -63,7 +63,7 @@ export default function LitecoinWallet() {
           <p className="text-xs text-zinc-600">Claims open from {fmtLtc(minPayout)} LTC — below that a network fee would eat it. It keeps accruing.</p>
         ) : !claiming ? (
           <button type="button" disabled={!desk} onClick={() => setClaiming(true)}
-            className="w-full rounded-full bg-white py-2 text-sm font-semibold text-black hover:bg-zinc-200 disabled:opacity-40">
+            className="btn-primary w-full py-2 text-sm">
             Claim to this wallet
           </button>
         ) : (
@@ -78,15 +78,15 @@ export default function LitecoinWallet() {
         )}
       </section>
 
-      <section className="rounded-xl border border-zinc-800 bg-black p-5 space-y-3">
+      <section className="card p-5 space-y-3">
         <Label>Withdraw — send LTC from this wallet anywhere</Label>
         <input value={to} onChange={(e) => setTo(e.target.value)} placeholder="Litecoin address"
-          className="w-full rounded-lg bg-black border border-zinc-700 px-3 py-2 text-xs font-mono focus:border-white outline-none placeholder:text-zinc-600" />
+          className="w-full rounded-lg input px-3 py-2 text-xs font-mono focus:border-white outline-none placeholder:text-zinc-600" />
         <div className="flex gap-2">
           <input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.0 LTC" type="number" min="0" step="any"
-            className="flex-1 rounded-lg bg-black border border-zinc-700 px-3 py-2 text-sm focus:border-white outline-none text-right" />
+            className="flex-1 rounded-lg input px-3 py-2 text-sm focus:border-white outline-none text-right" />
           <button type="button" onClick={() => setAmount((Number(balance) / 1e8 - 0.0001).toFixed(8).replace(/\.?0+$/, ""))}
-            className="rounded-full border border-zinc-700 px-3 text-xs text-zinc-300 hover:border-white">
+            className="rounded-full border border-white/15 px-3 text-xs text-zinc-300 hover:border-white">
             max
           </button>
         </div>
@@ -94,14 +94,14 @@ export default function LitecoinWallet() {
         {withdrawOk && <SendPanel payments={[{ address: to.trim(), lit: withdrawLit }]} memo={null} title="Withdraw" confirmLabel="Sign & send" note="A plain Litecoin payment from your wallet." />}
       </section>
 
-      <section className="rounded-xl border border-zinc-800 bg-black p-5 space-y-3">
+      <section className="card p-5 space-y-3">
         <Label>Fund the desk — LTC for its payout fees, owed to nobody</Label>
         <p className="text-xs text-zinc-600">
           A plain payment to the desk is credited back to whoever sent it. This one carries the <span className="font-mono">fund</span> instruction
           instead, so it becomes the desk&apos;s own money for the network fees of sells and claims. For the operator, or anyone who wants to chip in.
         </p>
         <input value={fund} onChange={(e) => setFund(e.target.value)} placeholder="0.0 LTC" type="number" min="0" step="any"
-          className="w-full sm:w-48 rounded-lg bg-black border border-zinc-700 px-3 py-2 text-sm focus:border-white outline-none text-right" />
+          className="w-full sm:w-48 rounded-lg input px-3 py-2 text-sm focus:border-white outline-none text-right" />
         {desk && fundLit >= DUST_LIT && (
           <SendPanel payments={[{ address: desk, lit: fundLit }]} memo={memo.fund()} title="Fund the desk" confirmLabel="Sign & fund"
             note="Goes to the desk's treasury, not to a claimable balance." />
@@ -127,7 +127,7 @@ export default function LitecoinWallet() {
         {holdings.length === 0 && <p className="text-sm text-zinc-600">No coins yet. <Link href="/litecoin" className="underline">Explore</Link></p>}
         <div className="space-y-2">
           {holdings.map(({ coin, balance: bal }) => (
-            <Link key={coin.ticker} href={`/litecoin/c/${coin.ticker}`} className="flex justify-between rounded-lg border border-zinc-800 px-4 py-3 text-sm hover:border-white">
+            <Link key={coin.ticker} href={`/litecoin/c/${coin.ticker}`} className="flex justify-between rounded-lg border border-white/10 px-4 py-3 text-sm hover:border-white">
               <span className="font-mono">${coin.ticker}</span>
               <span className="text-zinc-400">
                 {fmtCoins(bal)} · ≈ {fmtLtc(BigInt(Math.floor(spotPrice(coin) * Number(bal))))} LTC
@@ -142,7 +142,7 @@ export default function LitecoinWallet() {
           <Label>Deployed by you</Label>
           <div className="flex gap-2 flex-wrap">
             {created.map((c) => (
-              <Link key={c.ticker} href={`/litecoin/c/${c.ticker}`} className="rounded-full border border-zinc-700 px-3 py-1 text-xs font-mono hover:border-white">
+              <Link key={c.ticker} href={`/litecoin/c/${c.ticker}`} className="rounded-full border border-white/15 px-3 py-1 text-xs font-mono hover:border-white">
                 ${c.ticker}
               </Link>
             ))}
@@ -169,7 +169,7 @@ export default function LitecoinWallet() {
         </section>
       )}
 
-      <section className="rounded-xl border border-zinc-800 bg-black p-5 space-y-3">
+      <section className="card p-5 space-y-3">
         <Label>Key — back it up; it cannot be recovered or reset</Label>
         {reveal ? (
           <>
@@ -184,7 +184,7 @@ export default function LitecoinWallet() {
             </p>
           </>
         ) : (
-          <button type="button" onClick={() => setReveal(true)} className="rounded-full border border-zinc-700 px-4 py-1.5 text-xs text-zinc-300 hover:border-white">
+          <button type="button" onClick={() => setReveal(true)} className="rounded-full border border-white/15 px-4 py-1.5 text-xs text-zinc-300 hover:border-white">
             Reveal secret
           </button>
         )}

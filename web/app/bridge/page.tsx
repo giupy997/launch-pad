@@ -46,12 +46,12 @@ function LitvmBridge() {
         href="https://testnet.litvm.com"
         target="_blank"
         rel="noopener noreferrer"
-        className="block w-full rounded-full bg-white py-2.5 font-semibold text-black hover:bg-zinc-200 text-center"
+        className="block w-full rounded-full bg-white py-2.5 font-semibold text-black hover:bg-zinc-100 transition-colors text-center"
       >
         Open the LitVM testnet portal (faucet &amp; bridge) ↗
       </a>
 
-      <div className="rounded-xl border border-zinc-800 p-5 space-y-2">
+      <div className="rounded-xl border border-white/10 p-5 space-y-2">
         <div className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">How it works</div>
         <ul className="text-sm text-zinc-400 space-y-1.5 list-disc list-inside">
           <li>Add LitVM to your wallet: chain ID 4441, RPC liteforge.rpc.caldera.xyz, symbol zkLTC.</li>
@@ -123,7 +123,7 @@ function GiwaBridge() {
         <Balance label="GIWA Sepolia" value={l2Bal?.value} />
       </div>
 
-      <form onSubmit={submit} className="rounded-xl border border-zinc-800 bg-black p-5 space-y-3">
+      <form onSubmit={submit} className="card p-5 space-y-3">
         <div className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">
           Deposit · Sepolia → GIWA
         </div>
@@ -134,7 +134,7 @@ function GiwaBridge() {
           type="number"
           step="any"
           min="0"
-          className="w-full rounded-lg bg-black border border-zinc-700 px-3 py-2 text-sm focus:border-white outline-none"
+          className="w-full rounded-lg input px-3 py-2 text-sm focus:border-white outline-none"
         />
 
         {!onL1 && isConnected ? (
@@ -149,7 +149,7 @@ function GiwaBridge() {
           <button
             type="submit"
             disabled={!isConnected || parsed === 0n || isPending || isConfirming}
-            className="w-full rounded-full bg-white py-2.5 font-semibold text-black hover:bg-zinc-200 disabled:opacity-40"
+            className="w-full rounded-full bg-white py-2.5 font-semibold text-black hover:bg-zinc-100 transition-colors disabled:opacity-40"
           >
             {!isConnected
               ? "Connect wallet"
@@ -179,13 +179,13 @@ function GiwaBridge() {
           </p>
         )}
         {error && (
-          <p className="text-sm text-zinc-400 break-all border border-zinc-700 rounded-lg p-2">
+          <p className="text-sm text-zinc-400 break-all border border-white/15 rounded-lg p-2">
             ⚠ {(error as { shortMessage?: string }).shortMessage ?? error.message}
           </p>
         )}
       </form>
 
-      <div className="rounded-xl border border-zinc-800 p-5 space-y-2">
+      <div className="rounded-xl border border-white/10 p-5 space-y-2">
         <div className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">
           Withdraw · GIWA → Sepolia
         </div>
@@ -252,12 +252,12 @@ function RobinhoodBridge() {
         href="https://bridge.arbitrum.io"
         target="_blank"
         rel="noopener noreferrer"
-        className="block w-full rounded-full bg-white py-2.5 font-semibold text-black hover:bg-zinc-200 text-center"
+        className="block w-full rounded-full bg-white py-2.5 font-semibold text-black hover:bg-zinc-100 transition-colors text-center"
       >
         Open the Arbitrum canonical bridge ↗
       </a>
 
-      <div className="rounded-xl border border-zinc-800 p-5 space-y-2">
+      <div className="rounded-xl border border-white/10 p-5 space-y-2">
         <div className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">
           How it works
         </div>
@@ -288,7 +288,7 @@ function RobinhoodBridge() {
 
 function Header() {
   return (
-    <h1 className="font-mono text-2xl font-bold tracking-[0.15em] uppercase text-center py-2">
+    <h1 className="display text-4xl text-white text-center py-2">
       Bridge
     </h1>
   );
@@ -296,7 +296,7 @@ function Header() {
 
 function Balance({ label, value, symbol = "ETH" }: { label: string; value?: bigint; symbol?: string }) {
   return (
-    <div className="rounded-xl border border-zinc-800 p-4">
+    <div className="rounded-xl border border-white/10 p-4">
       <div className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">{label}</div>
       <div className="mt-1 font-semibold">
         {value !== undefined ? `${fmtEth(value)} ${symbol}` : "—"}

@@ -11,8 +11,8 @@ export function LiveStream({ url }: { url: string }) {
   const embed = toEmbed(safe);
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-black overflow-hidden">
-      <div className="px-4 py-2.5 border-b border-zinc-900 flex items-center gap-2">
+    <div className="rounded-xl border border-white/10 bg-black overflow-hidden">
+      <div className="px-4 py-2.5 border-b border-white/[0.06] flex items-center gap-2">
         <span className="relative flex h-2 w-2">
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-60" />
           <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />

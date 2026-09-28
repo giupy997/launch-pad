@@ -60,8 +60,8 @@ export default function TokenPage({ params }: { params: { address: string } }) {
           <div className="flex gap-4">
             <div className="w-[72px] h-[72px] rounded-lg bg-zinc-900" />
             <div className="space-y-2 pt-2">
-              <div className="h-5 w-40 rounded bg-zinc-900" />
-              <div className="h-3 w-24 rounded bg-zinc-900" />
+              <div className="h-5 w-40 rounded bg-white/[0.06]" />
+              <div className="h-3 w-24 rounded bg-white/[0.06]" />
             </div>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -157,7 +157,7 @@ export default function TokenPage({ params }: { params: { address: string } }) {
                     href={l.href}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="rounded-full border border-zinc-700 px-3 py-1 text-xs text-zinc-300 hover:border-white hover:text-white"
+                    className="rounded-full border border-white/15 px-3 py-1 text-xs text-zinc-300 hover:border-white hover:text-white"
                   >
                     {l.label} ↗
                   </a>
@@ -177,7 +177,7 @@ export default function TokenPage({ params }: { params: { address: string } }) {
         </div>
 
         <div>
-          <div className="h-2 rounded bg-zinc-800 overflow-hidden">
+          <div className="h-2 rounded bg-white/[0.08] overflow-hidden">
             <div
               className="h-full bg-white"
               style={{ width: `${Math.min(progress, 100)}%` }}
@@ -213,7 +213,7 @@ export default function TokenPage({ params }: { params: { address: string } }) {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-zinc-800 bg-black p-3">
+    <div className="card p-3">
       <div className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">{label}</div>
       <div className="mt-1 font-semibold text-sm">{value}</div>
     </div>

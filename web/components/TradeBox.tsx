@@ -302,7 +302,7 @@ export function TradeBox({
 
   if (graduated) {
     return (
-      <div className="rounded-xl border border-zinc-700 bg-black p-5 h-fit">
+      <div className="card p-5 h-fit">
         <p className="text-sm text-zinc-300">
           🎓 Curve completed: trading here is closed. This token now trades in
           its Uniswap v4 pool, paired with {q.symbol}, with liquidity locked
@@ -317,7 +317,7 @@ export function TradeBox({
   }
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-black p-5 h-fit space-y-4">
+    <div className="card p-5 h-fit space-y-4">
       <div className="grid grid-cols-2 rounded-lg bg-zinc-900 p-1 text-sm font-semibold">
         <Tab active={mode === "buy"} onClick={() => setMode("buy")}>
           Buy
@@ -341,7 +341,7 @@ export function TradeBox({
                 className={`rounded-full px-2.5 py-1 text-xs font-mono ${
                   (i === 0) === payWithEth
                     ? "bg-white text-black"
-                    : "border border-zinc-700 text-zinc-400 hover:border-white hover:text-white"
+                    : "border border-white/15 text-zinc-400 hover:border-white hover:text-white"
                 }`}
               >
                 {label}
@@ -357,7 +357,7 @@ export function TradeBox({
             type="number"
             step="any"
             min="0"
-            className="w-full rounded-lg bg-black border border-zinc-700 px-3 py-2 text-sm focus:border-white outline-none"
+            className="w-full rounded-lg input px-3 py-2 text-sm focus:border-white outline-none"
           />
           {mode === "buy" && !isEthQuote && quoteBalance !== undefined && (
             <p className="mt-1 text-xs text-zinc-500">
@@ -393,7 +393,7 @@ export function TradeBox({
           type="submit"
           disabled={!deployed || !isConnected || parsed === 0n || isPending || isConfirming}
           className={`w-full rounded-lg py-2.5 font-semibold text-black disabled:opacity-40 ${
-            mode === "buy" ? "bg-white hover:bg-zinc-200" : "bg-zinc-300 hover:bg-white"
+            mode === "buy" ? "bg-white hover:bg-zinc-100 transition-colors" : "bg-zinc-300 hover:bg-white"
           }`}
         >
           {!deployed

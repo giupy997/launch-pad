@@ -37,7 +37,7 @@ export function PaymentPanel({
   if (tooLong) return <p className="text-sm text-zinc-400">⚠ Memo over 512 bytes — shorten the name or logo URL.</p>;
 
   return (
-    <div className="rounded-xl border border-zinc-700 bg-black p-4 space-y-3">
+    <div className="card p-4 space-y-3">
       <div className="flex items-baseline justify-between gap-3">
         <span className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">{title}</span>
         <span className="font-mono text-sm text-white">{fmtZec(zat, 8)} ZEC</span>
@@ -50,7 +50,7 @@ export function PaymentPanel({
         <div className="space-y-2 min-w-0">
           <a
             href={uri}
-            className="block rounded-full bg-white py-2 text-center text-sm font-semibold text-black hover:bg-zinc-200"
+            className="block rounded-full bg-white py-2 text-center text-sm font-semibold text-black hover:bg-zinc-100 transition-colors"
           >
             Open in wallet
           </a>
@@ -77,7 +77,7 @@ function Field({ label, value }: { label: string; value: string }) {
         setCopied(true);
         setTimeout(() => setCopied(false), 1200);
       }}
-      className="block w-full rounded-lg border border-zinc-800 px-3 py-1.5 text-left hover:border-white"
+      className="block w-full rounded-lg border border-white/10 px-3 py-1.5 text-left hover:border-white"
       title="Copy"
     >
       <span className="font-mono text-[9px] tracking-widest uppercase text-zinc-500">

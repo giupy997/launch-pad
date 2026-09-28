@@ -9,7 +9,7 @@ import { NeedsHolderKey } from "@/components/zcash/HolderKey";
 import { TokenLogo } from "@/components/TokenLogo";
 
 const inputCls =
-  "w-full rounded-lg bg-black border border-zinc-700 px-3 py-2 text-sm focus:border-white outline-none placeholder:text-zinc-600";
+  "w-full rounded-lg input px-3 py-2 text-sm focus:border-white outline-none placeholder:text-zinc-600";
 const P = PARAMS[ZCASH_NETWORK];
 
 export default function ZcashCreate() {
@@ -32,7 +32,7 @@ export default function ZcashCreate() {
     <div className="grid gap-8 lg:grid-cols-[1fr_380px]">
       <div className="space-y-5 order-2 lg:order-1">
         <div>
-          <h1 className="font-mono text-2xl font-bold tracking-[0.15em] uppercase">Deploy a coin</h1>
+          <h1 className="display text-4xl text-white">Deploy a coin</h1>
           <p className="mt-2 text-sm text-zinc-500">
             One memo claims the ticker. The first paid deploy wins it, and its rules are fixed forever —
             there is no admin key here, only what the memo said.
@@ -88,7 +88,7 @@ export default function ZcashCreate() {
             note="Send exactly this from any shielded Zcash wallet to claim the ticker."
           />
         ) : (
-          <p className="rounded-xl border border-dashed border-zinc-800 p-4 text-sm text-zinc-600">
+          <p className="rounded-xl border border-dashed border-white/10 p-4 text-sm text-zinc-600">
             Fill the coin in and the payment appears here, with the memo already written.
           </p>
         )}
@@ -101,7 +101,7 @@ export default function ZcashCreate() {
       </div>
 
       <aside className="order-1 lg:order-2">
-        <div className="lg:sticky lg:top-24 rounded-xl border border-zinc-800 bg-black p-5 space-y-4">
+        <div className="lg:sticky lg:top-24 card p-5 space-y-4">
           <div className="flex items-center gap-3">
             <TokenLogo uri={logo.trim()} symbol={ticker || "?"} size={56} />
             <div className="min-w-0">
@@ -109,7 +109,7 @@ export default function ZcashCreate() {
               <div className="text-sm text-zinc-400 truncate">{name || "Your coin name"}</div>
             </div>
           </div>
-          <div className="divide-y divide-zinc-900 font-mono text-xs">
+          <div className="divide-y divide-white/[0.06] font-mono text-xs">
             <Row k="Deploy cost" v={`${fmtZec(P.deployFeeZat)} ZEC`} />
             <Row k="Trading fees" v="1% buy · 1% sell" />
             <Row k="Fee split" v={feesToHolders ? "80% holders · 20% desk" : "80% you · 20% desk"} strong />
@@ -147,7 +147,7 @@ function ModeCard({ title, detail, selected, onClick }: { title: string; detail:
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-xl border px-4 py-3 text-left ${selected ? "border-white bg-white text-black" : "border-zinc-700 text-zinc-400 hover:border-white hover:text-white"}`}
+      className={`rounded-xl border px-4 py-3 text-left ${selected ? "border-white bg-white text-black" : "border-white/15 text-zinc-400 hover:border-white hover:text-white"}`}
     >
       <div className="font-mono text-xs font-bold tracking-widest uppercase">{title}</div>
       <div className={`mt-1 text-[11px] ${selected ? "text-zinc-700" : "text-zinc-500"}`}>{detail}</div>

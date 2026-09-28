@@ -41,7 +41,7 @@ export function SlippageControl({
           className={`rounded-full px-2.5 py-1 text-xs font-mono ${
             bps === p
               ? "bg-white text-black"
-              : "border border-zinc-700 text-zinc-400 hover:border-white hover:text-white"
+              : "border border-white/15 text-zinc-400 hover:border-white hover:text-white"
           }`}
         >
           {p / 100}%
@@ -49,7 +49,7 @@ export function SlippageControl({
       ))}
       <div
         className={`flex items-center rounded-full border px-2 py-1 ${
-          !isPreset ? "border-white text-white" : "border-zinc-700 text-zinc-400"
+          !isPreset ? "border-white text-white" : "border-white/15 text-zinc-400"
         }`}
       >
         <input

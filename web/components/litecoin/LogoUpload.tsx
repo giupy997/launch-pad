@@ -50,7 +50,7 @@ export function LogoUpload({ name, onUploaded }: { name: string; onUploaded: (ur
   if (!enabled) return null;
   return (
     <div className="space-y-1">
-      <label className="block cursor-pointer rounded-lg border border-dashed border-zinc-700 px-3 py-3 text-center text-sm text-zinc-400 hover:border-white hover:text-white">
+      <label className="block cursor-pointer rounded-lg border border-dashed border-white/15 px-3 py-3 text-center text-sm text-zinc-400 hover:border-white hover:text-white">
         {busy === "processing"
           ? "Squaring and compressing…"
           : busy === "pinning"

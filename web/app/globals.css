@@ -2,29 +2,138 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ------------------------------------------------------------------ tokens
+   Notus: a classical bust in black and white. The palette stays monochrome —
+   ink, graphite, silver, marble — with one cool accent for what moves
+   (prices, progress, focus). Surfaces are lit from above, like the statue. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --ink: 7 8 11;
+  --marble: 244 244 245;
+  --accent: 120 170 255;
+  --font-display: var(--font-instrument-serif);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  color-scheme: dark;
+  scroll-behavior: smooth;
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  color: rgb(var(--marble));
+  background-color: rgb(var(--ink));
+  font-feature-settings: "ss01", "cv11";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* the light: a soft source above, a faint cool wash, grain on top */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  background:
+    radial-gradient(60% 45% at 50% -10%, rgba(255, 255, 255, 0.13), transparent 70%),
+    radial-gradient(40% 35% at 85% 10%, rgba(var(--accent), 0.08), transparent 70%),
+    radial-gradient(50% 40% at 10% 90%, rgba(var(--accent), 0.05), transparent 70%),
+    linear-gradient(180deg, rgb(var(--ink)) 0%, rgb(9 10 14) 100%);
+}
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.35;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.55 0'/></filter><rect width='160' height='160' filter='url(%23n)'/></svg>");
+}
+
+::selection {
+  background: rgba(var(--accent), 0.35);
+  color: white;
+}
+
+@layer components {
+  /* a surface: lit edge on top, faint fill, hairline border */
+  .card {
+    @apply relative rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.055] to-white/[0.015] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.07),0_1px_2px_rgba(0,0,0,0.5)];
+  }
+  .card-hover {
+    @apply transition-all duration-300 hover:border-white/25 hover:from-white/[0.09] hover:to-white/[0.03] hover:-translate-y-0.5 hover:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1),0_18px_40px_-20px_rgba(0,0,0,0.9),0_0_0_1px_rgba(255,255,255,0.04)];
+  }
+  .glass {
+    @apply border border-white/10 bg-[rgb(var(--ink))]/70 backdrop-blur-xl;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-full bg-white font-semibold text-black transition-all duration-200 shadow-[0_0_0_1px_rgba(255,255,255,0.2),0_10px_30px_-12px_rgba(255,255,255,0.45)] hover:bg-zinc-100 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.35),0_14px_40px_-12px_rgba(255,255,255,0.6)] active:translate-y-px disabled:opacity-40 disabled:shadow-none disabled:hover:bg-white;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-full border border-white/15 bg-white/[0.03] text-zinc-200 transition-colors hover:border-white/40 hover:bg-white/[0.07] hover:text-white;
+  }
+  .pill {
+    @apply inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/[0.04] px-2 py-0.5 font-mono text-[10px] tracking-widest uppercase text-zinc-300;
+  }
+  .input {
+    @apply rounded-xl border border-white/10 bg-white/[0.03] text-white outline-none transition-colors placeholder:text-zinc-600 focus:border-white/40 focus:bg-white/[0.05];
+  }
+  .label {
+    @apply font-mono text-[10px] tracking-[0.2em] uppercase text-zinc-500;
+  }
+  .display {
+    @apply font-display tracking-[-0.01em];
+  }
+  .bar-fill {
+    @apply h-full rounded-full bg-gradient-to-r from-zinc-200 via-white to-[rgb(var(--accent))] shadow-[0_0_12px_rgba(var(--accent),0.45)];
+  }
+  .bar-track {
+    @apply h-1.5 overflow-hidden rounded-full bg-white/[0.08];
+  }
+  .divider {
+    @apply h-px w-full bg-gradient-to-r from-transparent via-white/15 to-transparent;
+  }
 }
 
 @layer utilities {
   .text-balance {
     text-wrap: balance;
   }
+  .fade-up {
+    animation: fade-up 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .fade-up-2 {
+    animation: fade-up 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.08s both;
+  }
+  .fade-up-3 {
+    animation: fade-up 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.16s both;
+  }
+  .glow-text {
+    text-shadow: 0 0 40px rgba(255, 255, 255, 0.25);
+  }
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fade-up, .fade-up-2, .fade-up-3 { animation: none; }
+  .card-hover { transition: none; }
 }
 
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* thin, quiet scrollbars */
+* { scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.15) transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }

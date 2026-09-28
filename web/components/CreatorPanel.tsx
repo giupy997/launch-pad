@@ -13,7 +13,7 @@ import { useAppChain, useLaunchpadAddress, type TokenMeta } from "@/lib/hooks";
 import { shortAddr } from "@/lib/format";
 
 const inputCls =
-  "w-full rounded-lg bg-black border border-zinc-700 px-3 py-2 text-sm focus:border-white outline-none placeholder:text-zinc-600";
+  "w-full rounded-lg input px-3 py-2 text-sm focus:border-white outline-none placeholder:text-zinc-600";
 
 /** Creator-only controls on the token page: go live / stop the stream and
  *  redirect the creator fee share to another wallet (pump.fun-style). */
@@ -83,7 +83,7 @@ export function CreatorPanel({
   }
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-black p-5 space-y-5">
+    <div className="card p-5 space-y-5">
       <div className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">
         Creator controls
       </div>
@@ -104,7 +104,7 @@ export function CreatorPanel({
           <button
             onClick={() => setLivestream(streamUrl)}
             disabled={busy || !streamUrl.trim()}
-            className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-zinc-200 disabled:opacity-40 whitespace-nowrap"
+            className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-zinc-100 transition-colors disabled:opacity-40 whitespace-nowrap"
           >
             {live ? "Update" : "Go live"}
           </button>
@@ -124,7 +124,7 @@ export function CreatorPanel({
       </div>
 
       {/* fee redirect */}
-      <div className="space-y-2 border-t border-zinc-900 pt-4">
+      <div className="space-y-2 border-t border-white/[0.06] pt-4">
         <div className="text-sm text-zinc-300">
           Fee recipient{" "}
           <span className="text-zinc-500">
@@ -142,7 +142,7 @@ export function CreatorPanel({
           <button
             onClick={() => saveRecipient(recipient.trim())}
             disabled={busy || !isAddress(recipient.trim())}
-            className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-zinc-200 disabled:opacity-40"
+            className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-zinc-100 transition-colors disabled:opacity-40"
           >
             Save
           </button>
