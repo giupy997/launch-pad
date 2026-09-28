@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useTokens, useAppChain, isQuoteAsset } from "@/lib/hooks";
-import { robinhood } from "@/lib/config";
+import { robinhood, litvmTestnet } from "@/lib/config";
 import { TokenCard } from "@/components/TokenCard";
 import { NotDeployedNotice } from "@/components/NotDeployedNotice";
 
@@ -49,6 +49,13 @@ export default function Explore() {
             ? "liquidity locked forever in Uniswap v4 — where the fees keep flowing."
             : "liquidity migrated to the DEX."}
         </p>
+        {chain.id === litvmTestnet.id && (
+          <p className="text-zinc-300 max-w-xl mx-auto text-sm">
+            Litecoin&apos;s EVM layer. The coins launched on{" "}
+            <Link href="/litecoin" className="underline">Notus on Litecoin</Link> migrate here{" "}
+            <span className="text-white">automatically when LitVM mainnet goes live</span>: same holders, same price.
+          </p>
+        )}
         <Link
           href="/create"
           className="inline-block rounded-full bg-white px-6 py-2.5 font-semibold text-black hover:bg-zinc-200"

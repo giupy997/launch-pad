@@ -134,8 +134,9 @@ wired — addresses, assets, pages — but out of the menu (`VISIBLE_CHAINS` in
 `web/lib/config.ts` lists what the menu shows; LitVM is the default EVM
 chain). LitVM (chain 4441, RPC `https://liteforge.rpc.caldera.xyz/infra-partner-http`,
 explorer `https://liteforge.explorer.caldera.xyz`, gas in zkLTC) is Litecoin's
-EVM layer 2: the Litecoin ledger is designed to migrate there — same holders,
-same price — see [litecoin/README.md](litecoin/README.md#the-road-to-litvm).
+EVM layer 2: when LitVM mainnet goes live, the Litecoin ledger's coins migrate
+there automatically — same holders, same price, each coin's pool moved to a
+DEX — see [litecoin/README.md](litecoin/README.md#the-road-to-litvm).
 Per-chain launchpad addresses live in `web/lib/config.ts` (`LAUNCHPAD_ADDRESS`);
 chains without a deployment show a notice and disable trading. Robinhood
 Chain (Arbitrum Orbit, chain ID 4663, RPC `https://rpc.mainnet.chain.robinhood.com`,

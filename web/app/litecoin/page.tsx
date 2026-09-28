@@ -28,6 +28,10 @@ export default function LitecoinExplore() {
           plain Litecoin transactions signed by you, a bonding curve that graduates into a locked pool with
           no price ceiling, and a ledger anyone can recompute from the chain.
         </p>
+        <p className="text-zinc-300 max-w-xl mx-auto text-sm">
+          When LitVM mainnet goes live, every coin here <span className="text-white">migrates to LitVM automatically</span>:
+          same holders, same price, and its pool moves to a DEX.
+        </p>
         <Link
           href="/litecoin/create"
           className="inline-block rounded-full bg-white px-6 py-2.5 font-semibold text-black hover:bg-zinc-200"

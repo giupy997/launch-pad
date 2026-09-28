@@ -86,12 +86,14 @@ export default function LitecoinCoinPage({ params }: { params: { ticker: string 
               <>
                 Graduated: the 800M sold out, and the LTC raised plus the 200M reserve became a pool locked inside the
                 ledger ({fmtLtc(coin.poolLit)} LTC · {fmtCoins(coin.poolToken)} ${coin.ticker}). The price floats freely from here — no
-                ceiling — and a sell always fills. On LitVM this pool moves to Uniswap as is.
+                ceiling — and a sell always fills. When LitVM mainnet goes live the coin migrates there automatically,
+                and this pool moves to a DEX as is.
               </>
             ) : (
               <>
                 {progress.toFixed(1)}% of the 800M on the curve. At 800M the coin graduates: the LTC raised and the 200M
-                reserve become a locked pool, and the price keeps going with no ceiling. A sell always fills.
+                reserve become a locked pool, and the price keeps going with no ceiling. A sell always fills. When LitVM
+                mainnet goes live the coin migrates there automatically — same holders, same price.
               </>
             )}
           </p>

@@ -98,6 +98,12 @@ NOTUS_LTC_DESK=${state.desk.address ?? "<desk address>"} node litecoin/indexer.t
       </section>
 
       <section className="rounded-xl border border-zinc-800 p-4 text-xs text-zinc-500 space-y-1.5">
+        <p>
+          <span className="text-zinc-300">The road to LitVM.</span> Every buyer&apos;s public key is on record in their own
+          transactions, so each Litecoin address maps to an EVM address. When LitVM mainnet goes live the ledger is
+          frozen at a block, its state root published, and every coin re-created on LitVM automatically — same holders,
+          same price, each pool moved to a DEX — while the desk settles what it still owes here on Litecoin.
+        </p>
         <p className="text-zinc-300 font-semibold">What could cost you</p>
         <p>— The desk holds the LTC. There is no escrow script on Litecoin: what sits in a curve or in a graduated pool sits with the desk until it is sold back or claimed.</p>
         <p>— This ledger is the only record of balances. Anyone can recompute it; nobody can enforce it.</p>

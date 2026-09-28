@@ -181,6 +181,7 @@ export default function LitecoinCreate() {
             <Row k="Curve raises" v={`~${fmtLtc((P.virtualLit * 32n) / 10n, 2)} LTC, then it graduates`} />
             <Row k="After graduation" v="Locked pool: no price ceiling, sells always fill" strong />
             <Row k="Reserve" v="200M seed the pool with the LTC raised" />
+            <Row k="Migration" v="Automatic to LitVM at its mainnet: same holders, same price" strong />
           </div>
           <p className="text-[11px] text-zinc-600">
             The desk holds the LTC sent to the curve and the ledger is the only record of balances.{" "}
