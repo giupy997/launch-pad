@@ -1,6 +1,8 @@
 import { ImageResponse } from "next/og";
 import { readCoin, SITE_URL } from "@/lib/litecoin/server";
 import { spotPrice } from "@/lib/litecoin/ledger";
+import { siteStore } from "@/lib/litecoin/logoStore";
+import { siteLogoId } from "@/lib/site";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,6 +11,18 @@ export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
 const fmtM = (units: string) => `${(Number(units) / 1e8 / 1e6).toFixed(2)}M`;
+
+async function readOwnLogo(id: string): Promise<string | null> {
+  try {
+    const store = siteStore();
+    const found = store ? await store.getWithMetadata(id, { type: "arrayBuffer" }) : null;
+    if (!found) return null;
+    const type = typeof found.metadata?.type === "string" && found.metadata.type.startsWith("image/") ? found.metadata.type : "image/webp";
+    return `data:${type};base64,${Buffer.from(found.data).toString("base64")}`;
+  } catch {
+    return null;
+  }
+}
 
 export default async function Image({ params }: { params: { ticker: string } }) {
   const ticker = decodeURIComponent(params.ticker).toUpperCase();
@@ -20,9 +34,14 @@ export default async function Image({ params }: { params: { ticker: string } }) 
   const coin = found?.coin;
   const capLtc = coin ? spotPrice(coin) * 1_000_000_000 : 0;
   const cap = capLtc >= 100 ? capLtc.toFixed(0) : capLtc.toFixed(2);
-  const logoUrl = coin?.logo && /^https?:\/\//.test(coin.logo) ? coin.logo : coin?.logo?.startsWith("ipfs://") ? `https://ipfs.io/ipfs/${coin.logo.slice(7)}` : null;
-  // fetched here, so a logo host that is slow or down costs the letter, not the whole card
-  const logo = logoUrl
+  // a logo the site stored itself is read straight from the store (whatever
+  // hostname the ledger recorded for it); anything else is fetched here, so a
+  // logo host that is slow or down costs the letter, not the whole card
+  const own = coin?.logo ? siteLogoId(coin.logo) : null;
+  const logoUrl = own ? null : coin?.logo && /^https?:\/\//.test(coin.logo) ? coin.logo : coin?.logo?.startsWith("ipfs://") ? `https://ipfs.io/ipfs/${coin.logo.slice(7)}` : null;
+  const logo = own
+    ? await readOwnLogo(own)
+    : logoUrl
     ? await fetch(logoUrl, { signal: AbortSignal.timeout(4_000) })
         .then(async (r) => {
           const type = r.headers.get("content-type") ?? "";
