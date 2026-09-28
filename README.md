@@ -1,8 +1,17 @@
 # Notus
 
-Pump.fun-style launchpad for launching tokens on EVM chains. Primary target:
-**GIWA** (Upbit/Dunamu's OP Stack L2), with a chain-agnostic architecture for
-future multichain deployments (Monad, MegaETH, ...).
+**https://notuspad.com** — a token launchpad on Litecoin and on LitVM,
+Litecoin's EVM layer. What it is, how keys are handled and how to reach us:
+[notuspad.com/about](https://notuspad.com/about).
+
+On Litecoin there are no smart contracts, so Notus runs as an OP_RETURN
+ledger: one desk address, instructions in the memos of ordinary Litecoin
+transactions signed by the user, balances anyone can recompute from the chain
+(live on Litecoin mainnet). On LitVM the same launchpad runs as Solidity
+contracts (Liteforge testnet today); when LitVM mainnet goes live, every coin
+on the Litecoin ledger migrates there automatically, same holders, same price.
+The contracts are chain-agnostic and have run on other EVM chains (GIWA
+Sepolia, Robinhood Chain); those integrations stay in the repository.
 
 ## Structure
 
@@ -51,7 +60,8 @@ future multichain deployments (Monad, MegaETH, ...).
 - `zcash/` — **Notus on Zcash** (testnet): a launchpad with no contracts — one
   shielded address, a published viewing key and a bonding-curve ledger
   replayed from encrypted memos. See [zcash/README.md](zcash/README.md)
-- `litecoin/` — **Notus on Litecoin** (testnet): the same idea on a
+- `litecoin/` — **Notus on Litecoin** (mainnet, live at
+  [notuspad.com/litecoin](https://notuspad.com/litecoin)): the same idea on a
   transparent chain — one desk address, instructions in OP_RETURN, balances
   owned by the paying address, an in-browser Litecoin wallet that signs
   every transaction. See [litecoin/README.md](litecoin/README.md)
