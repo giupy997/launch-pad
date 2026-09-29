@@ -59,9 +59,8 @@ contract MigrateFromLedger is Script {
     function ensureRoot(Launchpad pad, string memory json) public {
         bytes32 root = vm.parseBytes32(string.concat("0x", vm.parseJsonString(json, ".stateRoot")));
         uint256 freeze = vm.parseJsonUint(json, ".freezeHeight");
-        string memory network = vm.parseJsonString(json, ".network");
         if (pad.migrationRoot() == bytes32(0)) {
-            pad.setMigrationRoot(root, freeze, network);
+            pad.setMigrationRoot(root, freeze);
             console.log("migration root set:", vm.toString(root));
         } else {
             require(pad.migrationRoot() == root, "the Launchpad holds another snapshot's root");
@@ -148,7 +147,7 @@ contract MigrateFromLedger is Script {
             tokensJson = vm.serializeAddress(tokensKey, coins[i].symbol, tokens[i]);
         }
         string memory outKey = "out";
-        vm.serializeString(outKey, "network", pad.migrationNetwork());
+        vm.serializeString(outKey, "network", vm.parseJsonString(vm.readFile(file), ".network"));
         vm.serializeUint(outKey, "freezeHeight", pad.migrationFreezeHeight());
         vm.serializeBytes32(outKey, "stateRoot", pad.migrationRoot());
         vm.serializeAddress(outKey, "launchpad", address(pad));

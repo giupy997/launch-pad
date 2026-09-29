@@ -46,7 +46,7 @@ contract MigrationTest is Test {
 
     function setUp() public {
         pad = new Launchpad(treasury, address(0));
-        pad.setMigrationRoot(ROOT, 3_600_085, "test");
+        pad.setMigrationRoot(ROOT, 3_600_085);
         vm.deal(address(this), 100 ether);
         vm.deal(dave, 100 ether);
     }
@@ -359,9 +359,9 @@ contract MigrationTest is Test {
         // the curve state implies the reserve: nothing, or twice as much, is refused
         uint256 expected = pad.VIRTUAL_TOKEN() - sold;
         expected = virtualQuote * sold / expected;
-        vm.expectRevert(abi.encodeWithSelector(Launchpad.WrongQuote.selector, expected, 0));
+        vm.expectRevert(Launchpad.WrongQuote.selector);
         pad.migrateToken(_coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold), holders, bals);
-        vm.expectRevert(abi.encodeWithSelector(Launchpad.WrongQuote.selector, expected, realQuote * 2));
+        vm.expectRevert(Launchpad.WrongQuote.selector);
         pad.migrateToken{value: realQuote * 2}(_coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold), holders, bals);
         // rounding dust either way is fine
         address token = pad.migrateToken{value: realQuote + 1e9}(_coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold), holders, bals);
@@ -371,7 +371,7 @@ contract MigrationTest is Test {
 
     function test_aTickerMigratesOnce() public {
         _migrate(false);
-        vm.expectRevert(abi.encodeWithSelector(Launchpad.TickerMigrated.selector, "LCAT"));
+        vm.expectRevert(Launchpad.TickerMigrated.selector);
         _migrate(false);
         assertTrue(pad.migratedTicker(keccak256("LCAT")) != address(0));
     }
@@ -381,12 +381,12 @@ contract MigrationTest is Test {
         vm.expectRevert(Launchpad.MigrationNotOpen.selector);
         fresh.migrateToken{value: realQuote}(_coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold), holders, bals);
         vm.expectRevert(Launchpad.BadMigration.selector);
-        fresh.setMigrationRoot(bytes32(0), 1, "test");
-        fresh.setMigrationRoot(ROOT, 3_600_085, "test");
+        fresh.setMigrationRoot(bytes32(0), 1);
+        fresh.setMigrationRoot(ROOT, 3_600_085);
         assertEq(fresh.migrationRoot(), ROOT);
         assertEq(fresh.migrationFreezeHeight(), 3_600_085);
         vm.expectRevert(Launchpad.BadMigration.selector);
-        fresh.setMigrationRoot(bytes32(uint256(2)), 1, "test"); // never changed
+        fresh.setMigrationRoot(bytes32(uint256(2)), 1); // never changed
         vm.deal(address(this), 200 ether);
         address token = fresh.migrateToken{value: realQuote}(_coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold), holders, bals);
         fresh.closeMigration();
@@ -396,5 +396,11 @@ contract MigrationTest is Test {
         vm.prank(dave);
         fresh.buy{value: 0.01 ether}(token, 0);
         assertGt(IERC20(token).balanceOf(dave), 0);
+    }
+
+    /// EIP-170: a Launchpad over 24,576 bytes cannot be deployed at all
+    /// (LitVM refused one at 24,802). Kept with margin for the next change.
+    function test_launchpadFitsUnderTheContractSizeLimit() public view {
+        assertLe(address(pad).code.length, 24_576 - 150, "Launchpad runtime bytecode too close to the EIP-170 limit");
     }
 }

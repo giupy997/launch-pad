@@ -135,7 +135,6 @@ contract Launchpad is Ownable, ReentrancyGuard {
     /// compare. Closing ends the migration for good.
     bytes32 public migrationRoot;
     uint256 public migrationFreezeHeight;
-    string public migrationNetwork;
     bool public migrationClosed;
     /// One token per ledger ticker: a coin cannot be migrated twice.
     mapping(bytes32 symbolHash => address) public migratedTicker;
@@ -177,7 +176,7 @@ contract Launchpad is Ownable, ReentrancyGuard {
         address indexed token, address indexed creator, uint256 virtualQuote, uint256 realQuote, uint256 sold
     );
     event MigrationBalances(address indexed token, uint256 holders, uint256 pending);
-    event MigrationRootSet(bytes32 root, uint256 freezeHeight, string network);
+    event MigrationRootSet(bytes32 root, uint256 freezeHeight);
     event MigrationClosed();
 
     // ---------------------------------------------------------------- errors
@@ -199,11 +198,11 @@ contract Launchpad is Ownable, ReentrancyGuard {
     /// migrateToken outside an open migration (no root set, or closed).
     error MigrationNotOpen();
     /// a ledger ticker that already has its token here.
-    error TickerMigrated(string symbol);
+    error TickerMigrated();
     /// a holder of a migrated coin listed a second time.
     error AlreadyDelivered(address holder);
     /// a curve coin's reserve does not match its curve state.
-    error WrongQuote(uint256 expected, uint256 got);
+    error WrongQuote();
 
     constructor(address treasury_, address poolManager_) Ownable(msg.sender) {
         treasury = treasury_;
@@ -535,7 +534,7 @@ contract Launchpad is Ownable, ReentrancyGuard {
     function _claimTicker(string calldata symbol, address token) internal {
         if (migrationRoot == bytes32(0) || migrationClosed) revert MigrationNotOpen();
         bytes32 sym = keccak256(bytes(symbol));
-        if (migratedTicker[sym] != address(0)) revert TickerMigrated(symbol);
+        if (migratedTicker[sym] != address(0)) revert TickerMigrated();
         migratedTicker[sym] = token;
     }
 
@@ -556,7 +555,7 @@ contract Launchpad is Ownable, ReentrancyGuard {
             // no more (the price would be wrong)
             uint256 expected = Math.mulDiv(coin.virtualQuote, coin.sold, VIRTUAL_TOKEN - coin.sold);
             uint256 tolerance = expected / 200 + 1e12; // 0.5% plus dust
-            if (msg.value + tolerance < expected || msg.value > expected + tolerance) revert WrongQuote(expected, msg.value);
+            if (msg.value + tolerance < expected || msg.value > expected + tolerance) revert WrongQuote();
         }
         if (coin.sold == 0 && (msg.value != 0 || holderCount != 0)) revert BadMigration(); // an untraded coin
     }
@@ -781,16 +780,16 @@ contract Launchpad is Ownable, ReentrancyGuard {
         emit MigratorUpdated(newMigrator);
     }
 
-    /// @notice Open the migration from a frozen ledger: its state root, the
-    ///         block it froze at and its network, once and for all. Every
-    ///         migrateToken call must follow this, and anyone can replay the
-    ///         ledger to this root to check what was migrated.
-    function setMigrationRoot(bytes32 root, uint256 freezeHeight, string calldata network) external onlyOwner {
+    /// @notice Open the migration from a frozen ledger: its state root and
+    ///         the block it froze at, once and for all (the ledger's network
+    ///         is the one this chain pairs with). Every migrateToken call
+    ///         must follow this, and anyone can replay the ledger to this
+    ///         root to check what was migrated.
+    function setMigrationRoot(bytes32 root, uint256 freezeHeight) external onlyOwner {
         if (root == bytes32(0) || migrationRoot != bytes32(0)) revert BadMigration();
         migrationRoot = root;
         migrationFreezeHeight = freezeHeight;
-        migrationNetwork = network;
-        emit MigrationRootSet(root, freezeHeight, network);
+        emit MigrationRootSet(root, freezeHeight);
     }
 
     /// @notice End the migration: no coin can be migrated after this, ever.
