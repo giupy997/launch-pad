@@ -13,7 +13,9 @@ import { EXTENSIONS, READY_EVENT, installedExtensions, type Extension } from "@/
  *  disconnecting the extension). */
 export function LtcWalletChip() {
   const { ready, kind, address, secret, ext, hasBrowserWallet, forget, disconnectExtension, switchExtensionNetwork } = useLtcWallet();
-  const { balance } = useUtxos(address);
+  const { balance, isError, data } = useUtxos(address);
+  // an explorer that does not answer is not an empty wallet
+  const shown = isError && !data ? "—" : fmtLtc(balance);
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState<"" | "ok" | "fail">("");
   const ref = useRef<HTMLDivElement>(null);
@@ -57,14 +59,14 @@ export function LtcWalletChip() {
         className="btn-ghost px-3 sm:px-4 py-2 text-sm font-mono whitespace-nowrap"
         title={ext ? `${ext.name} wallet` : "Wallet"}
       >
-        <span className="hidden sm:inline">{fmtLtc(balance)} LTC · </span>
+        <span className="hidden sm:inline">{shown} LTC · </span>
         {shortAddr(address)}
       </button>
       {open && (
         <div className="absolute right-0 mt-2 w-72 glass rounded-2xl p-1.5 z-20 shadow-2xl shadow-black/70 fade-up">
           <div className="px-3 pt-2 pb-1">
             <div className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">
-              {ext ? `${ext.name} wallet` : "Litecoin wallet"} · {fmtLtc(balance)} LTC
+              {ext ? `${ext.name} wallet` : "Litecoin wallet"} · {shown} LTC{isError && !data ? " · explorer not answering" : ""}
             </div>
             <button
               type="button"
@@ -237,7 +239,8 @@ export function NeedsLtcWallet() {
 
 /** Where to send LTC so the wallet can act: address, QR and live balance. */
 export function FundPanel({ address, compact = false }: { address: string; compact?: boolean }) {
-  const { balance, confirmed, utxos } = useUtxos(address);
+  const { balance, confirmed, utxos, isError, data } = useUtxos(address);
+  const offline = isError && !data;
   const [qr, setQr] = useState("");
   const [copied, setCopied] = useState<"" | "ok" | "fail">("");
   useEffect(() => {
@@ -255,7 +258,7 @@ export function FundPanel({ address, compact = false }: { address: string; compa
       <div className="flex items-baseline justify-between gap-3 mb-3">
         <span className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">Fund this wallet</span>
         <span className="font-mono text-sm text-white">
-          {fmtLtc(balance, 8)} LTC{pending !== 0n && <span className="text-zinc-500"> · {fmtLtc(pending, 8)} pending</span>}
+          {offline ? "—" : fmtLtc(balance, 8)} LTC{pending !== 0n && <span className="text-zinc-500"> · {fmtLtc(pending, 8)} pending</span>}
         </span>
       </div>
       <div className={`grid gap-4 ${compact ? "" : "sm:grid-cols-[130px_1fr]"}`}>
@@ -278,6 +281,7 @@ export function FundPanel({ address, compact = false }: { address: string; compa
             </span>
             <span className="block break-all font-mono text-xs text-zinc-300 select-all">{address}</span>
           </button>
+          {offline && <p className="text-[11px] text-zinc-400">⚠ The explorer is not answering: the balance cannot be read right now. The coins are where they were.</p>}
           <p className="text-[11px] text-zinc-600">
             Send LTC here from any wallet or exchange — a plain payment, no memo. {utxos.length} coin{utxos.length === 1 ? "" : "s"} ·{" "}
             <a href={addressLink(address)} target="_blank" rel="noreferrer" className="underline hover:text-zinc-300">
