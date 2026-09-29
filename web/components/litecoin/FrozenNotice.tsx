@@ -20,6 +20,9 @@ export function FrozenNotice({ state, ticker, compact = false }: { state: LState
           This ledger migrates to LitVM: in about {left.toLocaleString("en-US")} block{left === 1 ? "" : "s"} (~{Math.round((left * 2.5) / 60)} h) it stops taking buys,
           sells and deploys, and every coin is recreated there with the same holders and the same price. Trading here goes on until then.
         </p>
+        <p className="text-zinc-400">
+          <Link href="/litecoin/wallet" className="underline hover:text-white">Set where your coins land on LitVM</Link>: the wallet you already use there, or the account of your Litecoin key.
+        </p>
       </div>
     );
   }
@@ -29,6 +32,9 @@ export function FrozenNotice({ state, ticker, compact = false }: { state: LState
       <p className="text-zinc-300">
         This ledger stopped taking buys, sells and deploys at that block: {ticker ? `$${ticker} now trades` : "the coins now trade"} on
         LitVM, with the same holders and the same price. What the desk still owes here (claims, payouts) is paid on Litecoin as usual.
+      </p>
+      <p className="text-zinc-400">
+        Until the snapshot is taken you can still <Link href="/litecoin/wallet" className="underline hover:text-white">set where your coins land on LitVM</Link>.
       </p>
       <Link href={href} className="inline-block btn-primary px-4 py-1.5 text-xs">
         {token ? `Trade $${ticker} on LitVM` : "Open Notus on LitVM"}

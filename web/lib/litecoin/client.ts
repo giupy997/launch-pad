@@ -56,6 +56,8 @@ export type LState = {
   freezeHeight?: number | null;
   treasuryLit: string; liabilitiesLit: string; coins: LCoin[];
   balances: Record<string, Record<string, string>>; claimable: Record<string, string>;
+  /** The public key seen behind each address, and the LitVM address a holder registered (`evm 0x…`). */
+  pubkeys?: Record<string, string>; evm?: Record<string, string>;
   payouts: LPayout[]; trades: LTrade[];
   rejected: { txid: string; height: number; reason: string; memo: string }[];
   roots: { height: number; root: string }[];

@@ -9,6 +9,7 @@ import { FundPanel, NeedsLtcWallet } from "@/components/litecoin/Wallet";
 import { SendPanel } from "@/components/litecoin/SendPanel";
 import { Copyable } from "@/components/litecoin/Copyable";
 import { FrozenNotice } from "@/components/litecoin/FrozenNotice";
+import { EvmDestination } from "@/components/litecoin/EvmDestination";
 import { EXTENSION_NAME } from "@/lib/litecoin/extension";
 
 export default function LitecoinWallet() {
@@ -78,6 +79,8 @@ export default function LitecoinWallet() {
           )
         )}
       </section>
+
+      <EvmDestination state={state} />
 
       <section className="card p-5 space-y-3">
         <Label>Withdraw — send LTC from this wallet anywhere</Label>
@@ -179,7 +182,7 @@ export default function LitecoinWallet() {
               <Copyable value={secret} />
               <Label>WIF (import into Electrum-LTC as p2wpkh:…)</Label>
               <Copyable value={`p2wpkh:${wallet.wif}`} />
-              <Label>The same key on LitVM (EVM) — where these coins land if the ledger migrates</Label>
+              <Label>The same key on LitVM (EVM) — where these coins land unless another address is registered above</Label>
               <Copyable value={evmAddressOfSecret(secret)} />
               <p className="text-[11px] text-zinc-600">
                 Litecoin and EVM chains share the same curve: import the secret above into MetaMask as a private key and this is your address there.
