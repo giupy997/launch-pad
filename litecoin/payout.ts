@@ -29,14 +29,16 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { MEMO_MAX_BYTES, memo, memoBytes, type Network } from "../web/lib/litecoin/ledger.ts";
 import { PUBLIC_API, isFinal, type ChainApi, type EsploraStatus } from "../web/lib/litecoin/esplora.ts";
-import { Fallback, chainApi } from "../web/lib/litecoin/chain.ts";
+import { Fallback, chainApi, withFallbacks } from "../web/lib/litecoin/chain.ts";
 import { buildTx, fmtLit, walletFromSecret, type Utxo } from "../web/lib/litecoin/tx.ts";
 import { deskDir, deskSecret } from "./key.ts";
 import { writeAtomic } from "./files.ts";
 
 const ROOT = import.meta.dirname;
 const NETWORK: Network = process.env.NOTUS_LTC_NETWORK === "main" ? "main" : "test";
-const API = process.env.NOTUS_LTC_API ?? PUBLIC_API[NETWORK];
+/** The operator's explorers, then the chain's public ones: one down never stops a round. */
+const API = withFallbacks(process.env.NOTUS_LTC_API ?? PUBLIC_API[NETWORK], NETWORK);
+const API_KEY = process.env.NOTUS_LTC_API_KEY;
 const STATE = process.env.NOTUS_LTC_STATE ?? join(ROOT, "../web/public/litecoin/state.json");
 const SENT = process.env.NOTUS_LTC_SENT ?? join(deskDir(), "sent-payouts.json");
 const MAX_ROUND_LIT = process.env.NOTUS_LTC_MAX_ROUND_LIT ? BigInt(process.env.NOTUS_LTC_MAX_ROUND_LIT) : null;
@@ -116,8 +118,12 @@ async function lookup(api: ChainApi, txid: string): Promise<EsploraStatus | null
  *  not enough to move real coins. Two answers at least, else no opinion. */
 export async function agreedConfirmed(api: ChainApi, txid: string): Promise<boolean | null> {
   if (!(api instanceof Fallback) || api.backends.length < 2) return null;
+  // an explorer found down or behind is not asked: its silence, or its stale
+  // "unconfirmed", must not hold every payout until it recovers
+  const live = api.live();
+  const asked = live.length >= 2 ? live : api.backends;
   const answers = await Promise.all(
-    api.backends.map(async (b) => {
+    asked.map(async (b) => {
       try {
         return await b.txStatus(txid);
       } catch (e) {
@@ -141,7 +147,7 @@ export async function payDue(dryRun = false, log: (line: string) => void = conso
   const store = loadIntents();
   const now = deps.now ?? Math.floor(Date.now() / 1000);
   const byId = new Map(state.payouts.map((p) => [p.id, p]));
-  const api = deps.api ?? chainApi(API, NETWORK);
+  const api = deps.api ?? chainApi(API, NETWORK, API_KEY);
 
   // 1. what became of what was sent
   for (const it of store.intents) {

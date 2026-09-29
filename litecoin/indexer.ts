@@ -18,14 +18,16 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { PARAMS, replay, snapshot, type Network, type TxEvent } from "../web/lib/litecoin/ledger.ts";
 import { PUBLIC_API, eventFromTx, pendingFromTx, type ChainApi, type EsploraTx, type PendingTx } from "../web/lib/litecoin/esplora.ts";
-import { Fallback, chainApi } from "../web/lib/litecoin/chain.ts";
+import { Fallback, chainApi, withFallbacks } from "../web/lib/litecoin/chain.ts";
 import { walletFromSecret } from "../web/lib/litecoin/tx.ts";
 import { deskDir, deskSecret, hasDeskKey } from "./key.ts";
 import { writeAtomic } from "./files.ts";
 
 const ROOT = import.meta.dirname;
 const NETWORK: Network = process.env.NOTUS_LTC_NETWORK === "main" ? "main" : "test";
-const API = process.env.NOTUS_LTC_API ?? PUBLIC_API[NETWORK];
+/** The operator's explorers, then the chain's public ones: one down never stops a pass. */
+const API = withFallbacks(process.env.NOTUS_LTC_API ?? PUBLIC_API[NETWORK], NETWORK);
+const API_KEY = process.env.NOTUS_LTC_API_KEY;
 export const STATE_PATH = process.env.NOTUS_LTC_STATE ?? join(ROOT, "../web/public/litecoin/state.json");
 const OUT = STATE_PATH;
 const CACHE = process.env.NOTUS_LTC_CACHE ?? join(ROOT, "cache", `${NETWORK}.json`);
@@ -145,7 +147,7 @@ let lastVia = "";
 const via = (a: ChainApi) => (a instanceof Fallback ? a.lastUsed || a.label : a.label);
 /** One client for the life of the process, so cooldowns and the best tip seen survive between passes. */
 let client: ChainApi | null = null;
-const theApi = () => (client ??= chainApi(API, NETWORK));
+const theApi = () => (client ??= chainApi(API, NETWORK, API_KEY));
 
 /** One indexer pass: sync (unless told not to), replay, write the snapshot. */
 export async function pass(sync: boolean) {

@@ -56,6 +56,12 @@ export class Fallback extends ChainApi {
     return this.backends.map((b) => b.label).join(",");
   }
 
+  /** The endpoints not cooling down after a failure: the ones worth asking now. */
+  live(): ChainApi[] {
+    const now = Date.now();
+    return this.backends.filter((b) => (this.downUntil.get(b) ?? 0) <= now);
+  }
+
   private async run<T>(f: (b: ChainApi) => Promise<T>): Promise<T> {
     const now = Date.now();
     let candidates = this.backends.filter((b) => (this.downUntil.get(b) ?? 0) <= now);
@@ -119,10 +125,11 @@ export class Fallback extends ChainApi {
 
 /** Public explorers of each chain, appended after whatever the operator
  *  configured (and skipped when already named), so one explorer's outage
- *  never leaves the pages blind: litecoinspace's Esplora, then Trezor's and
- *  litecoinblockexplorer's Blockbook instances. */
+ *  never leaves the pages blind: litecoinspace's Esplora, then
+ *  litecoinblockexplorer's Blockbook. (Trezor's own Blockbooks refuse
+ *  server addresses, so they are of no use to a desk or a hosting function.) */
 export const PUBLIC_FALLBACKS: Record<Network, string[]> = {
-  main: ["https://litecoinspace.org/api", "https://ltc1.trezor.io/api/v2", "https://ltc2.trezor.io/api/v2", "https://litecoinblockexplorer.net/api/v2"],
+  main: ["https://litecoinspace.org/api", "https://litecoinblockexplorer.net/api/v2"],
   test: ["https://litecoinspace.org/testnet/api"],
 };
 

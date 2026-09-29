@@ -67,7 +67,10 @@ export class ApiError extends Error {
 /** A real answer from the explorer (not found, rejected) rather than a
  *  failure to answer: 4xx, except being rate-limited or timed out, which the
  *  next endpoint may not be. */
-export const isFinal = (e: unknown) => e instanceof ApiError && e.status > 0 && e.status < 500 && e.status !== 429 && e.status !== 408;
+/** An answer about the chain (unknown transaction, rejected broadcast), as
+ *  opposed to an endpoint that is down, throttling us (429), timing out
+ *  (408) or refusing this client (403): those are reasons to ask the next one. */
+export const isFinal = (e: unknown) => e instanceof ApiError && e.status > 0 && e.status < 500 && e.status !== 429 && e.status !== 408 && e.status !== 403;
 
 export type Fees = { fastestFee: number; halfHourFee: number; hourFee: number };
 
