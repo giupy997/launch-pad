@@ -117,6 +117,28 @@ export class Fallback extends ChainApi {
   }
 }
 
+/** Public explorers of each chain, appended after whatever the operator
+ *  configured (and skipped when already named), so one explorer's outage
+ *  never leaves the pages blind: litecoinspace's Esplora, then Trezor's and
+ *  litecoinblockexplorer's Blockbook instances. */
+export const PUBLIC_FALLBACKS: Record<Network, string[]> = {
+  main: ["https://litecoinspace.org/api", "https://ltc1.trezor.io/api/v2", "https://ltc2.trezor.io/api/v2", "https://litecoinblockexplorer.net/api/v2"],
+  test: ["https://litecoinspace.org/testnet/api"],
+};
+
+/** The operator's endpoints, in their order, then the public ones they did not name. */
+export function withFallbacks(spec: string | undefined, network: Network): string {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of [...(spec ?? "").split(","), ...PUBLIC_FALLBACKS[network]]) {
+    const v = raw.trim().replace(/\/+$/, "");
+    if (!v || seen.has(v.toLowerCase())) continue;
+    seen.add(v.toLowerCase());
+    out.push(v);
+  }
+  return out.join(",");
+}
+
 /** True for a Blockbook base URL (…/api/v2); anything else is taken as Esplora. */
 export const isBlockbook = (base: string) => /\/api\/v2\/?$/.test(base.trim());
 

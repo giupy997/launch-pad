@@ -1,18 +1,26 @@
 // The browser's road to the Litecoin chain, in Esplora's dialect. Same-origin,
 // so the wallet pages need no CORS from any explorer, and what answers is
-// LTC_API_UPSTREAM: an Esplora endpoint (litecoinspace.org by default), a
-// Blockbook one (…/api/v2, translated here), or several, comma separated,
-// tried in order when one is down. LTC_API_KEY goes to Blockbook endpoints.
+// LTC_API_UPSTREAM: an Esplora endpoint, a Blockbook one (…/api/v2,
+// translated here), or several, comma separated, tried in order when one is
+// down; the public explorers of the chain come after them whatever is set,
+// so one explorer's outage never leaves the pages blind. LTC_API_KEY goes
+// to Blockbook endpoints.
 import { NextResponse, type NextRequest } from "next/server";
-import { ApiError, PUBLIC_API } from "@/lib/litecoin/esplora";
-import { chainApi } from "@/lib/litecoin/chain";
+import { ApiError } from "@/lib/litecoin/esplora";
+import { chainApi, withFallbacks } from "@/lib/litecoin/chain";
 
 export const dynamic = "force-dynamic";
 
 const NETWORK = process.env.NEXT_PUBLIC_LTC_NETWORK === "main" ? "main" : "test";
-/** Well under the hosting function's own limit, so the browser sees the error, not a dead connection. */
-const TIMEOUT_MS = 20_000;
-const api = chainApi(process.env.LTC_API_UPSTREAM ?? PUBLIC_API[NETWORK], NETWORK, process.env.LTC_API_KEY, TIMEOUT_MS);
+/** The hosting function has ten seconds in all: a read may wait this long on
+ *  one explorer, so that a second one still gets its turn and the browser
+ *  sees an answer, not a dead connection. A broadcast waits longer: it is
+ *  sent once, and a slow explorer may well have relayed it. */
+const READ_TIMEOUT_MS = 4_000;
+const SEND_TIMEOUT_MS = 8_000;
+const SPEC = withFallbacks(process.env.LTC_API_UPSTREAM, NETWORK);
+const api = chainApi(SPEC, NETWORK, process.env.LTC_API_KEY, READ_TIMEOUT_MS);
+const sender = chainApi(SPEC, NETWORK, process.env.LTC_API_KEY, SEND_TIMEOUT_MS);
 
 const ADDRESS = "([a-zA-Z0-9]{20,90})";
 const HASH = "([0-9a-f]{64})";
@@ -35,7 +43,7 @@ async function answer(method: string, p: string, body: string): Promise<NextResp
   if (method === "POST") {
     if (p !== "tx") return text("not found", 404);
     if (!/^[0-9a-f]{20,200000}$/.test(body)) return text("not a raw transaction", 400);
-    return text(await api.broadcast(body));
+    return text(await sender.broadcast(body));
   }
   if (p === "blocks/tip/height") return text(String(await api.tipHeight()), 200, 20);
   if ((m = p.match(/^block-height\/(\d{1,9})$/))) return text(await api.blockHash(Number(m[1])), 200, 3600);

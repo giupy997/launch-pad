@@ -10,14 +10,13 @@ import { bytesToHex } from "@noble/hashes/utils";
 import { MAX_LOGO_BYTES, decodeDataUri, pinLogo } from "@/lib/litecoin/pin";
 import { siteStore } from "@/lib/litecoin/logoStore";
 import { verifyLogo, type LogoAuth } from "@/lib/litecoin/logoAuth";
-import { PUBLIC_API } from "@/lib/litecoin/esplora";
-import { chainApi } from "@/lib/litecoin/chain";
+import { chainApi, withFallbacks } from "@/lib/litecoin/chain";
 
 export const dynamic = "force-dynamic";
 
 const JWT = process.env.PINATA_JWT;
 const NETWORK = process.env.NEXT_PUBLIC_LTC_NETWORK === "main" ? "main" : "test";
-const chain = chainApi(process.env.LTC_API_UPSTREAM ?? PUBLIC_API[NETWORK], NETWORK, process.env.LTC_API_KEY, 10_000);
+const chain = chainApi(withFallbacks(process.env.LTC_API_UPSTREAM, NETWORK), NETWORK, process.env.LTC_API_KEY, 4_000);
 
 /** The wallet behind a signed upload, if the signature holds and the wallet holds LTC. */
 async function uploader(auth: LogoAuth | undefined, bytes: Uint8Array): Promise<{ address: string } | { error: string; status: number }> {
