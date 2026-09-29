@@ -13,6 +13,19 @@ import {UniV2Migrator} from "../src/UniV2Migrator.sol";
 ///   cd contracts && source .env && \
 ///   UNIV2_ROUTER=0x... forge script script/DeployLitVM.s.sol --rpc-url litvm_testnet \
 ///     --private-key "$PRIVATE_KEY" --broadcast
+///
+/// Verify both on Blockscout from the same checkout that deployed (same
+/// foundry.toml, same solc), passing each constructor's ABI-encoded args
+/// (<treasury>, <launchpad>, <migrator> as the deploy printed them):
+///
+///   forge verify-contract --chain 4441 --verifier blockscout \
+///     --verifier-url https://liteforge.explorer.caldera.xyz/api/ --watch \
+///     --constructor-args "$(cast abi-encode 'constructor(address,address)' <treasury> 0x0000000000000000000000000000000000000000)" \
+///     <launchpad> src/Launchpad.sol:Launchpad
+///   forge verify-contract --chain 4441 --verifier blockscout \
+///     --verifier-url https://liteforge.explorer.caldera.xyz/api/ --watch \
+///     --constructor-args "$(cast abi-encode 'constructor(address,address)' <launchpad> "$UNIV2_ROUTER")" \
+///     <migrator> src/UniV2Migrator.sol:UniV2Migrator
 contract DeployLitVM is Script {
     address constant MULTICALL3 = 0xcA11bde05977b3631167028862bE2a173976CA11;
 
