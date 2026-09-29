@@ -6,7 +6,6 @@ import { isAddress as isEvmAddress } from "viem";
 import { PARAMS, memo } from "@/lib/litecoin/ledger";
 import { CARRY_LIT, evmAddressOfPubkey, evmAddressOfSecret, inputKindOf } from "@/lib/litecoin/tx";
 import { LTC_NETWORK, useLtcWallet, type LState } from "@/lib/litecoin/client";
-import { EXTENSION_NAME } from "@/lib/litecoin/extension";
 import { SendPanel } from "./SendPanel";
 import { Copyable } from "./Copyable";
 
@@ -26,6 +25,7 @@ function derive(pubkey: string): string | null {
  *  the address with one `evm 0x…` instruction, changeable until the snapshot. */
 export function EvmDestination({ state }: { state: LState | null | undefined }) {
   const { kind, secret, address, ext } = useLtcWallet();
+  const extName = ext?.name ?? "the extension";
   const { address: connected } = useAccount();
   const [value, setValue] = useState("");
   const [editing, setEditing] = useState(false);
@@ -66,15 +66,15 @@ export function EvmDestination({ state }: { state: LState | null | undefined }) 
         </>
       ) : taproot ? (
         <p className="text-xs text-zinc-400">
-          ⚠ Your {EXTENSION_NAME} account is Taproot: its key cannot be read from its transactions, so without a registration your coins
+          ⚠ Your {extName} account is Taproot: its key cannot be read from its transactions, so without a registration your coins
           would wait in the migration vault for a signed claim. Register the LitVM address that should receive them.
         </p>
       ) : derived ? (
         <>
-          <Copyable label={kind === "ext" ? `${EXTENSION_NAME} key on LitVM` : "this key on LitVM"} value={derived} />
+          <Copyable label={kind === "ext" ? `${extName} key on LitVM` : "this key on LitVM"} value={derived} />
           <p className="text-xs text-zinc-500">
             {kind === "ext"
-              ? `Without a registration your coins land on the LitVM account of your ${EXTENSION_NAME} key, which you would have to export from ${EXTENSION_NAME} to reach. Register a wallet you already use instead.`
+              ? `Without a registration your coins land on the LitVM account of your ${extName} key, which you would have to export from ${extName} to reach. Register a wallet you already use instead.`
               : "Without a registration your coins land on the LitVM account of this very key: import the wallet secret into MetaMask and they are there. Register a wallet you already use instead, and they land there directly."}
           </p>
         </>

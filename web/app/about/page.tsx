@@ -47,8 +47,8 @@ export default function AboutPage() {
 
       <Section title="Your keys">
         <li>
-          On Litecoin, you either connect Litescribe, a Litecoin browser extension that signs what the site builds and
-          keeps its keys to itself, or let the site create a wallet in your browser. That key is generated locally and
+          On Litecoin, you either connect a Litecoin browser extension, Litescribe or Enkrypt, which signs what the site
+          builds and keeps its keys to itself, or let the site create a wallet in your browser. That key is generated locally and
           stored only in that browser; it is never sent to us or to anyone else. You back it up from the wallet page and
           can restore it on another device.
         </li>

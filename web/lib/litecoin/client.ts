@@ -6,7 +6,7 @@ import { spotPrice, type CurveView, type Network } from "./ledger.ts";
 import { Esplora, PUBLIC_EXPLORER } from "./esplora.ts";
 import { isSecret, newSecret, secretFromWif, walletFromSecret, type BuiltTx, type Utxo, type Wallet } from "./tx.ts";
 import { isAddress } from "./address.ts";
-import { createExtensionStore, providerNetwork, type ExtWallet } from "./extension.ts";
+import { createExtensionStore, extensionById, type ExtWallet, type ExtensionId } from "./extension.ts";
 
 export const LTC_NETWORK: Network = process.env.NEXT_PUBLIC_LTC_NETWORK === "main" ? "main" : "test";
 export const LTC_LABEL = LTC_NETWORK === "main" ? "Litecoin" : "Litecoin Testnet";
@@ -14,7 +14,7 @@ export const EXPLORER = PUBLIC_EXPLORER[LTC_NETWORK];
 /** The browser reaches the explorer through the site's own proxy (/api/ltc):
  *  no CORS surprises, and one place to point at another explorer or a node. */
 export const api = new Esplora(process.env.NEXT_PUBLIC_LTC_API ?? "/api/ltc");
-/** The extension wallet (Litescribe) connected to this site, if any. */
+/** The extension wallet (Litescribe or Enkrypt) connected to this site, if any. */
 export const extension = createExtensionStore(LTC_NETWORK);
 
 export type LCoin = {
@@ -22,10 +22,29 @@ export type LCoin = {
   /** X handle, Telegram handle, website, as the creator set them. */
   links?: { x?: string; tg?: string; web?: string };
   vLit: string; vToken: string; realLit: string; sold: string; volumeLit: string;
+  /** LTC traded in the last hour, eight hours and day (lit), by block time; absent from an older desk. */
+  volume?: { h1: string; h8: string; h24: string };
   /** Graduated coins trade in their locked pool (real reserves, no ceiling). */
   graduated: boolean; poolLit: string; poolToken: string;
   trades: number; holders: number; createdHeight: number; createdTime: number; txid: string;
 };
+
+/** A coin's recent volume in lit: what the desk computed, else summed here
+ *  from the trades the snapshot carries (its last 500). */
+export function coinVolume(coin: Pick<LCoin, "ticker" | "volume">, state: Pick<LState, "trades"> | null | undefined, now = Math.floor(Date.now() / 1000)): { h1: bigint; h8: bigint; h24: bigint } {
+  if (coin.volume) return { h1: BigInt(coin.volume.h1), h8: BigInt(coin.volume.h8), h24: BigInt(coin.volume.h24) };
+  const v = { h1: 0n, h8: 0n, h24: 0n };
+  for (const t of state?.trades ?? []) {
+    if (t.ticker !== coin.ticker) continue;
+    const age = now - t.time;
+    if (age > 24 * 3600) continue;
+    const lit = t.type === "sell" ? BigInt(t.lit) + BigInt(t.fee) : BigInt(t.lit);
+    v.h24 += lit;
+    if (age <= 8 * 3600) v.h8 += lit;
+    if (age <= 3600) v.h1 += lit;
+  }
+  return v;
+}
 
 /** The quote view of a snapshot coin (strings → bigints). */
 export function curveOf(c: LCoin): CurveView {
@@ -141,21 +160,22 @@ export type ActiveWallet = {
   wallet: Wallet | null;
   /** The address every action here is paid from; null until a wallet is here, on this network. */
   address: string | null;
-  /** The connected extension, on the wrong network or not. */
-  ext: (ExtWallet & { wrongNetwork: boolean }) | null;
+  /** The connected extension, on the wrong network or not, with its name and
+   *  whether it can be moved to this site's network at all. */
+  ext: (ExtWallet & { name: string; url: string; wrongNetwork: boolean; canSwitch: boolean }) | null;
   /** A browser wallet exists here (shown, or waiting behind the extension). */
   hasBrowserWallet: boolean;
   create: () => void;
   restore: (input: string) => boolean;
   forget: () => void;
-  connectExtension: () => Promise<void>;
+  connectExtension: (id: ExtensionId) => Promise<void>;
   disconnectExtension: () => void;
   switchExtensionNetwork: () => Promise<void>;
 };
 
 /** The wallet that acts on the Litecoin pages. Either the extension the
- *  person connected (Litescribe: its keys stay in it, it signs what the site
- *  builds) or the wallet the site keeps in this browser: an ordinary
+ *  person connected (Litescribe or Enkrypt: its keys stay in it, it signs
+ *  what the site builds) or the wallet the site keeps in this browser: an ordinary
  *  Litecoin key whose address owns the coins, which nothing can recover if
  *  it is lost. A connected extension comes first, even on another network
  *  (so the page can ask it to switch); the browser wallet waits behind it. */
@@ -187,9 +207,18 @@ export function useLtcWallet(): ActiveWallet {
       return null;
     }
   }, [secret]);
-  const ext = connected
-    ? { ...connected, wrongNetwork: connected.network !== providerNetwork(LTC_NETWORK) || !isAddress(connected.address, LTC_NETWORK) }
-    : null;
+  const ext = useMemo(() => {
+    if (!connected) return null;
+    const meta = extensionById(connected.extension);
+    const wanted = meta?.networkName(LTC_NETWORK) ?? null;
+    return {
+      ...connected,
+      name: meta?.name ?? "the extension",
+      url: meta?.url ?? "",
+      wrongNetwork: connected.network !== wanted || !isAddress(connected.address, LTC_NETWORK),
+      canSwitch: wanted !== null,
+    };
+  }, [connected]);
   const kind = ext ? "ext" : wallet ? "hot" : null;
   return {
     ready: hydrated && resolved,
@@ -202,8 +231,8 @@ export function useLtcWallet(): ActiveWallet {
     create,
     restore,
     forget: () => writeSecret(null),
-    connectExtension: async () => {
-      await extension.connect();
+    connectExtension: async (id: ExtensionId) => {
+      await extension.connect(id);
     },
     disconnectExtension: () => extension.disconnect(),
     switchExtensionNetwork: () => extension.switchNetwork(),
@@ -351,6 +380,12 @@ export function fmtUsd(n: number): string {
   if (n < 1_000_000) return `$${(n / 1_000).toFixed(1)}K`;
   if (n < 1_000_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
   return `$${(n / 1_000_000_000).toFixed(2)}B`;
+}
+
+/** Traded LTC as the pages show it: in dollars when the price is known, else in LTC; a dash for nothing. */
+export function fmtVolume(lit: bigint, usd: number | null | undefined): string {
+  if (lit === 0n) return "—";
+  return fmtMcap(Number(lit) / 1e8, usd);
 }
 
 /** Market cap as the pages show it: in dollars when the price is known, else in LTC. */

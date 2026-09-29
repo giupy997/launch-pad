@@ -10,11 +10,11 @@ import { SendPanel } from "@/components/litecoin/SendPanel";
 import { Copyable } from "@/components/litecoin/Copyable";
 import { FrozenNotice } from "@/components/litecoin/FrozenNotice";
 import { EvmDestination } from "@/components/litecoin/EvmDestination";
-import { EXTENSION_NAME } from "@/lib/litecoin/extension";
 
 export default function LitecoinWallet() {
   const { data: state } = useLitecoinState();
-  const { ready, kind, secret, wallet, address, hasBrowserWallet, forget, disconnectExtension } = useLtcWallet();
+  const { ready, kind, secret, wallet, address, ext, hasBrowserWallet, forget, disconnectExtension } = useLtcWallet();
+  const extName = ext?.name ?? "the extension";
   const { balance } = useUtxos(address);
   const [reveal, setReveal] = useState(false);
   const [claiming, setClaiming] = useState(false);
@@ -203,13 +203,13 @@ export default function LitecoinWallet() {
         </section>
       ) : (
         <section className="card p-5 space-y-3">
-          <Label>Connected with {EXTENSION_NAME} — its keys stay in the extension</Label>
+          <Label>Connected with {extName} — its keys stay in the extension</Label>
           <p className="text-xs text-zinc-500">
-            Every transaction here is built by the site and handed to {EXTENSION_NAME} to sign; the site never sees a key. Sells and
+            Every transaction here is built by the site and handed to {extName} to sign; the site never sees a key. Sells and
             claims are paid to this address.{hasBrowserWallet && ` Disconnecting brings back the wallet this browser keeps.`}
           </p>
           <button type="button" onClick={disconnectExtension} className="block text-xs text-zinc-400 underline">
-            Disconnect {EXTENSION_NAME}
+            Disconnect {extName}
           </button>
         </section>
       )}

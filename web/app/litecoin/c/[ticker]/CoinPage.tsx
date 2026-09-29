@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { CURVE_SUPPLY, MEMO_MAX_BYTES, PARAMS, TOTAL_SUPPLY, memo, memoBytes, normalizeLink, quoteBuy, quoteSell, spotPrice, type CoinLinks } from "@/lib/litecoin/ledger";
 import { CARRY_LIT } from "@/lib/litecoin/tx";
-import { LTC_NETWORK, addressLink, curveOf, fmtCoins, fmtLtc, fmtMcap, fmtPrice, marketCapLtc, parseLtc, shortAddr, txLink, useLitecoinState, useLtcPrice, useLtcWallet, type LCoin, type LState, isFrozen, tickerFromParam } from "@/lib/litecoin/client";
+import { LTC_NETWORK, addressLink, coinVolume, curveOf, fmtCoins, fmtLtc, fmtMcap, fmtPrice, fmtVolume, marketCapLtc, parseLtc, shortAddr, txLink, useLitecoinState, useLtcPrice, useLtcWallet, type LCoin, type LState, isFrozen, tickerFromParam } from "@/lib/litecoin/client";
 import { SendPanel } from "@/components/litecoin/SendPanel";
 import { NeedsLtcWallet } from "@/components/litecoin/Wallet";
 import { TokenLogo } from "@/components/TokenLogo";
@@ -37,6 +37,7 @@ export function CoinPage({ params }: { params: { ticker: string } }) {
   const points = trades.filter((t) => t.tokens !== "0").map((t) => mcapOf(Number(t.lit) / Number(t.tokens)));
   const mcap = marketCapLtc(coin);
   const holders = Object.entries(state.balances[ticker] ?? {}).sort((a, b) => (BigInt(b[1]) > BigInt(a[1]) ? 1 : -1));
+  const vol = coinVolume(coin, state);
 
   return (
     <div className="grid gap-8 lg:grid-cols-[1fr_380px]">
@@ -88,6 +89,10 @@ export function CoinPage({ params }: { params: { ticker: string } }) {
           <Stat label={coin.graduated ? "Held" : "Sold"} value={fmtCoins(held)} />
           <Stat label="Holders" value={String(coin.holders)} />
         </div>
+        <p className="font-mono text-xs text-zinc-500">
+          Volume · 1h <span className="text-zinc-300">{fmtVolume(vol.h1, usd)}</span> · 8h <span className="text-zinc-300">{fmtVolume(vol.h8, usd)}</span> · 24h{" "}
+          <span className="text-zinc-300">{fmtVolume(vol.h24, usd)}</span> · all time <span className="text-zinc-300">{fmtLtc(coin.volumeLit)} LTC</span> · {coin.trades} trade{coin.trades === 1 ? "" : "s"}
+        </p>
 
         <div>
           <div className="h-2 rounded bg-white/[0.08] overflow-hidden">

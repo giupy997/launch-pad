@@ -3,8 +3,7 @@ import { useEffect, useState } from "react";
 import { processLogoFile, dataUriBytes } from "@/lib/image";
 import { decodeDataUri } from "@/lib/litecoin/pin";
 import { logoMessageFor, signLogo, type LogoAuth } from "@/lib/litecoin/logoAuth";
-import { EXTENSION_NAME, signTextWithExtension } from "@/lib/litecoin/extension";
-import { useLtcWallet } from "@/lib/litecoin/client";
+import { extension, useLtcWallet } from "@/lib/litecoin/client";
 
 /** Upload a coin logo: squared and compressed in the browser, signed with
  *  the wallet (the site keeps pictures only for wallets that hold LTC): the
@@ -13,7 +12,8 @@ import { useLtcWallet } from "@/lib/litecoin/client";
  *  back as the short URL the logo instruction carries. Renders nothing when
  *  the site cannot keep it, or without a wallet. */
 export function LogoUpload({ name, onUploaded }: { name: string; onUploaded: (uri: string) => void }) {
-  const { kind, secret, address } = useLtcWallet();
+  const { kind, secret, address, ext } = useLtcWallet();
+  const signer = ext?.name ?? "an extension";
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [via, setVia] = useState<string | null>(null);
   const [busy, setBusy] = useState<"" | "processing" | "signing" | "pinning">("");
@@ -40,9 +40,9 @@ export function LogoUpload({ name, onUploaded }: { name: string; onUploaded: (ur
     if (kind === "ext" && address) {
       const { ts, text } = logoMessageFor(bytes);
       setBusy("signing");
-      return { ts, address, signedMessage: await signTextWithExtension(text) };
+      return { ts, address, signedMessage: await extension.signText(text) };
     }
-    throw new Error(`make a wallet or connect ${EXTENSION_NAME} first: uploads are signed with it`);
+    throw new Error("make a wallet or connect an extension first: uploads are signed with it");
   }
 
   async function onFile(file: File | undefined) {
@@ -73,7 +73,7 @@ export function LogoUpload({ name, onUploaded }: { name: string; onUploaded: (ur
         {busy === "processing"
           ? "Squaring and compressing…"
           : busy === "signing"
-            ? `Sign the upload in ${EXTENSION_NAME}…`
+            ? `Sign the upload in ${signer}…`
             : busy === "pinning"
               ? "Uploading…"
               : done

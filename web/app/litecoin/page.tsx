@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { CURVE_SUPPLY } from "@/lib/litecoin/ledger";
-import { LTC_NETWORK, fmtLtc, fmtMcap, marketCapLtc, shortAddr, txLink, useLitecoinState, useLtcPrice, type LCoin } from "@/lib/litecoin/client";
+import { LTC_NETWORK, coinVolume, fmtLtc, fmtMcap, fmtVolume, marketCapLtc, shortAddr, txLink, useLitecoinState, useLtcPrice, type LCoin, type LState } from "@/lib/litecoin/client";
 import { FrozenNotice } from "@/components/litecoin/FrozenNotice";
 import { TokenLogo } from "@/components/TokenLogo";
 
@@ -114,7 +114,7 @@ export default function LitecoinExplore() {
         )}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {coins.map((c) => (
-            <CoinCard key={c.ticker} coin={c} usd={usd} />
+            <CoinCard key={c.ticker} coin={c} state={state} usd={usd} />
           ))}
         </div>
       </section>
@@ -157,8 +157,9 @@ export default function LitecoinExplore() {
   );
 }
 
-function CoinCard({ coin: c, usd }: { coin: LCoin; usd: number | null }) {
+function CoinCard({ coin: c, state, usd }: { coin: LCoin; state: LState | null | undefined; usd: number | null }) {
   const progress = Number((BigInt(c.sold) * 10_000n) / CURVE_SUPPLY) / 100;
+  const vol = coinVolume(c, state);
   return (
     <Link href={`/litecoin/c/${c.ticker}`} className="card card-hover group block p-5">
       <div className="flex items-center gap-4">
@@ -191,6 +192,14 @@ function CoinCard({ coin: c, usd }: { coin: LCoin; usd: number | null }) {
       <div className="mt-2 flex justify-between font-mono text-[10px] tracking-widest uppercase text-zinc-500">
         <span>{c.graduated ? "locked pool · no ceiling" : `curve ${progress.toFixed(1)}%`}</span>
         <span>{c.holders} holders</span>
+      </div>
+      <div className="mt-3 grid grid-cols-3 gap-2 border-t border-white/[0.06] pt-3">
+        {([["1h", vol.h1], ["8h", vol.h8], ["24h", vol.h24]] as const).map(([k, v]) => (
+          <div key={k}>
+            <div className="label">Vol {k}</div>
+            <div className="mt-0.5 font-mono text-xs text-zinc-300">{fmtVolume(v, usd)}</div>
+          </div>
+        ))}
       </div>
     </Link>
   );

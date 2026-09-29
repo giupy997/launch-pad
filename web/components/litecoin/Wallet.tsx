@@ -5,7 +5,7 @@ import { copyText } from "@/lib/clipboard";
 import { useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { LTC_LABEL, LTC_NETWORK, addressLink, fmtLtc, shortAddr, useLtcWallet, useUtxos } from "@/lib/litecoin/client";
-import { EXTENSION_NAME, EXTENSION_URL, READY_EVENT, hasExtension } from "@/lib/litecoin/extension";
+import { EXTENSIONS, READY_EVENT, installedExtensions, type Extension } from "@/lib/litecoin/extension";
 
 /** Header chip on the Litecoin pages: the wallet that acts stands in for
  *  "connect". Open, it is a small menu: address, balance, the wallet page,
@@ -26,15 +26,19 @@ export function LtcWalletChip() {
   }, []);
   if (!ready) return null;
   if (ext?.wrongNetwork) {
-    return (
+    return ext.canSwitch ? (
       <button
         type="button"
         onClick={() => switchExtensionNetwork().catch(() => {})}
         className="btn-primary px-4 sm:px-5 py-2 text-sm whitespace-nowrap"
-        title={`${EXTENSION_NAME} is on ${ext.network}; this site runs on ${LTC_LABEL}`}
+        title={`${ext.name} is on ${ext.network || "another network"}; this site runs on ${LTC_LABEL}`}
       >
-        Switch {EXTENSION_NAME} to {LTC_NETWORK === "main" ? "mainnet" : "testnet"}
+        Switch {ext.name} to {LTC_NETWORK === "main" ? "Litecoin" : "Litecoin testnet"}
       </button>
+    ) : (
+      <Link href="/litecoin/wallet" className="btn-primary px-4 sm:px-5 py-2 text-sm whitespace-nowrap" title={`${ext.name} has no ${LTC_LABEL}`}>
+        Wallet
+      </Link>
     );
   }
   if (!address) {
@@ -51,7 +55,7 @@ export function LtcWalletChip() {
         type="button"
         onClick={() => setOpen((o) => !o)}
         className="btn-ghost px-3 sm:px-4 py-2 text-sm font-mono whitespace-nowrap"
-        title={kind === "ext" ? `${EXTENSION_NAME} wallet` : "Wallet"}
+        title={ext ? `${ext.name} wallet` : "Wallet"}
       >
         <span className="hidden sm:inline">{fmtLtc(balance)} LTC · </span>
         {shortAddr(address)}
@@ -60,7 +64,7 @@ export function LtcWalletChip() {
         <div className="absolute right-0 mt-2 w-72 glass rounded-2xl p-1.5 z-20 shadow-2xl shadow-black/70 fade-up">
           <div className="px-3 pt-2 pb-1">
             <div className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">
-              {kind === "ext" ? `${EXTENSION_NAME} wallet` : "Litecoin wallet"} · {fmtLtc(balance)} LTC
+              {ext ? `${ext.name} wallet` : "Litecoin wallet"} · {fmtLtc(balance)} LTC
             </div>
             <button
               type="button"
@@ -86,7 +90,7 @@ export function LtcWalletChip() {
               }}
               className={`${item} text-zinc-500`}
             >
-              Disconnect {EXTENSION_NAME} <span className="text-zinc-700">{hasBrowserWallet ? "back to the browser wallet" : ""}</span>
+              Disconnect {ext?.name} <span className="text-zinc-700">{hasBrowserWallet ? "back to the browser wallet" : ""}</span>
             </button>
           ) : (
             <button
@@ -116,7 +120,8 @@ export function confirmForget(secret: string): boolean {
 }
 
 /** Inline prompt for pages that need a wallet before they can send anything:
- *  connect the extension, or make (or restore) the browser wallet. */
+ *  connect an extension (Litescribe, Enkrypt), or make (or restore) the
+ *  browser wallet. */
 export function NeedsLtcWallet() {
   const { create, restore, ext, connectExtension, disconnectExtension, switchExtensionNetwork } = useLtcWallet();
   // The restore field only appears on request: a landing page with a box
@@ -124,24 +129,28 @@ export function NeedsLtcWallet() {
   const [restoring, setRestoring] = useState(false);
   const [value, setValue] = useState("");
   const [bad, setBad] = useState(false);
-  const [installed, setInstalled] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [installed, setInstalled] = useState<Extension[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
   const [extError, setExtError] = useState("");
   useEffect(() => {
-    setInstalled(hasExtension());
-    const on = () => setInstalled(true);
-    window.addEventListener(READY_EVENT, on);
-    return () => window.removeEventListener(READY_EVENT, on);
+    const look = () => setInstalled(installedExtensions(LTC_NETWORK));
+    look();
+    const t = setTimeout(look, 1200); // an extension that injects itself late
+    window.addEventListener(READY_EVENT, look);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener(READY_EVENT, look);
+    };
   }, []);
-  const withExtension = async (action: () => Promise<void>) => {
-    setBusy(true);
+  const withExtension = async (name: string, action: () => Promise<void>) => {
+    setBusy(name);
     setExtError("");
     try {
       await action();
     } catch (e) {
       setExtError((e as Error).message ?? "the extension did not answer");
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   };
   const primary = "w-full rounded-full bg-white py-2 text-sm font-semibold text-black hover:bg-zinc-100 transition-colors disabled:opacity-50";
@@ -150,38 +159,51 @@ export function NeedsLtcWallet() {
     return (
       <div className="card p-4 space-y-3">
         <p className="text-sm text-zinc-300">
-          {EXTENSION_NAME} is on <b>{ext.network}</b>; this site runs on <b>{LTC_LABEL}</b>. Switch it to go on, or disconnect it to use
-          the wallet this browser keeps.
+          {ext.name} is on <b>{ext.network || "another network"}</b>; this site runs on <b>{LTC_LABEL}</b>.{" "}
+          {ext.canSwitch ? "Switch it to go on, or disconnect it to use the wallet this browser keeps." : `${ext.name} has no ${LTC_LABEL}: disconnect it to use the wallet this browser keeps.`}
         </p>
-        <button type="button" disabled={busy} onClick={() => withExtension(switchExtensionNetwork)} className={primary}>
-          {busy ? `Waiting for ${EXTENSION_NAME}…` : `Switch ${EXTENSION_NAME} to ${LTC_NETWORK === "main" ? "mainnet" : "testnet"}`}
-        </button>
+        {ext.canSwitch && (
+          <button type="button" disabled={!!busy} onClick={() => withExtension(ext.name, switchExtensionNetwork)} className={primary}>
+            {busy ? `Waiting for ${ext.name}…` : `Switch ${ext.name} to ${LTC_NETWORK === "main" ? "Litecoin" : "Litecoin testnet"}`}
+          </button>
+        )}
         <button type="button" onClick={disconnectExtension} className="w-full text-center text-xs text-zinc-500 hover:text-zinc-200">
-          Disconnect {EXTENSION_NAME}
+          Disconnect {ext.name}
         </button>
         {extError && <p className="text-xs text-zinc-400">⚠ {extError}</p>}
       </div>
     );
   }
+  const missing = EXTENSIONS.filter((e) => e.networkName(LTC_NETWORK) !== null && !installed.some((i) => i.id === e.id));
   return (
     <div className="card p-4 space-y-3">
       <p className="text-sm text-zinc-300">
-        Every action here is a Litecoin transaction you sign yourself. Sign with <b>{EXTENSION_NAME}</b>, a Litecoin browser
-        extension whose keys stay in it, or let the site keep an ordinary Litecoin <b>wallet</b> in this browser: created here,
-        never leaving it, nobody able to reset it. Notus never asks for the keys of any other wallet.
+        Every action here is a Litecoin transaction you sign yourself. Sign with a Litecoin browser extension whose keys stay in it,{" "}
+        <b>Litescribe</b> or <b>Enkrypt</b>, or let the site keep an ordinary Litecoin <b>wallet</b> in this browser: created here, never
+        leaving it, nobody able to reset it. Notus never asks for the keys of any other wallet.
       </p>
-      {installed ? (
-        <button type="button" disabled={busy} onClick={() => withExtension(connectExtension)} className={primary}>
-          {busy ? `Waiting for ${EXTENSION_NAME}…` : `Connect ${EXTENSION_NAME}`}
+      {installed.map((e) => (
+        <button key={e.id} type="button" disabled={!!busy} onClick={() => withExtension(e.name, () => connectExtension(e.id))} className={primary}>
+          {busy === e.name ? `Waiting for ${e.name}…` : `Connect ${e.name}`}
         </button>
-      ) : (
-        <a href={EXTENSION_URL} target="_blank" rel="noreferrer noopener" className={`${secondary} block text-center`}>
-          Get {EXTENSION_NAME} <span className="text-zinc-500">· Litecoin browser extension · then reload</span>
-        </a>
-      )}
-      <button type="button" onClick={create} className={installed ? secondary : primary}>
+      ))}
+      <button type="button" onClick={create} className={installed.length ? secondary : primary}>
         Make a wallet in this browser
       </button>
+      {missing.length > 0 && (
+        <p className="text-center text-xs text-zinc-500">
+          {installed.length ? "Also works with" : "Or install"}{" "}
+          {missing.map((e, i) => (
+            <span key={e.id}>
+              {i > 0 && " or "}
+              <a href={e.url} target="_blank" rel="noreferrer noopener" className="underline hover:text-zinc-200">
+                {e.name}
+              </a>
+            </span>
+          ))}
+          , then reload.
+        </p>
+      )}
       {restoring ? (
         <div className="flex gap-2">
           <input

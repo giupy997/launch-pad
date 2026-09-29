@@ -64,8 +64,8 @@ Sepolia, Robinhood Chain); those integrations stay in the repository.
   [notus-pad.fun/litecoin](https://notus-pad.fun/litecoin)): the same idea on a
   transparent chain — one desk address, instructions in OP_RETURN, balances
   owned by the paying address, every transaction signed by an in-browser
-  Litecoin wallet or by Litescribe, the Litecoin browser extension. See
-  [litecoin/README.md](litecoin/README.md)
+  Litecoin wallet or by a Litecoin browser extension (Litescribe, Enkrypt).
+  See [litecoin/README.md](litecoin/README.md)
 - `web/` — Next.js 14 + wagmi v2 + viem frontend
   - `/` Explore: on-chain token list (multicall, 5s refresh) with search
     and sorting

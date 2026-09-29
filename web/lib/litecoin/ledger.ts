@@ -835,7 +835,27 @@ export function stateRoot(s: State): string {
 }
 
 /** JSON snapshot the website reads (bigints as decimal strings). */
-export function snapshot(s: State) {
+/** LTC traded in a coin over the last hour, eight hours and day, by block
+ *  time: buys as the LTC they put in, sells as the LTC they took out plus
+ *  the fee, the same basis as the coin's all-time volume. */
+export function volumeWindows(trades: readonly Trade[], now: number): Map<string, { h1: bigint; h8: bigint; h24: bigint }> {
+  const out = new Map<string, { h1: bigint; h8: bigint; h24: bigint }>();
+  for (const t of trades) {
+    const age = now - t.time;
+    if (age > 24 * 3600) continue;
+    const lit = t.type === "sell" ? t.lit + t.fee : t.lit;
+    const v = out.get(t.ticker) ?? { h1: 0n, h8: 0n, h24: 0n };
+    v.h24 += lit;
+    if (age <= 8 * 3600) v.h8 += lit;
+    if (age <= 3600) v.h1 += lit;
+    out.set(t.ticker, v);
+  }
+  return out;
+}
+
+export function snapshot(s: State, now = Math.floor(Date.now() / 1000)) {
+  const volumes = volumeWindows(s.trades, now);
+  const none = { h1: 0n, h8: 0n, h24: 0n };
   return JSON.parse(
     JSON.stringify(
       {
@@ -847,7 +867,7 @@ export function snapshot(s: State) {
         txsRead: s.txsRead,
         treasuryLit: s.treasuryLit,
         liabilitiesLit: liabilitiesLit(s),
-        coins: sortedEntries(s.coins).map(([, c]) => ({ ...c, holders: s.balances.get(c.ticker)?.size ?? 0 })),
+        coins: sortedEntries(s.coins).map(([, c]) => ({ ...c, holders: s.balances.get(c.ticker)?.size ?? 0, volume: volumes.get(c.ticker) ?? none })),
         balances: nested(s.balances),
         claimable: Object.fromEntries(
           [...new Set([...s.credit.keys(), ...[...s.balances.values()].flatMap((m) => [...m.keys()])])]

@@ -4,8 +4,7 @@ import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { MEMO_MAX_BYTES, memoBytes } from "@/lib/litecoin/ledger";
 import { buildTx, buildUnsigned, finishSigned, type BuiltTx, type Payment, type UnsignedTx } from "@/lib/litecoin/tx";
-import { EXTENSION_NAME, signPsbtWithExtension } from "@/lib/litecoin/extension";
-import { LTC_NETWORK, api, fmtLtc, noteSpend, txLink, useFeeRate, useLtcWallet, useUtxos } from "@/lib/litecoin/client";
+import { LTC_NETWORK, api, extension, fmtLtc, noteSpend, txLink, useFeeRate, useLtcWallet, useUtxos } from "@/lib/litecoin/client";
 import { FundPanel, NeedsLtcWallet } from "./Wallet";
 
 /** Litecoin has no memo field in most wallets, so the site builds the
@@ -58,7 +57,7 @@ export function SendPanel({
   const total = payments.reduce((t, p) => t + p.lit, 0n);
   /** What the transaction does, whoever signs it. */
   const plan = built.tx ?? built.unsigned;
-  const signer = kind === "ext" ? EXTENSION_NAME : null;
+  const signer = ext?.name ?? null;
 
   if (sent) {
     return (
@@ -89,12 +88,12 @@ export function SendPanel({
         ({ hex, txid } = built.tx);
       } else {
         setBusy("signing");
-        const signed = await signPsbtWithExtension(built.unsigned!.psbt, built.unsigned!.toSign);
+        const signed = await extension.signPsbt(built.unsigned!.psbt, built.unsigned!.toSign);
         ({ hex, txid } = finishSigned(signed, built.unsigned!, LTC_NETWORK));
       }
     } catch (e) {
       const msg = (e as Error).message ?? String(e);
-      setError(/reject|cancel|denied|closed/i.test(msg) ? `Not signed: ${EXTENSION_NAME} refused it, or the request was closed.` : msg);
+      setError(/reject|cancel|denied|closed/i.test(msg) ? `Not signed: ${signer} refused it, or the request was closed.` : msg);
       setBusy("");
       return;
     }
@@ -159,7 +158,7 @@ export function SendPanel({
         onClick={submit}
         className="btn-primary w-full py-2 text-sm"
       >
-        {busy === "signing" ? `Waiting for ${EXTENSION_NAME}…` : busy ? "Broadcasting…" : signer ? confirmLabel.replace(/^Sign/, `Sign in ${signer}`) : confirmLabel}
+        {busy === "signing" ? `Waiting for ${signer}…` : busy ? "Broadcasting…" : signer ? confirmLabel.replace(/^Sign/, `Sign in ${signer}`) : confirmLabel}
       </button>
       <p className="text-[11px] text-zinc-600">
         {note ?? (signer ? `Signed in ${signer}, whose keys stay there; nothing but the signed transaction leaves it.` : "Signed in this browser with your wallet key; nothing but the signed transaction leaves it.")} Folded into the
