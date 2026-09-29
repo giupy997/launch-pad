@@ -85,7 +85,8 @@ export type Params = {
 };
 
 export const PARAMS: Record<Network, Params> = {
-  test: { network: "test", virtualLit: 20_000_000n, deployFeeLit: 100_000n, minPayoutLit: 50_000n, freezeHeight: null, rulesV2From: 3_605_000 },
+  // testnet4 was past block 4,902,000 on 2026-09-29: the switch waits for a block still ahead
+  test: { network: "test", virtualLit: 20_000_000n, deployFeeLit: 100_000n, minPayoutLit: 50_000n, freezeHeight: null, rulesV2From: 4_910_000 },
   // mainnet: 10 LTC virtual for the first coins (a curve raises ~32 LTC to
   // sell out). Once folded in, history is fixed: a parameter only ever
   // changes for coins deployed from a future block on (virtualLitChanges).

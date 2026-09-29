@@ -48,7 +48,7 @@ paid   id [id…]                   desk only: one output per payout, settles th
 ```
 
 A payout's id is its position in the list up to block 3,191,000 on mainnet
-(3,605,000 on testnet); from then on (`rulesV2From`) it is the first eight
+(4,910,000 on testnet); from then on (`rulesV2From`) it is the first eight
 hex digits of the transaction that created it (longer only on a collision),
 so a reorg or an explorer that forgets a transaction cannot renumber what
 the desk has already paid. From the same block a `sell`, `send` or `claim`
