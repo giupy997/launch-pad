@@ -9,10 +9,30 @@ import { sha256 } from "@noble/hashes/sha2";
 import { bytesToHex } from "@noble/hashes/utils";
 import { MAX_LOGO_BYTES, decodeDataUri, pinLogo } from "@/lib/litecoin/pin";
 import { siteStore } from "@/lib/litecoin/logoStore";
+import { verifyLogo, type LogoAuth } from "@/lib/litecoin/logoAuth";
+import { addressOfPubkey } from "@/lib/litecoin/tx";
+import { PUBLIC_API } from "@/lib/litecoin/esplora";
+import { chainApi } from "@/lib/litecoin/chain";
 
 export const dynamic = "force-dynamic";
 
 const JWT = process.env.PINATA_JWT;
+const NETWORK = process.env.NEXT_PUBLIC_LTC_NETWORK === "main" ? "main" : "test";
+const chain = chainApi(process.env.LTC_API_UPSTREAM ?? PUBLIC_API[NETWORK], NETWORK, process.env.LTC_API_KEY, 10_000);
+
+/** The wallet behind a signed upload, if the signature holds and the wallet holds LTC. */
+async function uploader(auth: LogoAuth | undefined, bytes: Uint8Array): Promise<{ address: string } | { error: string; status: number }> {
+  if (!verifyLogo(auth, bytes)) return { error: "sign the upload with your wallet (make one, or reload the page)", status: 401 };
+  const address = addressOfPubkey(auth!.pubkey, "v0_p2wpkh", NETWORK);
+  if (!address) return { error: "bad key", status: 401 };
+  try {
+    const coins = await chain.utxos(address);
+    if (!coins.some((u) => u.value > 0n)) return { error: "fund your wallet first: an upload needs a wallet with some LTC in it", status: 402 };
+  } catch {
+    return { error: "the explorer did not answer; try again in a minute", status: 503 };
+  }
+  return { address };
+}
 
 function origin(req: NextRequest): string {
   const configured = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "");
@@ -23,11 +43,11 @@ function origin(req: NextRequest): string {
 
 export async function GET() {
   const via = JWT ? "ipfs" : siteStore() ? "site" : null;
-  return NextResponse.json({ enabled: !!via, via, maxBytes: MAX_LOGO_BYTES }, { headers: { "cache-control": "no-store" } });
+  return NextResponse.json({ enabled: !!via, via, maxBytes: MAX_LOGO_BYTES, signed: true }, { headers: { "cache-control": "no-store" } });
 }
 
 export async function POST(req: NextRequest) {
-  let body: { dataUri?: unknown; name?: unknown };
+  let body: { dataUri?: unknown; name?: unknown; auth?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -38,13 +58,15 @@ export async function POST(req: NextRequest) {
   }
   const name = typeof body.name === "string" ? body.name : "coin";
   try {
+    const { type, bytes } = decodeDataUri(body.dataUri);
+    const who = await uploader(body.auth as LogoAuth | undefined, bytes);
+    if ("error" in who) return NextResponse.json({ error: who.error }, { status: who.status, headers: { "cache-control": "no-store" } });
     if (JWT) {
       const uri = await pinLogo(body.dataUri, name, JWT);
       return NextResponse.json({ uri, via: "ipfs" }, { headers: { "cache-control": "no-store" } });
     }
     const store = siteStore();
     if (!store) return NextResponse.json({ error: "uploads are off on this site: paste an image URL instead" }, { status: 503 });
-    const { type, bytes } = decodeDataUri(body.dataUri);
     const id = bytesToHex(sha256(bytes)).slice(0, 16); // content-addressed: the same image is the same URL
     await store.set(id, new Blob([new Uint8Array(bytes)], { type }), { metadata: { type, name: name.slice(0, 32) } });
     return NextResponse.json({ uri: `${origin(req)}/i/${id}`, via: "site" }, { headers: { "cache-control": "no-store" } });

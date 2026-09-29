@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { copyText } from "@/lib/clipboard";
 import { useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { LTC_NETWORK, addressLink, fmtLtc, shortAddr, useLtcWallet, useUtxos } from "@/lib/litecoin/client";
@@ -9,10 +10,10 @@ import { LTC_NETWORK, addressLink, fmtLtc, shortAddr, useLtcWallet, useUtxos } f
  *  "connect". Open, it is a small menu: address, balance, the wallet page,
  *  funding, and forgetting the wallet on this device. */
 export function LtcWalletChip() {
-  const { ready, address, forget } = useLtcWallet();
+  const { ready, address, secret, forget } = useLtcWallet();
   const { balance } = useUtxos(address);
   const [open, setOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<"" | "ok" | "fail">("");
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     function onClick(e: MouseEvent) {
@@ -47,11 +48,11 @@ export function LtcWalletChip() {
             <div className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">Litecoin wallet · {fmtLtc(balance)} LTC</div>
             <button
               type="button"
-              onClick={() => { navigator.clipboard.writeText(address); setCopied(true); setTimeout(() => setCopied(false), 1200); }}
-              className="mt-1 block w-full break-all text-left font-mono text-xs text-zinc-300 hover:text-white"
+              onClick={async () => { setCopied((await copyText(address)) ? "ok" : "fail"); setTimeout(() => setCopied(""), 2000); }}
+              className="mt-1 block w-full break-all text-left font-mono text-xs text-zinc-300 hover:text-white select-all"
               title="Copy address"
             >
-              {address} <span className="text-zinc-600">{copied ? "· copied ✓" : "· copy"}</span>
+              {address} <span className="text-zinc-600">{copied === "ok" ? "· copied ✓" : copied === "fail" ? "· not copied, select it" : "· copy"}</span>
             </button>
           </div>
           <Link href="/litecoin/wallet" onClick={() => setOpen(false)} className={item}>
@@ -64,12 +65,7 @@ export function LtcWalletChip() {
             type="button"
             onClick={() => {
               setOpen(false);
-              if (
-                window.confirm(
-                  "Forget this wallet on this device?\n\nThe coins stay on its address; only the saved 64-hex secret (wallet page → reveal) brings it back. Without that copy they are lost."
-                )
-              )
-                forget();
+              if (secret && confirmForget(secret)) forget();
             }}
             className={`${item} text-zinc-500`}
           >
@@ -79,6 +75,15 @@ export function LtcWalletChip() {
       )}
     </div>
   );
+}
+
+/** Removing the wallet from this browser is only safe with its backup at
+ *  hand: the person proves it by typing the start of the secret. */
+export function confirmForget(secret: string): boolean {
+  const typed = window.prompt(
+    "Remove this wallet from this browser?\n\nThe coins stay on its address. Only the saved 64-character secret (wallet page → Reveal) brings it back; without that copy they are lost for good.\n\nTo confirm, type the first 8 characters of the secret:"
+  );
+  return typed !== null && typed.trim().toLowerCase() === secret.slice(0, 8);
 }
 
 /** Inline prompt for pages that need a wallet before they can send anything. */
@@ -137,7 +142,7 @@ export function NeedsLtcWallet() {
 export function FundPanel({ address, compact = false }: { address: string; compact?: boolean }) {
   const { balance, confirmed, utxos } = useUtxos(address);
   const [qr, setQr] = useState("");
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<"" | "ok" | "fail">("");
   useEffect(() => {
     let live = true;
     QRCode.toDataURL(`litecoin:${address}`, { margin: 1, width: 300, color: { dark: "#000000", light: "#ffffff" } })
@@ -164,18 +169,17 @@ export function FundPanel({ address, compact = false }: { address: string; compa
         <div className="space-y-2 min-w-0">
           <button
             type="button"
-            onClick={() => {
-              navigator.clipboard.writeText(address);
-              setCopied(true);
-              setTimeout(() => setCopied(false), 1200);
+            onClick={async () => {
+              setCopied((await copyText(address)) ? "ok" : "fail");
+              setTimeout(() => setCopied(""), 2000);
             }}
             className="block w-full rounded-lg border border-white/10 px-3 py-1.5 text-left hover:border-white"
             title="Copy"
           >
             <span className="font-mono text-[9px] tracking-widest uppercase text-zinc-500">
-              Address {copied ? "· copied ✓" : "· tap to copy"}
+              Address {copied === "ok" ? "· copied ✓" : copied === "fail" ? "· not copied, select it" : "· tap to copy"}
             </span>
-            <span className="block break-all font-mono text-xs text-zinc-300">{address}</span>
+            <span className="block break-all font-mono text-xs text-zinc-300 select-all">{address}</span>
           </button>
           <p className="text-[11px] text-zinc-600">
             Send LTC here from any wallet or exchange — a plain payment, no memo. {utxos.length} coin{utxos.length === 1 ? "" : "s"} ·{" "}

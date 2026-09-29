@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { CURVE_SUPPLY, MEMO_MAX_BYTES, PARAMS, TOTAL_SUPPLY, memo, memoBytes, normalizeLink, quoteBuy, quoteSell, spotPrice, type CoinLinks } from "@/lib/litecoin/ledger";
 import { CARRY_LIT } from "@/lib/litecoin/tx";
-import { LTC_NETWORK, addressLink, curveOf, fmtCoins, fmtLtc, fmtMcap, fmtPrice, marketCapLtc, parseLtc, shortAddr, txLink, useLitecoinState, useLtcPrice, useLtcWallet, type LCoin, type LState, isFrozen } from "@/lib/litecoin/client";
+import { LTC_NETWORK, addressLink, curveOf, fmtCoins, fmtLtc, fmtMcap, fmtPrice, marketCapLtc, parseLtc, shortAddr, txLink, useLitecoinState, useLtcPrice, useLtcWallet, type LCoin, type LState, isFrozen, tickerFromParam } from "@/lib/litecoin/client";
 import { SendPanel } from "@/components/litecoin/SendPanel";
 import { NeedsLtcWallet } from "@/components/litecoin/Wallet";
 import { TokenLogo } from "@/components/TokenLogo";
@@ -15,7 +15,7 @@ import { PriceChart } from "@/components/PriceChart";
 const URL_OK = /^(https?:\/\/|ipfs:\/\/)\S{1,300}$/;
 
 export function CoinPage({ params }: { params: { ticker: string } }) {
-  const ticker = decodeURIComponent(params.ticker).toUpperCase();
+  const ticker = tickerFromParam(params.ticker) ?? "";
   const { data: state, isLoading } = useLitecoinState();
   const usd = useLtcPrice().data?.usd ?? null;
   const coin = state?.coins.find((c) => c.ticker === ticker);

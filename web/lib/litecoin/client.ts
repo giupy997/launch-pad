@@ -131,10 +131,17 @@ export function useLtcWallet() {
   // the server (and the hydration pass) knows nothing; the client reads storage
   const secret = useSyncExternalStore(subscribe, readSecret, () => null);
   const ready = useSyncExternalStore(subscribe, () => true, () => false);
-  const create = useCallback(() => writeSecret(newSecret()), []);
-  /** Accepts the 64-hex secret shown on the wallet page, or a WIF. */
+  // neither ever replaces a wallet that is here: forget it first (two tabs racing
+  // "Make a wallet" must not overwrite a funded key)
+  const create = useCallback(() => {
+    if (readSecret()) return;
+    writeSecret(newSecret());
+  }, []);
+  /** Accepts the 64-hex secret shown on the wallet page, or a WIF (with or
+   *  without the `p2wpkh:` prefix the wallet page and Electrum show). */
   const restore = useCallback((input: string) => {
-    const v = input.trim();
+    if (readSecret()) return false;
+    const v = input.trim().replace(/^p2wpkh:/i, "").trim();
     const s = isSecret(v.toLowerCase()) ? v.toLowerCase() : secretFromWif(v, LTC_NETWORK);
     if (!s || !isSecret(s)) return false;
     writeSecret(s);
@@ -159,39 +166,47 @@ export function useLtcWallet() {
 // with the first in the mempool. So the browser remembers what it spent and
 // what change it made, for a while, and reads its coins through that memory.
 const PENDING_TTL_MS = 30 * 60_000;
-const PENDING_STORAGE = `notus.litecoin.pending.${LTC_NETWORK}`;
+/** One memory per wallet: a wallet restored after another was forgotten must not inherit its phantom change. */
+const pendingKey = (address: string) => `notus.litecoin.pending.${LTC_NETWORK}.${address}`;
 type PendingSpends = { spent: Record<string, number>; made: { txid: string; vout: number; value: string; until: number }[] };
 
-function loadPending(): PendingSpends {
+function loadPending(address: string): PendingSpends {
   try {
-    const v = JSON.parse(localStorage.getItem(PENDING_STORAGE) ?? "");
+    const v = JSON.parse(localStorage.getItem(pendingKey(address)) ?? "");
     if (v && typeof v === "object" && v.spent && Array.isArray(v.made)) return v as PendingSpends;
   } catch {}
   return { spent: {}, made: [] };
 }
 
-function savePending(p: PendingSpends) {
+function savePending(address: string, p: PendingSpends) {
   const now = Date.now();
   for (const [k, until] of Object.entries(p.spent)) if (until < now) delete p.spent[k];
   p.made = p.made.filter((m) => m.until >= now);
   try {
-    localStorage.setItem(PENDING_STORAGE, JSON.stringify(p));
+    localStorage.setItem(pendingKey(address), JSON.stringify(p));
   } catch {}
 }
 
 /** Remember a transaction this wallet just broadcast (or may have: an
  *  explorer that timed out could still have relayed it). */
-export function noteSpend(built: Pick<BuiltTx, "txid" | "inputs" | "outputs" | "change">) {
-  const p = loadPending();
+export function noteSpend(built: Pick<BuiltTx, "txid" | "inputs" | "outputs" | "change">, address: string) {
+  const p = loadPending(address);
   const until = Date.now() + PENDING_TTL_MS;
   for (const i of built.inputs) p.spent[`${i.txid}:${i.vout}`] = until;
   if (built.change > 0n) p.made.push({ txid: built.txid, vout: built.outputs.length - 1, value: built.change.toString(), until });
-  savePending(p);
+  savePending(address, p);
+}
+
+/** Forget what the wallet remembers of its own spends (when the explorer says otherwise). */
+export function clearPending(address: string) {
+  try {
+    localStorage.removeItem(pendingKey(address));
+  } catch {}
 }
 
 /** The explorer's list of coins, seen through what this wallet knows it did. */
-export function withPendingSpends(list: Utxo[]): Utxo[] {
-  const p = loadPending();
+export function withPendingSpends(list: Utxo[], address: string): Utxo[] {
+  const p = loadPending(address);
   const now = Date.now();
   const listed = new Set(list.map((u) => `${u.txid}:${u.vout}`));
   const made = p.made
@@ -203,7 +218,7 @@ export function withPendingSpends(list: Utxo[]): Utxo[] {
 export function useUtxos(address: string | null | undefined) {
   const q = useQuery({
     queryKey: ["ltc-utxos", address],
-    queryFn: async () => withPendingSpends(await api.utxos(address!)),
+    queryFn: async () => withPendingSpends(await api.utxos(address!), address!),
     enabled: !!address,
     refetchInterval: 15_000,
     placeholderData: (prev) => prev,
@@ -303,7 +318,21 @@ export function fmtPrice(ltcPerCoin: number): string {
 
 export const shortAddr = (a: string) => `${a.slice(0, 9)}…${a.slice(-5)}`;
 
+/** An LTC amount typed by a person, exactly: digits, an optional point and
+ *  up to eight decimals. Anything else (exponents, hex, signs) is 0. */
 export function parseLtc(v: string): bigint {
-  const n = Number(v);
-  return Number.isFinite(n) && n > 0 ? BigInt(Math.round(n * 1e8)) : 0n;
+  const m = /^(\d{1,9})(?:\.(\d{1,8}))?$/.exec(v.trim());
+  if (!m) return 0n;
+  return BigInt(m[1]) * 100_000_000n + BigInt((m[2] ?? "").padEnd(8, "0"));
+}
+
+/** A ticker from a URL segment, or null: decoding can throw and anything
+ *  but 2–8 letters or digits is not a coin. */
+export function tickerFromParam(raw: string): string | null {
+  try {
+    const t = decodeURIComponent(raw).trim().toUpperCase();
+    return /^[A-Z0-9]{2,8}$/.test(t) ? t : null;
+  } catch {
+    return null;
+  }
 }

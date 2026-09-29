@@ -1,11 +1,17 @@
 "use client";
 import { useEffect, useState } from "react";
 import { processLogoFile, dataUriBytes } from "@/lib/image";
+import { decodeDataUri } from "@/lib/litecoin/pin";
+import { signLogo } from "@/lib/litecoin/logoAuth";
+import { useLtcWallet } from "@/lib/litecoin/client";
 
-/** Upload a coin logo: squared and compressed in the browser, kept by the
- *  site (on IPFS, or in its own store), handed back as the short URL the
- *  logo instruction carries. Renders nothing when the site cannot keep it. */
+/** Upload a coin logo: squared and compressed in the browser, signed with
+ *  the wallet key (the site keeps pictures only for wallets that hold LTC),
+ *  kept by the site (on IPFS, or in its own store), handed back as the short
+ *  URL the logo instruction carries. Renders nothing when the site cannot
+ *  keep it, or without a wallet. */
 export function LogoUpload({ name, onUploaded }: { name: string; onUploaded: (uri: string) => void }) {
+  const { secret } = useLtcWallet();
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [via, setVia] = useState<string | null>(null);
   const [busy, setBusy] = useState<"" | "processing" | "pinning">("");
@@ -34,8 +40,10 @@ export function LogoUpload({ name, onUploaded }: { name: string; onUploaded: (ur
     try {
       setBusy("processing");
       const dataUri = await processLogoFile(file);
+      if (!secret) throw new Error("make a wallet first: uploads are signed with it");
+      const auth = signLogo(secret, decodeDataUri(dataUri).bytes);
       setBusy("pinning");
-      const r = await fetch("/api/ltc-logo", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ dataUri, name }) });
+      const r = await fetch("/api/ltc-logo", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ dataUri, name, auth }) });
       const j = (await r.json()) as { uri?: string; error?: string };
       if (!r.ok || !j.uri) throw new Error(j.error ?? `upload failed (HTTP ${r.status})`);
       setDone(`${(dataUriBytes(dataUri) / 1024).toFixed(1)} KB · ${j.uri}`);
@@ -47,7 +55,7 @@ export function LogoUpload({ name, onUploaded }: { name: string; onUploaded: (ur
     }
   }
 
-  if (!enabled) return null;
+  if (!enabled || !secret) return null;
   return (
     <div className="space-y-1">
       <label className="block cursor-pointer rounded-lg border border-dashed border-white/15 px-3 py-3 text-center text-sm text-zinc-400 hover:border-white hover:text-white">

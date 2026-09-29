@@ -76,7 +76,7 @@ export function SendPanel({
     const refresh = () => queryClient.invalidateQueries({ queryKey: ["ltc-utxos", address] });
     try {
       const txid = await api.broadcast(built.tx.hex);
-      noteSpend(built.tx); // the next transaction spends the change, not these coins again
+      if (address) noteSpend(built.tx, address); // the next transaction spends the change, not these coins again
       setSent(txid);
       onSent?.(txid);
       refresh();
@@ -90,7 +90,7 @@ export function SendPanel({
         );
       } else if (/timeout|aborted|HTTP 5\d\d|fetch failed|unreachable/i.test(msg)) {
         // the explorer did not answer: it may still have relayed the transaction
-        noteSpend(built.tx);
+        if (address) noteSpend(built.tx, address);
         refresh();
         setError(`${msg} — the transaction may have gone through anyway: check your address on the explorer before sending again.`);
       } else {

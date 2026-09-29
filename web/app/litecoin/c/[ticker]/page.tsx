@@ -1,13 +1,16 @@
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import { readCoin } from "@/lib/litecoin/server";
 import { spotPrice } from "@/lib/litecoin/ledger";
+import { tickerFromParam } from "@/lib/litecoin/client";
 import { CoinPage } from "./CoinPage";
 
 type Props = { params: { ticker: string } };
 
 /** Link previews (Telegram, X, Discord) get the coin's name, cap and logo card. */
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const ticker = decodeURIComponent(params.ticker).toUpperCase();
+  const ticker = tickerFromParam(params.ticker);
+  if (!ticker) return { title: "Not found" };
   const found = await readCoin(ticker);
   if (!found) {
     return { title: `$${ticker}`, description: "A coin on Notus, the launchpad on Litecoin itself. Coins migrate to LitVM automatically at mainnet." };
@@ -26,5 +29,6 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 export default function Page({ params }: Props) {
+  if (!tickerFromParam(params.ticker)) notFound();
   return <CoinPage params={params} />;
 }

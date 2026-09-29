@@ -3,6 +3,11 @@ import { readCoin, SITE_URL } from "@/lib/litecoin/server";
 import { spotPrice } from "@/lib/litecoin/ledger";
 import { siteStore } from "@/lib/litecoin/logoStore";
 import { siteLogoId } from "@/lib/site";
+import { fetchPublicImage } from "@/lib/litecoin/safeFetch";
+import { tickerFromParam } from "@/lib/litecoin/client";
+
+/** A preview is a picture of a moment: minutes at the edge, not a year. */
+const CACHE = { "cache-control": "public, max-age=300, s-maxage=900, stale-while-revalidate=3600" };
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,7 +30,8 @@ async function readOwnLogo(id: string): Promise<string | null> {
 }
 
 export default async function Image({ params }: { params: { ticker: string } }) {
-  const ticker = decodeURIComponent(params.ticker).toUpperCase();
+  const ticker = tickerFromParam(params.ticker);
+  if (!ticker) return new Response("not found", { status: 404 });
   const [found, regular, bold] = await Promise.all([
     readCoin(ticker),
     fetch(`${SITE_URL}/fonts/Geist-Regular.ttf`, { cache: "force-cache" }).then((r) => r.arrayBuffer()),
@@ -42,14 +48,7 @@ export default async function Image({ params }: { params: { ticker: string } }) 
   const logo = own
     ? await readOwnLogo(own)
     : logoUrl
-    ? await fetch(logoUrl, { signal: AbortSignal.timeout(4_000) })
-        .then(async (r) => {
-          const type = r.headers.get("content-type") ?? "";
-          if (!r.ok || !type.startsWith("image/")) return null;
-          const buf = Buffer.from(await r.arrayBuffer());
-          return buf.length > 0 && buf.length < 2_000_000 ? `data:${type};base64,${buf.toString("base64")}` : null;
-        })
-        .catch(() => null)
+    ? await fetchPublicImage(logoUrl, 2_000_000, 4_000).then((img) => (img ? `data:${img.type};base64,${Buffer.from(img.bytes).toString("base64")}` : null))
     : null;
   return new ImageResponse(
     (
@@ -112,6 +111,7 @@ export default async function Image({ params }: { params: { ticker: string } }) 
     ),
     {
       ...size,
+      headers: CACHE,
       fonts: [
         { name: "Geist", data: regular, style: "normal", weight: 400 },
         { name: "Geist", data: bold, style: "normal", weight: 700 },

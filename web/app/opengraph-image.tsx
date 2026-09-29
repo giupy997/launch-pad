@@ -55,6 +55,7 @@ export default async function Image() {
     ),
     {
       ...size,
+      headers: { "cache-control": "public, max-age=3600, s-maxage=86400, stale-while-revalidate=86400" },
       fonts: [
         { name: "Geist", data: regular, style: "normal", weight: 400 },
         { name: "Geist", data: bold, style: "normal", weight: 700 },
