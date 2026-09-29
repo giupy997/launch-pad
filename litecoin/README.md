@@ -16,7 +16,7 @@ Currently on the **Litecoin testnet** (testnet LTC has no value).
 | Transactions | `web/lib/litecoin/tx.ts` | Builds and signs the transactions (payments + OP_RETURN + change) with `@scure/btc-signer` and Litecoin's network parameters. Shared by the browser wallet and the desk. |
 | Chain access | `web/lib/litecoin/esplora.ts` | Esplora / mempool.space API client (litecoinspace.org by default) and the mapping from an explorer transaction to a ledger event. |
 | Indexer | `litecoin/indexer.ts` | Reads the desk's history, orders it by block and position, replays the rules, writes `web/public/litecoin/state.json`. |
-| Spend path | `litecoin/payout.ts` | Pays what the ledger says is due (sell proceeds, claims), batched, each transaction carrying `NOTUS1 paid <ids>` — the payment itself marks them settled. |
+| Spend path | `litecoin/payout.ts` | Pays what the ledger says is due (sell proceeds, claims), batched, each transaction carrying `NOTUS1 paid <ids>` — the payment itself marks them settled. Every transaction is recorded on disk (`sent-payouts.json`: ids, txid, signed hex, coins) before it is broadcast, rebroadcast while the network forgets it, fee-bumped when stuck, and given up only after several rounds — and then paid again with a transaction spending the same coins, so no payout can be paid twice. Only confirmed coins and the desk's own change are spent; with two explorers configured, a payout is made only when both confirm the sell behind it. |
 | The desk | `litecoin/desk.ts` | Indexer + payouts + snapshot server in one long-running process, for a VPS (`litecoin/deploy/` has the systemd unit and Caddy config). |
 | Website | `web/app/litecoin/*` | Explore, deploy, trade, wallet, ledger. Keeps a Litecoin wallet in the browser, builds every transaction there, signs it and broadcasts it through `/api/ltc` (a same-origin proxy to the explorer). |
 | Test user | `litecoin/user.ts` | Does from a key file what the site does from the browser — for end-to-end tests. |
@@ -46,6 +46,14 @@ claim  [o]                        creator fees + holder cashback + refunds
 fund                              LTC for the desk's payout fees: treasury, owed to nobody
 paid   id [id…]                   desk only: one output per payout, settles them
 ```
+
+A payout's id is its position in the list up to block 3,191,000 on mainnet
+(3,605,000 on testnet); from then on (`rulesV2From`) it is the first eight
+hex digits of the transaction that created it (longer only on a collision),
+so a reorg or an explorer that forgets a transaction cannot renumber what
+the desk has already paid. From the same block a `sell`, `send` or `claim`
+may only point at an address the network can pay (legacy, P2SH, segwit v0,
+taproot); before it, any string an explorer produced passed.
 
 An OP_RETURN holds 80 bytes and a bech32 address alone can take 62, so where
 an instruction names another address it **points at one of its own outputs**
@@ -139,13 +147,16 @@ so its balance can be checked against what the ledger says is owed.
 ## Run it
 
 ```bash
-cd web && npm install && cd ..          # the scripts use web/'s dependencies
+cd web && npm ci --ignore-scripts && cd ..   # the scripts use web/'s dependencies; no install script runs next to a key
 node litecoin/keygen.ts desk            # once: litecoin/desk/key.json (gitignored) — prints the desk address
 # fund the desk with a little LTC for payout fees, then:
 node litecoin/indexer.ts --watch        # keep the snapshot fresh (every 60s)
 node litecoin/payout.ts                 # pay what is due (add --dry-run to only list)
-node --test web/lib/litecoin/*.test.ts  # 16 tests: ledger rules, solvency fuzz, transaction building
+node --test --experimental-strip-types web/lib/litecoin/*.test.ts litecoin/payout.test.ts   # ledger rules, solvency fuzz, transactions, the payout round
 ```
+
+The key is read from `NOTUS_LTC_DESK_KEY` (the secret), `NOTUS_LTC_DESK_KEY_FILE`
+(a key.json anywhere, how the systemd units get it) or `<desk dir>/key.json`.
 
 ### On a server (the way to run it for real)
 
@@ -158,16 +169,25 @@ laptop or a commit any more.
 # Ubuntu/Debian VPS, as a user "notus" (never root)
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt-get install -y nodejs
 git clone https://github.com/giupy997/launch-pad.git ~/launch-pad && cd ~/launch-pad
-(cd web && npm install)
-node litecoin/keygen.ts desk          # or copy your existing litecoin/desk/key.json here (chmod 600)
-node litecoin/indexer.ts              # first full sync, prints the desk address
+(cd web && npm ci --ignore-scripts)
+node litecoin/keygen.ts desk          # prints the desk address; the key is in litecoin/desk/key.json
+sudo mkdir -p /etc/notus && sudo mv litecoin/desk/key.json /etc/notus/desk-test.key   # out of the checkout
+sudo chown root:root /etc/notus/desk-test.key && sudo chmod 0600 /etc/notus/desk-test.key
+NOTUS_LTC_DESK=<the address> node litecoin/indexer.ts   # first full sync
 sudo cp litecoin/deploy/notus-desk.service /etc/systemd/system/
 sudo systemctl daemon-reload && sudo systemctl enable --now notus-desk
 journalctl -u notus-desk -f           # watch it work
+curl -s localhost:8787/health         # ok, snapshot age, payouts {live, stuck, dead, unpayable, solvent}
 ```
 
-The unit writes the snapshot to `litecoin/cache/state.json` (gitignored), so
-updating the server is always `git pull && sudo systemctl restart notus-desk`.
+The unit writes the snapshot to `litecoin/cache/state.json` (gitignored) and
+the record of sent payouts to `litecoin/desk/sent-payouts.json`, so updating
+the server is always `git pull && sudo systemctl restart notus-desk`: the
+stop waits for the pass in progress, and a payout round cut short anyway
+only ever repeats the exact transaction it recorded. `/health` answers 503
+when the snapshot is stale, a payout was given up or is unpayable, or the
+desk's confirmed balance is under what the ledger owes — point an uptime
+monitor at it.
 
 ### Mainnet
 
@@ -185,6 +205,8 @@ for everyone.
 
 ```bash
 NOTUS_LTC_NETWORK=main node litecoin/keygen.ts desk-main   # litecoin/desk-main/key.json — back it up, this one holds real LTC
+sudo mkdir -p /etc/notus && sudo mv litecoin/desk-main/key.json /etc/notus/desk-main.key
+sudo chown root:root /etc/notus/desk-main.key && sudo chmod 0600 /etc/notus/desk-main.key
 sudo cp litecoin/deploy/notus-desk-main.service /etc/systemd/system/
 sudo systemctl daemon-reload && sudo systemctl enable --now notus-desk-main
 sudo cp litecoin/deploy/Caddyfile /etc/caddy/Caddyfile && sudo systemctl reload caddy   # adds /main/state.json

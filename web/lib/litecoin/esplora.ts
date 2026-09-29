@@ -64,7 +64,10 @@ export class ApiError extends Error {
     this.status = status;
   }
 }
-export const isFinal = (e: unknown) => e instanceof ApiError && e.status > 0 && e.status < 500;
+/** A real answer from the explorer (not found, rejected) rather than a
+ *  failure to answer: 4xx, except being rate-limited or timed out, which the
+ *  next endpoint may not be. */
+export const isFinal = (e: unknown) => e instanceof ApiError && e.status > 0 && e.status < 500 && e.status !== 429 && e.status !== 408;
 
 export type Fees = { fastestFee: number; halfHourFee: number; hourFee: number };
 
@@ -139,8 +142,11 @@ export class Esplora extends ChainApi {
     }
   }
 
-  tipHeight(): Promise<number> {
-    return this.get<number>("blocks/tip/height").then(Number);
+  async tipHeight(): Promise<number> {
+    const h = Number(await this.get<number>("blocks/tip/height"));
+    // an HTML error page or an empty body must not become NaN and pass every check
+    if (!Number.isInteger(h) || h <= 0) throw new ApiError(`blocks/tip/height: not a height (${String(h).slice(0, 40)})`, 502);
+    return h;
   }
 
   blockHash(height: number): Promise<string> {

@@ -14,12 +14,14 @@
 // NOTUS_LTC_NETWORK (test|main), NOTUS_LTC_API, NOTUS_LTC_STATE,
 // NOTUS_LTC_CACHE, NOTUS_LTC_DESK_DIR, NOTUS_LTC_CONFIRMATIONS (default 2), NOTUS_LTC_FREEZE
 // (block height at which the ledger froze for the LitVM migration).
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { PARAMS, replay, snapshot, type Network, type TxEvent } from "../web/lib/litecoin/ledger.ts";
 import { PUBLIC_API, eventFromTx, pendingFromTx, type ChainApi, type EsploraTx, type PendingTx } from "../web/lib/litecoin/esplora.ts";
 import { Fallback, chainApi } from "../web/lib/litecoin/chain.ts";
 import { walletFromSecret } from "../web/lib/litecoin/tx.ts";
+import { deskDir, deskSecret, hasDeskKey } from "./key.ts";
+import { writeAtomic } from "./files.ts";
 
 const ROOT = import.meta.dirname;
 const NETWORK: Network = process.env.NOTUS_LTC_NETWORK === "main" ? "main" : "test";
@@ -27,8 +29,6 @@ const API = process.env.NOTUS_LTC_API ?? PUBLIC_API[NETWORK];
 export const STATE_PATH = process.env.NOTUS_LTC_STATE ?? join(ROOT, "../web/public/litecoin/state.json");
 const OUT = STATE_PATH;
 const CACHE = process.env.NOTUS_LTC_CACHE ?? join(ROOT, "cache", `${NETWORK}.json`);
-/** Where this desk's key lives (a mainnet desk uses its own directory). */
-const DESK_DIR = process.env.NOTUS_LTC_DESK_DIR ?? join(ROOT, "desk");
 /** Transactions fold into the ledger once this deep, so a reorg cannot unwind them. */
 const CONFIRMATIONS = Number(process.env.NOTUS_LTC_CONFIRMATIONS ?? 2);
 /** Migration freeze height (see Params.freezeHeight); unset = the ledger is live. */
@@ -39,13 +39,14 @@ const PAGE = 25; // Esplora's page size for /address/:addr/txs/chain
 
 export function deskAddress(): string {
   if (process.env.NOTUS_LTC_DESK) return process.env.NOTUS_LTC_DESK;
-  const keyFile = join(DESK_DIR, "key.json");
-  if (existsSync(keyFile)) return walletFromSecret(JSON.parse(readFileSync(keyFile, "utf8")).secret, NETWORK).address;
-  throw new Error(`set NOTUS_LTC_DESK to the desk address, or make a key with \`node litecoin/keygen.ts desk\` (looked in ${DESK_DIR})`);
+  if (hasDeskKey()) return walletFromSecret(deskSecret(), NETWORK).address;
+  throw new Error(`set NOTUS_LTC_DESK to the desk address, or make a key with \`node litecoin/keygen.ts desk\` (looked in ${deskDir()})`);
 }
 
 /** A tip this many blocks under the last one is a lagging explorer, not a reorg. */
 const LAG_BLOCKS = 6;
+/** A tip this far above the last one is an explorer talking nonsense, not a chain that grew. */
+const JUMP_BLOCKS = 50_000;
 
 type Cache = {
   desk: string;
@@ -66,8 +67,7 @@ function loadCache(desk: string): Cache {
 }
 
 function saveCache(c: Cache) {
-  mkdirSync(dirname(CACHE), { recursive: true });
-  writeFileSync(CACHE, JSON.stringify(c));
+  writeAtomic(CACHE, JSON.stringify(c));
 }
 
 /** Walk the address history newest-first. A full walk refreshes everything;
@@ -87,10 +87,25 @@ async function fetchTxs(api: ChainApi, desk: string, cache: Cache, tip: number, 
     if (settled || page.length < PAGE) break;
     last = page[page.length - 1].txid;
   }
-  // a transaction that recently vanished from the history was reorged out
+  // A cached transaction missing from the history was either reorged out or
+  // forgotten by the explorer. Only the first may be dropped: the block that
+  // held it is asked for by height, and a changed hash is the proof.
   const seen = new Set(fresh.map((t) => t.txid));
   for (const [id, tx] of Object.entries(cache.txs)) {
-    if ((full || (tx.status.block_height ?? 0) > tip - SETTLED) && !seen.has(id)) delete cache.txs[id];
+    const h = tx.status.block_height ?? 0;
+    if (seen.has(id) || (!full && h <= tip - SETTLED)) continue;
+    let gone = false;
+    try {
+      gone = (await api.blockHash(h)).toLowerCase() !== (tx.status.block_hash ?? "").toLowerCase();
+    } catch {
+      gone = false; // cannot tell: keep it, ask again next pass
+    }
+    if (gone) {
+      console.log(`[${new Date().toISOString()}] ${id} left the chain (block ${h} reorged): dropped`);
+      delete cache.txs[id];
+    } else {
+      console.log(`[${new Date().toISOString()}] ${id} missing from the history but block ${h} stands: kept (${via(api)})`);
+    }
   }
   for (const tx of fresh) cache.txs[tx.txid] = tx;
 }
@@ -104,7 +119,12 @@ async function placeInBlocks(api: ChainApi, cache: Cache) {
   }
   for (const [hash, txs] of byBlock) {
     const ids = await api.blockTxids(hash);
-    cache.blocks[hash] = { ...cache.blocks[hash], ...Object.fromEntries(txs.map((t) => [t.txid, ids.indexOf(t.txid)])) };
+    const placed = txs.map((t) => [t.txid, ids.indexOf(t.txid)] as const);
+    const missing = placed.filter(([, i]) => i < 0);
+    // a position is part of the ledger's order: an explorer that lists the
+    // block without one of its transactions gets asked again next pass
+    if (missing.length) throw new Error(`block ${hash.slice(0, 16)} does not list ${missing.map(([t]) => t.slice(0, 12)).join(", ")} (${via(api)})`);
+    cache.blocks[hash] = { ...cache.blocks[hash], ...Object.fromEntries(placed) };
   }
 }
 
@@ -121,17 +141,22 @@ export function eventsFromCache(cache: Cache, desk: string, maxHeight: number): 
 let firstPass = true;
 let lastVia = "";
 const via = (a: ChainApi) => (a instanceof Fallback ? a.lastUsed || a.label : a.label);
+/** One client for the life of the process, so cooldowns and the best tip seen survive between passes. */
+let client: ChainApi | null = null;
+const theApi = () => (client ??= chainApi(API, NETWORK));
 
 /** One indexer pass: sync (unless told not to), replay, write the snapshot. */
 export async function pass(sync: boolean) {
   const desk = deskAddress();
-  const api = chainApi(API, NETWORK);
+  const api = theApi();
   const cache = loadCache(desk);
   let tip: number | null = null;
   let pending: PendingTx[] = [];
   if (sync) {
     tip = await api.tipHeight();
+    if (!Number.isInteger(tip) || tip <= 0) throw new Error(`bad tip ${tip} (${via(api)})`);
     if (cache.tip && tip < cache.tip - LAG_BLOCKS) throw new Error(`explorer behind: tip ${tip}, last pass saw ${cache.tip} (${via(api)})`);
+    if (cache.tip && tip > cache.tip + JUMP_BLOCKS) throw new Error(`tip jumped: ${tip}, last pass saw ${cache.tip} (${via(api)}) — delete ${CACHE} if the chain really grew that much`);
     await fetchTxs(api, desk, cache, tip, firstPass);
     await placeInBlocks(api, cache);
     cache.tip = tip;
@@ -158,13 +183,12 @@ export async function pass(sync: boolean) {
     confirmations: CONFIRMATIONS,
     updatedAt: Math.floor(Date.now() / 1000),
   };
-  mkdirSync(dirname(OUT), { recursive: true });
   let changed = true;
   try {
     const prev = JSON.parse(readFileSync(OUT, "utf8"));
     changed = prev.stateRoot !== out.stateRoot || prev.chainTip !== out.chainTip || (prev.pending?.length ?? 0) !== pending.length;
   } catch {}
-  writeFileSync(OUT, JSON.stringify(out, null, 1));
+  writeAtomic(OUT, JSON.stringify(out, null, 1));
   if (changed) {
     console.log(
       `[${new Date().toISOString()}] tip ${tip ?? "local"} · ${events.length} txs · ${state.coins.size} coins · ` +

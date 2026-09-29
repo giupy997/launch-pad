@@ -163,3 +163,16 @@ test("scripts: OP_RETURN has no address; addresses decode from output scripts", 
   assert.equal(addressOfScript(hexScript, "test"), user.address);
   assert.equal(addressOfScript(hexScript, "main"), walletFromSecret(secret, "main").address);
 });
+
+test("buildTx: forced coins go in first and RBF is signalled when asked", () => {
+  const forced = utxo(7, 200_000n);
+  const built = buildTx({ network: "test", secret, utxos: [utxo(8, 5_000_000n), utxo(9, 4_000_000n)], payments: [{ address: desk.address, lit: 100_000n }], feeRate: 10n, mustSpend: [forced], rbf: true });
+  const parsed = parseTx(built.hex, "test");
+  assert.equal(parsed.inputs[0].txid, forced.txid, "the forced coin is the first input");
+  assert.ok(built.inputs.some((u) => u.txid === forced.txid));
+  // BIP125: a sequence below 0xfffffffe on at least one input
+  const raw = built.hex;
+  assert.ok(/fdffffff/.test(raw), "sequence 0xfffffffd appears in the serialisation");
+  const plain = buildTx({ network: "test", secret, utxos: [utxo(8, 5_000_000n)], payments: [{ address: desk.address, lit: 100_000n }], feeRate: 10n });
+  assert.ok(!/fdffffff/.test(plain.hex), "not signalled by default");
+});

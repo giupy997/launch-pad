@@ -1,6 +1,9 @@
 // Run with: node --test web/lib/litecoin/ledger.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { sha256 } from "@noble/hashes/sha2";
+import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils";
+import { walletFromSecret } from "./tx.ts";
 import {
   CURVE_SUPPLY,
   MEMO_MAX_BYTES,
@@ -15,6 +18,7 @@ import {
   snapshot,
   spotPrice,
   virtualLitAt,
+  rulesV2,
   type TxEvent,
   normalizeLink,
   parseLinks,
@@ -47,11 +51,11 @@ function ev(sender: string | null, memoText: string | null, valueLit: bigint, ex
 }
 
 /** The desk paying `payouts`, with the `paid` memo for `ids`. */
-function deskPays(payouts: { to: string; lit: bigint }[], ids: number[], opts: Partial<TxEvent> = {}): TxEvent {
+function deskPays(payouts: { to: string; lit: bigint }[], ids: (number | string)[], opts: Partial<TxEvent> = {}): TxEvent {
   seq++;
   return {
     height: 1000 + seq, txIndex: 0, txid: seq.toString(16).padStart(64, "0"), time: 1_700_000_000 + seq * 150,
-    sender: DESK, valueLit: 0n, memo: memo.paid(ids), fromDesk: true,
+    sender: DESK, valueLit: 0n, memo: memo.paid(ids.map(String)), fromDesk: true,
     outputs: [
       ...payouts.map((p) => ({ address: p.to, lit: p.lit, toDesk: false })),
       { address: null, lit: 0n, toDesk: false },
@@ -118,7 +122,7 @@ test("holders mode: cashback pro-rata; claim becomes a payout only the desk can 
   const due = s.payouts.map((p) => p.lit);
 
   // a user cannot settle payouts; the desk cannot settle by underpaying
-  events.push(ev(MALLORY, memo.paid([0]), CARRY));
+  events.push(ev(MALLORY, memo.paid(["0"]), CARRY));
   s = replay("test", events);
   assert.equal(s.payouts[0].paidTxid, null);
   assert.match(s.rejected.at(-1)!.reason, /only the desk/);
@@ -499,4 +503,97 @@ test("links: the creator sets X, Telegram and website; handles are normalised, e
   const gated = replay("test", events, { ...PARAMS.test, linksFrom: 10_000 });
   assert.equal(gated.coins.get("CAT")!.links, undefined, "before the block the instruction is unknown");
   assert.equal(gated.coins.get("CAT")!.links, undefined);
+});
+
+// ---------------------------------------------------------------- rules v2
+
+/** Real testnet addresses (the constants above are stand-ins): what rules v2 requires of a payout target. */
+const REAL_BOB = walletFromSecret(bytesToHex(sha256(utf8ToBytes("bob"))), "test").address; // native segwit
+const REAL_CAROL = "mq7mmsyo86cjUQ1stfqanZrVRh227tgkRA"; // legacy
+const V2 = { ...PARAMS.test, rulesV2From: 0 };
+
+test("rules v2: a payout is named after its transaction, and settled by that name", () => {
+  const events = [
+    ev(ALICE, memo.deploy("CAT", "Lite Cat", false), PARAMS.test.deployFeeLit),
+    ev(REAL_BOB, memo.buy("CAT"), 1n * LTC),
+    ev(REAL_BOB, memo.sell("CAT", 100_000_000_000_000n, 1n), CARRY),
+  ];
+  let s = replay("test", events, V2);
+  assert.equal(s.payouts.length, 1);
+  const po = s.payouts[0];
+  assert.equal(po.id, events[2].txid.slice(0, 8), "the first eight hex digits of the sell's txid");
+  assert.equal(po.to, REAL_BOB);
+  assert.ok(rulesV2(V2, events[2].height));
+  // a first-edition position does not name it, its transaction prefix does
+  events.push(deskPays([{ to: REAL_BOB, lit: po.lit }], ["0"]));
+  s = replay("test", events, V2);
+  assert.equal(s.payouts[0].paidTxid, null, "position 0 is not a v2 id");
+  const settle = deskPays([{ to: REAL_BOB, lit: po.lit }], [po.id]);
+  events.push(settle);
+  s = replay("test", events, V2);
+  assert.equal(s.payouts[0].paidTxid, settle.txid);
+  assertSolvent(events);
+});
+
+test("rules v2: colliding txid prefixes get longer ids; first-edition ids still settle by position", () => {
+  const events = [
+    ev(ALICE, memo.deploy("CAT", "Lite Cat", false), PARAMS.test.deployFeeLit),
+    ev(REAL_BOB, memo.buy("CAT"), 1n * LTC),
+    ev(REAL_BOB, memo.sell("CAT", 100_000_000_000_000n, 1n), CARRY),
+    ev(REAL_BOB, memo.sell("CAT", 100_000_000_000_000n, 1n), CARRY),
+  ];
+  // force the two sells to share their first eight hex digits
+  events[2].txid = "abcdef01" + "1".repeat(56);
+  events[3].txid = "abcdef01" + "2".repeat(56);
+  const s = replay("test", events, V2);
+  assert.deepEqual(s.payouts.map((p) => p.id), ["abcdef01", "abcdef012222"], "the second takes a longer prefix");
+  // before the switch ids are positions, and a paid memo names them by position
+  const legacy = [
+    ev(ALICE, memo.deploy("DOG", "Dog", false), PARAMS.test.deployFeeLit),
+    ev(BOB, memo.buy("DOG"), 1n * LTC),
+    ev(BOB, memo.sell("DOG", 100_000_000_000_000n, 1n), CARRY),
+  ];
+  let l = replay("test", legacy);
+  assert.equal(l.payouts[0].id, "0");
+  const settle = deskPays([{ to: BOB, lit: l.payouts[0].lit }], ["0"]);
+  l = replay("test", [...legacy, settle]);
+  assert.equal(l.payouts[0].paidTxid, settle.txid);
+  // …and a v2-looking id does not reach a first-edition payout
+  const miss = deskPays([{ to: BOB, lit: l.payouts[0].lit }], ["00000000"]);
+  l = replay("test", [...legacy, miss]);
+  assert.equal(l.payouts[0].paidTxid, null);
+});
+
+test("rules v2: only addresses the network can pay may receive a payout, a claim or a send", () => {
+  const events = [
+    ev(ALICE, memo.deploy("CAT", "Lite Cat", true), PARAMS.test.deployFeeLit),
+    ev(REAL_BOB, memo.buy("CAT"), 1n * LTC),
+  ];
+  const s0 = replay("test", events, V2);
+  const bal = s0.balances.get("CAT")!.get(REAL_BOB)!;
+  // a sell pointing at a string the builder cannot pay is refused, nothing moves
+  const odd = ev(REAL_BOB, memo.sell("CAT", bal, 1n, 2), CARRY, [{ address: "tltc1zw508d6qejxtdg4y5r3zarvaryv98gj9p", lit: 1000n }]);
+  let s = replay("test", [...events, odd], V2);
+  assert.equal(s.payouts.length, 0);
+  assert.equal(s.balances.get("CAT")!.get(REAL_BOB), bal);
+  assert.match(s.rejected.at(-1)!.reason, /bad payout output/);
+  // a Bitcoin address is not a Litecoin one either
+  const btc = ev(REAL_BOB, memo.sell("CAT", bal, 1n, 2), CARRY, [{ address: "tb1qd98w32hx5s0nsxzetw6uwujm4ts5q7eq5dr5qx", lit: 1000n }]);
+  s = replay("test", [...events, btc], V2);
+  assert.equal(s.payouts.length, 0);
+  // a send to an unpayable address is refused too; to a legacy address it goes through
+  const badSend = ev(REAL_BOB, memo.send("CAT", 1_000n, 2), CARRY, [{ address: "tltc1zw508d6qejxtdg4y5r3zarvaryv98gj9p", lit: 1000n }]);
+  s = replay("test", [...events, badSend], V2);
+  assert.match(s.rejected.at(-1)!.reason, /bad recipient output/);
+  const goodSend = ev(REAL_BOB, memo.send("CAT", 1_000n, 2), CARRY, [{ address: REAL_CAROL, lit: 1000n }]);
+  s = replay("test", [...events, goodSend], V2);
+  assert.equal(s.balances.get("CAT")!.get(REAL_CAROL), 1_000n);
+  // a payable target: the sell goes through and the payout points at it
+  const ok = ev(REAL_BOB, memo.sell("CAT", bal, 1n, 2), CARRY, [{ address: REAL_CAROL, lit: 1000n }]);
+  s = replay("test", [...events, ok], V2);
+  assert.equal(s.payouts.length, 1);
+  assert.equal(s.payouts[0].to, REAL_CAROL);
+  // before the switch the same odd string passes (history is history)
+  const v1 = replay("test", [...events, odd]);
+  assert.equal(v1.payouts.length, 1);
 });

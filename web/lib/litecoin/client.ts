@@ -35,7 +35,7 @@ export type LTrade = {
   fee: string; height: number; time: number; txid: string;
 };
 export type LPayout = {
-  id: number; kind: "sell" | "claim"; holder: string; to: string; lit: string;
+  id: string; kind: "sell" | "claim"; holder: string; to: string; lit: string;
   height: number; txid: string; paidTxid: string | null;
 };
 export type LState = {

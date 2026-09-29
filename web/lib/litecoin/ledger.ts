@@ -27,6 +27,7 @@
 // a DEX on LitVM.
 
 import { sha256 } from "@noble/hashes/sha2";
+import { isAddress } from "./address.ts";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils";
 
 export const PROTOCOL = "NOTUS1";
@@ -65,6 +66,14 @@ export type Params = {
   retireEmptyCoinsAt?: number;
   /** The `links` instruction (X, Telegram, website) counts from this block on. */
   linksFrom?: number;
+  /** Second edition of the payout rules, from this block on: a payout is
+   *  identified by the transaction that created it (the first 8 hex digits
+   *  of its txid, longer only on a collision) instead of its position in the
+   *  list, so a reorg or an explorer that forgets a transaction cannot
+   *  renumber what the desk has already paid; and a payout, send or claim
+   *  may only point at an address the network can actually pay. Before
+   *  this block ids are positions and any address string is accepted. */
+  rulesV2From?: number;
   deployFeeLit: bigint;
   /** Smallest payout the desk will send — below this a network fee eats it. */
   minPayoutLit: bigint;
@@ -76,7 +85,7 @@ export type Params = {
 };
 
 export const PARAMS: Record<Network, Params> = {
-  test: { network: "test", virtualLit: 20_000_000n, deployFeeLit: 100_000n, minPayoutLit: 50_000n, freezeHeight: null },
+  test: { network: "test", virtualLit: 20_000_000n, deployFeeLit: 100_000n, minPayoutLit: 50_000n, freezeHeight: null, rulesV2From: 3_605_000 },
   // mainnet: 10 LTC virtual for the first coins (a curve raises ~32 LTC to
   // sell out). Once folded in, history is fixed: a parameter only ever
   // changes for coins deployed from a future block on (virtualLitChanges).
@@ -92,8 +101,13 @@ export const PARAMS: Record<Network, Params> = {
     // …and the first coins, sold back to empty by then, make room for a redeploy
     retireEmptyCoinsAt: 3_185_910,
     linksFrom: 3_185_910,
+    // from block 3,191,000: payouts named after their transaction, payable addresses only
+    rulesV2From: 3_191_000,
   },
 };
+
+/** Whether the second edition of the payout rules applies at `height`. */
+export const rulesV2 = (p: Pick<Params, "rulesV2From">, height: number) => p.rulesV2From !== undefined && height >= p.rulesV2From;
 
 /** The virtual reserve a coin deployed at `height` opens with. */
 export function virtualLitAt(p: Pick<Params, "virtualLit" | "virtualLitChanges">, height: number): bigint {
@@ -172,7 +186,9 @@ export type Trade = {
 };
 
 export type Payout = {
-  id: number;
+  /** Before rulesV2From: the payout's position in the list ("0", "1", …);
+   *  from then on: the first 8+ hex digits of the transaction that created it. */
+  id: string;
   kind: "sell" | "claim";
   holder: string;
   to: string;
@@ -352,7 +368,7 @@ export const memo = {
   claim: (payoutOutput?: number) => [PROTOCOL, "claim", ...(payoutOutput === undefined ? [] : [payoutOutput])].join(" "),
   /** LTC for the desk's own costs (payout fees): treasury, owed to nobody. */
   fund: () => [PROTOCOL, "fund"].join(" "),
-  paid: (ids: number[]) => [PROTOCOL, "paid", ...ids].join(" "),
+  paid: (ids: string[]) => [PROTOCOL, "paid", ...ids].join(" "),
 };
 
 const TICKER = /^[A-Z0-9]{2,8}$/;
@@ -467,6 +483,36 @@ function buy(s: State, e: TxEvent, coin: Coin, holder: string, litIn: bigint, mi
   return null;
 }
 
+/** The payout an id in a `paid` memo names. Up to seven digits it is a
+ *  first-edition position; eight or more hex digits name a second-edition
+ *  payout by its transaction (a position never reaches eight digits). */
+function findPayout(s: State, raw: string): Payout | undefined {
+  if (/^[0-9]{1,7}$/.test(raw)) {
+    const po = s.payouts[Number(raw)];
+    return po && po.id === String(Number(raw)) ? po : undefined;
+  }
+  if (/^[0-9a-f]{8,64}$/.test(raw)) return s.payouts.find((po) => po.id === raw);
+  return undefined;
+}
+
+/** The id of a payout created by `e`: its position, or from rulesV2From the
+ *  shortest prefix (8+ hex digits) of its txid that no payout already uses. */
+function newPayoutId(s: State, p: Params, e: TxEvent): string {
+  if (!rulesV2(p, e.height)) return String(s.payouts.length);
+  for (let len = 8; len <= 64; len += 4) {
+    const id = e.txid.slice(0, len);
+    if (!s.payouts.some((po) => po.id === id)) return id;
+  }
+  return e.txid;
+}
+
+/** From rulesV2From an address the ledger would pay, or move tokens to, has
+ *  to be one the network can pay; before, any string an explorer produced passed. */
+function payable(s: State, p: Params, e: TxEvent, address: string | null): address is string {
+  if (!address) return false;
+  return !rulesV2(p, e.height) || isAddress(address, s.network);
+}
+
 /** Settle the payouts a desk transaction says it paid: each id needs its
  *  own output to the payee, worth at least what is owed. */
 function paid(s: State, e: TxEvent, ids: string[]): string | null {
@@ -474,8 +520,7 @@ function paid(s: State, e: TxEvent, ids: string[]): string | null {
   const failed: string[] = [];
   let settled = 0;
   for (const raw of ids) {
-    const id = uint(raw);
-    const po = id === null ? undefined : s.payouts[Number(id)];
+    const po = findPayout(s, raw);
     if (!po || po.paidTxid) {
       failed.push(`#${raw}: unknown or already paid`);
       continue;
@@ -598,7 +643,7 @@ function apply(s: State, p: Params, e: TxEvent): string | null {
     addCredit(s, sender, e.valueLit); // the dust that carried the memo
     if (!coin || amount === null || minLit === null || amount === 0n) return "bad sell";
     const payout = outRaw === undefined ? sender : pointedAddress(e, outRaw);
-    if (!payout) return "bad payout output";
+    if (!payable(s, p, e, payout)) return "bad payout output";
     if (get(s.balances, coin.ticker, sender) < amount) return "insufficient balance";
     const q = quoteSell(coin, amount);
     if (q.net < minLit) return "slippage";
@@ -616,7 +661,7 @@ function apply(s: State, p: Params, e: TxEvent): string | null {
     coin.trades++;
     move(s, coin, sender, -amount);
     splitFee(s, coin, q.fee);
-    s.payouts.push({ id: s.payouts.length, kind: "sell", holder: sender, to: payout, lit: q.net, height: e.height, txid: e.txid, paidTxid: null });
+    s.payouts.push({ id: newPayoutId(s, p, e), kind: "sell", holder: sender, to: payout, lit: q.net, height: e.height, txid: e.txid, paidTxid: null });
     s.trades.push({ ticker: coin.ticker, type: "sell", holder: sender, lit: q.net, tokens: amount, fee: q.fee, height: e.height, time: e.time, txid: e.txid });
     return null;
   }
@@ -628,7 +673,7 @@ function apply(s: State, p: Params, e: TxEvent): string | null {
     addCredit(s, sender, e.valueLit);
     if (!coin || amount === null || amount === 0n) return "bad send";
     const to = pointedAddress(e, outRaw);
-    if (!to) return "bad recipient output";
+    if (!payable(s, p, e, to)) return "bad recipient output";
     if (get(s.balances, coin.ticker, sender) < amount) return "insufficient balance";
     if (to !== sender) {
       move(s, coin, sender, -amount);
@@ -641,7 +686,7 @@ function apply(s: State, p: Params, e: TxEvent): string | null {
     const [, , outRaw] = f;
     addCredit(s, sender, e.valueLit);
     const payout = outRaw === undefined ? sender : pointedAddress(e, outRaw);
-    if (!payout) return "bad payout output";
+    if (!payable(s, p, e, payout)) return "bad payout output";
     let total = s.credit.get(sender) ?? 0n;
     for (const coin of s.coins.values()) {
       const bal = get(s.balances, coin.ticker, sender);
@@ -651,7 +696,7 @@ function apply(s: State, p: Params, e: TxEvent): string | null {
     if (total < p.minPayoutLit) return "below the minimum payout"; // nothing is lost: it keeps accruing
     for (const coin of s.coins.values()) set(s.pending, coin.ticker, sender, 0n);
     s.credit.delete(sender);
-    s.payouts.push({ id: s.payouts.length, kind: "claim", holder: sender, to: payout, lit: total, height: e.height, txid: e.txid, paidTxid: null });
+    s.payouts.push({ id: newPayoutId(s, p, e), kind: "claim", holder: sender, to: payout, lit: total, height: e.height, txid: e.txid, paidTxid: null });
     return null;
   }
 

@@ -1,9 +1,15 @@
-# systemd unit for the Notus on Litecoin desk (indexer + payouts + snapshot server).
+# systemd unit for the Notus on Litecoin desk (indexer + payouts + snapshot server) — TESTNET.
+#
+# The key, once:  node litecoin/keygen.ts desk
+# then move it out of the checkout, where `git pull` and `npm` cannot see it:
+#   sudo mkdir -p /etc/notus && sudo mv litecoin/desk/key.json /etc/notus/desk-test.key
+#   sudo chown root:root /etc/notus/desk-test.key && sudo chmod 0600 /etc/notus/desk-test.key
+#
 #   sudo cp litecoin/deploy/notus-desk.service /etc/systemd/system/
 #   sudo systemctl daemon-reload && sudo systemctl enable --now notus-desk
 #   journalctl -u notus-desk -f
 [Unit]
-Description=Notus on Litecoin desk
+Description=Notus on Litecoin desk (testnet)
 After=network-online.target
 Wants=network-online.target
 
@@ -14,18 +20,36 @@ WorkingDirectory=/home/notus/launch-pad
 ExecStart=/usr/bin/node litecoin/desk.ts
 Restart=always
 RestartSec=10
+TimeoutStopSec=180
+KillSignal=SIGTERM
 Environment=PORT=8787
 Environment=NOTUS_LTC_NETWORK=test
+Environment=NOTUS_LTC_DESK_DIR=/home/notus/launch-pad/litecoin/desk
 # write the snapshot outside the files git tracks, so `git pull` always works
 Environment=NOTUS_LTC_STATE=/home/notus/launch-pad/litecoin/cache/state.json
 # Environment=NOTUS_LTC_API=https://litecoinspace.org/testnet/api
 # Environment=NOTUS_LTC_CONFIRMATIONS=2
-# the key lives in litecoin/desk/key.json (chmod 600); or set NOTUS_LTC_DESK_KEY here instead
+LoadCredential=desk-key:/etc/notus/desk-test.key
+Environment=NOTUS_LTC_DESK_KEY_FILE=%d/desk-key
+
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/home/notus/launch-pad/litecoin /home/notus/launch-pad/web/public/litecoin
+ReadWritePaths=/home/notus/launch-pad/litecoin/cache /home/notus/launch-pad/litecoin/desk
 PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+UMask=0077
+MemoryMax=1G
 
 [Install]
 WantedBy=multi-user.target

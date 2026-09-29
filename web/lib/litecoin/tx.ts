@@ -12,14 +12,10 @@ import { hex, utf8 } from "@scure/base";
 import { secp256k1 } from "@noble/curves/secp256k1";
 import { keccak_256 } from "@noble/hashes/sha3";
 import { MEMO_MAX_BYTES, memoBytes, type Network } from "./ledger.ts";
+import { NETWORKS, addressOfScript, isAddress, type BtcNetwork } from "./address.ts";
 
-export type BtcNetwork = { bech32: string; pubKeyHash: number; scriptHash: number; wif: number };
-
-/** Litecoin address parameters (Litecoin Core chainparams.cpp). */
-export const NETWORKS: Record<Network, BtcNetwork> = {
-  main: { bech32: "ltc", pubKeyHash: 0x30, scriptHash: 0x32, wif: 0xb0 },
-  test: { bech32: "tltc", pubKeyHash: 0x6f, scriptHash: 0x3a, wif: 0xef },
-};
+export { NETWORKS, addressOfScript, isAddress };
+export type { BtcNetwork };
 
 /** Litecoin Core's dust relay fee is 30 000 lit/kB (10x Bitcoin's): a P2PKH
  *  output under 5 460 lit, or a P2WPKH one under 2 940, is not relayed. */
@@ -90,24 +86,6 @@ export function evmAddressOfSecret(secret: string): string {
   return evmAddressOfPubkey(hex.encode(secp256k1.getPublicKey(hex.decode(secret), true)));
 }
 
-export function isAddress(address: string, network: Network): boolean {
-  try {
-    btc.Address(NETWORKS[network]).decode(address);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** The address an output script pays, or null for OP_RETURN and non-standard scripts. */
-export function addressOfScript(scriptHex: string, network: Network): string | null {
-  try {
-    return btc.Address(NETWORKS[network]).encode(btc.OutScript.decode(hex.decode(scriptHex)));
-  } catch {
-    return null;
-  }
-}
-
 /** Text carried by an OP_RETURN script (one push), or null. */
 export function opReturnPayload(scriptHex: string): string | null {
   try {
@@ -153,6 +131,11 @@ export function buildTx(opts: {
   payments: Payment[];
   memo?: string | null;
   feeRate?: bigint;
+  /** Coins the transaction must spend, whatever else it picks: a fee bump
+   *  has to conflict with the transaction it replaces. */
+  mustSpend?: Utxo[];
+  /** Signal BIP125 replaceability, so a stuck transaction can be fee-bumped. */
+  rbf?: boolean;
 }): BuiltTx {
   const net = NETWORKS[opts.network];
   const wallet = walletFromSecret(opts.secret, opts.network);
@@ -164,12 +147,19 @@ export function buildTx(opts: {
     if (p.lit < DUST_LIT) throw new Error(`payment below dust (${DUST_LIT} lit)`);
   }
   const target = sumLit(opts.payments);
-  const candidates = [...opts.utxos].sort((a, b) => Number(b.confirmed) - Number(a.confirmed) || (b.value > a.value ? 1 : b.value < a.value ? -1 : 0));
+  const must = opts.mustSpend ?? [];
+  const key = (u: Utxo) => `${u.txid}:${u.vout}`;
+  const forced = new Set(must.map(key));
+  const candidates = [
+    ...must,
+    ...[...opts.utxos].filter((u) => !forced.has(key(u))).sort((a, b) => Number(b.confirmed) - Number(a.confirmed) || (b.value > a.value ? 1 : b.value < a.value ? -1 : 0)),
+  ];
   if (candidates.length === 0) throw new Error("the wallet has no coins");
+  const sequence = opts.rbf ? 0xfffffffd : undefined;
 
   const assemble = (inputs: Utxo[], change: bigint) => {
     const tx = new btc.Transaction({ allowUnknownOutputs: true });
-    for (const u of inputs) tx.addInput({ txid: hex.decode(u.txid), index: u.vout, witnessUtxo: { script: wallet.script, amount: u.value } });
+    for (const u of inputs) tx.addInput({ txid: hex.decode(u.txid), index: u.vout, sequence, witnessUtxo: { script: wallet.script, amount: u.value } });
     for (const p of opts.payments) tx.addOutputAddress(p.address, p.lit, net);
     if (memoScript) tx.addOutput({ script: memoScript, amount: 0n });
     if (change > 0n) tx.addOutputAddress(wallet.address, change, net);
@@ -183,6 +173,7 @@ export function buildTx(opts: {
   for (const u of candidates) {
     inputs.push(u);
     total += u.value;
+    if (inputs.length < must.length) continue; // every forced coin goes in first
     if (total <= target) continue;
     // measure the fee on a real signed transaction with a change output...
     const probe = assemble(inputs, total - target);
