@@ -377,13 +377,6 @@ export function parseLtc(v: string): bigint {
   return BigInt(m[1]) * 100_000_000n + BigInt((m[2] ?? "").padEnd(8, "0"));
 }
 
-/** A ticker from a URL segment, or null: decoding can throw and anything
- *  but 2–8 letters or digits is not a coin. */
-export function tickerFromParam(raw: string): string | null {
-  try {
-    const t = decodeURIComponent(raw).trim().toUpperCase();
-    return /^[A-Z0-9]{2,8}$/.test(t) ? t : null;
-  } catch {
-    return null;
-  }
-}
+/** Server components read the ticker of a URL from ledger.ts (this module is
+ *  client-only); the client components keep finding it here. */
+export { tickerFromParam } from "./ledger.ts";

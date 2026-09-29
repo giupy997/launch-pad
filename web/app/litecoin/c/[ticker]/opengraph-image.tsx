@@ -4,7 +4,7 @@ import { spotPrice } from "@/lib/litecoin/ledger";
 import { siteStore } from "@/lib/litecoin/logoStore";
 import { siteLogoId } from "@/lib/site";
 import { fetchPublicImage } from "@/lib/litecoin/safeFetch";
-import { tickerFromParam } from "@/lib/litecoin/client";
+import { tickerFromParam } from "@/lib/litecoin/ledger";
 
 /** A preview is a picture of a moment: minutes at the edge, not a year. */
 const CACHE = { "cache-control": "public, max-age=300, s-maxage=900, stale-while-revalidate=3600" };

@@ -868,3 +868,15 @@ export function snapshot(s: State) {
 }
 
 export type Snapshot = ReturnType<typeof snapshot>;
+
+/** A ticker from a URL segment, or null: decoding can throw and anything
+ *  but 2–8 letters or digits is not a coin. Shared by the pages rendered
+ *  on the server and the components in the browser. */
+export function tickerFromParam(raw: string): string | null {
+  try {
+    const t = decodeURIComponent(raw).trim().toUpperCase();
+    return /^[A-Z0-9]{2,8}$/.test(t) ? t : null;
+  } catch {
+    return null;
+  }
+}

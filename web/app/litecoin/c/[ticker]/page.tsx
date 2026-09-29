@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { readCoin } from "@/lib/litecoin/server";
 import { spotPrice } from "@/lib/litecoin/ledger";
-import { tickerFromParam } from "@/lib/litecoin/client";
+import { tickerFromParam } from "@/lib/litecoin/ledger";
 import { CoinPage } from "./CoinPage";
 
 type Props = { params: { ticker: string } };
