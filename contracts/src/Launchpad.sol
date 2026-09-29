@@ -129,6 +129,19 @@ contract Launchpad is Ownable, ReentrancyGuard {
     /// Coins that graduated on the ledger: the token side of the locked pool
     /// they arrived with, handed to the DEX in place of DEX_RESERVE.
     mapping(address token => uint256) public migratedPoolTokens;
+    /// The ledger snapshot every migrated coin comes from: its state root,
+    /// the block it froze at and which chain, set once before the first coin
+    /// and never changed, so anyone can replay the ledger to that root and
+    /// compare. Closing ends the migration for good.
+    bytes32 public migrationRoot;
+    uint256 public migrationFreezeHeight;
+    string public migrationNetwork;
+    bool public migrationClosed;
+    /// One token per ledger ticker: a coin cannot be migrated twice.
+    mapping(bytes32 symbolHash => address) public migratedTicker;
+    /// Each holder of a migrated coin is delivered once: a batch sent twice
+    /// reverts instead of paying twice and starving the holders after it.
+    mapping(address token => mapping(address holder => bool)) public migrationDelivered;
     /// Per-token override for where the creator share of fees accrues.
     /// address(0) = the token's creator.
     mapping(address token => address) public feeRecipient;
@@ -164,6 +177,8 @@ contract Launchpad is Ownable, ReentrancyGuard {
         address indexed token, address indexed creator, uint256 virtualQuote, uint256 realQuote, uint256 sold
     );
     event MigrationBalances(address indexed token, uint256 holders, uint256 pending);
+    event MigrationRootSet(bytes32 root, uint256 freezeHeight, string network);
+    event MigrationClosed();
 
     // ---------------------------------------------------------------- errors
 
@@ -181,6 +196,14 @@ contract Launchpad is Ownable, ReentrancyGuard {
     error NotPoolFeeHook();
     error MigrationPending();
     error BadMigration();
+    /// migrateToken outside an open migration (no root set, or closed).
+    error MigrationNotOpen();
+    /// a ledger ticker that already has its token here.
+    error TickerMigrated(string symbol);
+    /// a holder of a migrated coin listed a second time.
+    error AlreadyDelivered(address holder);
+    /// a curve coin's reserve does not match its curve state.
+    error WrongQuote(uint256 expected, uint256 got);
 
     constructor(address treasury_, address poolManager_) Ownable(msg.sender) {
         treasury = treasury_;
@@ -493,6 +516,7 @@ contract Launchpad is Ownable, ReentrancyGuard {
     {
         _checkLedgerCoin(coin, holders.length);
         token = address(new LaunchToken(coin.name, coin.symbol, TOTAL_SUPPLY, false));
+        _claimTicker(coin.symbol, token);
         curves[token] = _ledgerCurve(coin);
         tokenMetadata[token] = coin.meta;
         if (coin.feesToHolders) feesToHolders[token] = true;
@@ -507,6 +531,14 @@ contract Launchpad is Ownable, ReentrancyGuard {
         if (coin.sold != 0) _migrateBalances(token, holders, balances);
     }
 
+    /// An open migration, and one token per ledger ticker.
+    function _claimTicker(string calldata symbol, address token) internal {
+        if (migrationRoot == bytes32(0) || migrationClosed) revert MigrationNotOpen();
+        bytes32 sym = keccak256(bytes(symbol));
+        if (migratedTicker[sym] != address(0)) revert TickerMigrated(symbol);
+        migratedTicker[sym] = token;
+    }
+
     /// Only state the ledger could have produced. A coin that graduated there
     /// (poolToken != 0) has `sold` = everything its holders own and `poolToken`
     /// = what its pool holds, the two adding up to the supply, and its pool
@@ -517,6 +549,14 @@ contract Launchpad is Ownable, ReentrancyGuard {
             if (coin.sold + coin.poolToken != TOTAL_SUPPLY || msg.value == 0) revert BadMigration();
         } else if (coin.sold > CURVE_SUPPLY) {
             revert BadMigration();
+        } else if (coin.sold != 0) {
+            // a constant-product curve holds exactly virtual * sold / (VIRTUAL_TOKEN - sold)
+            // of real quote (the ledger rounds each trade by at most one unit): the
+            // coin must arrive with that much, no less (sells could not be paid) and
+            // no more (the price would be wrong)
+            uint256 expected = Math.mulDiv(coin.virtualQuote, coin.sold, VIRTUAL_TOKEN - coin.sold);
+            uint256 tolerance = expected / 200 + 1e12; // 0.5% plus dust
+            if (msg.value + tolerance < expected || msg.value > expected + tolerance) revert WrongQuote(expected, msg.value);
         }
         if (coin.sold == 0 && (msg.value != 0 || holderCount != 0)) revert BadMigration(); // an untraded coin
     }
@@ -551,6 +591,8 @@ contract Launchpad is Ownable, ReentrancyGuard {
         uint256 pending = migrationPending[token];
         if (pending == 0) revert BadMigration(); // not migrating (any more)
         for (uint256 i = 0; i < holders.length; i++) {
+            if (migrationDelivered[token][holders[i]]) revert AlreadyDelivered(holders[i]);
+            migrationDelivered[token][holders[i]] = true;
             if (balances[i] > pending) revert BadMigration(); // more than the ledger sold
             pending -= balances[i];
             IERC20(token).safeTransfer(holders[i], balances[i]);
@@ -737,6 +779,25 @@ contract Launchpad is Ownable, ReentrancyGuard {
     function setMigrator(address newMigrator) external onlyOwner {
         migrator = IDexMigrator(newMigrator);
         emit MigratorUpdated(newMigrator);
+    }
+
+    /// @notice Open the migration from a frozen ledger: its state root, the
+    ///         block it froze at and its network, once and for all. Every
+    ///         migrateToken call must follow this, and anyone can replay the
+    ///         ledger to this root to check what was migrated.
+    function setMigrationRoot(bytes32 root, uint256 freezeHeight, string calldata network) external onlyOwner {
+        if (root == bytes32(0) || migrationRoot != bytes32(0)) revert BadMigration();
+        migrationRoot = root;
+        migrationFreezeHeight = freezeHeight;
+        migrationNetwork = network;
+        emit MigrationRootSet(root, freezeHeight, network);
+    }
+
+    /// @notice End the migration: no coin can be migrated after this, ever.
+    ///         Balances still pending for coins already migrated can still be delivered.
+    function closeMigration() external onlyOwner {
+        migrationClosed = true;
+        emit MigrationClosed();
     }
 
     function _payOut(address asset, address to, uint256 amount) internal {

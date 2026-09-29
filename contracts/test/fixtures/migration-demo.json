@@ -1,7 +1,7 @@
 {
  "network": "test",
  "height": 3600090,
- "freezeHeight": null,
+ "freezeHeight": 3600090,
  "stateRoot": "28bf69752873a3620128cb7ad5a7b2996f96650d0a165416fdc1980d5651721b",
  "generatedAt": "2026-09-27T17:08:14.365Z",
  "totals": {

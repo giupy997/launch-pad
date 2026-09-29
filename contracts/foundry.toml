@@ -11,7 +11,7 @@ remappings = [
   "v4-core/=lib/v4-core/",
 ]
 # the ledger migration script and its test read the migration file
-fs_permissions = [{ access = "read", path = "./" }, { access = "read", path = "../litecoin/migration" }]
+fs_permissions = [{ access = "read", path = "./" }, { access = "read-write", path = "../litecoin/migration" }]
 
 # Chain-agnostic by design: add one endpoint per chain as we go multichain.
 [rpc_endpoints]

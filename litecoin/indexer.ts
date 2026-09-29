@@ -52,6 +52,8 @@ type Cache = {
   desk: string;
   /** The chain tip of the last completed pass: a pass may never go back further than a reorg could. */
   tip?: number;
+  /** The freeze height this desk was given, once seen: it must be ahead of the chain when set and never change. */
+  freeze?: number;
   /** Confirmed transactions by txid. */
   txs: Record<string, EsploraTx>;
   /** Position of each desk transaction in its block, by block hash. */
@@ -157,6 +159,18 @@ export async function pass(sync: boolean) {
     if (!Number.isInteger(tip) || tip <= 0) throw new Error(`bad tip ${tip} (${via(api)})`);
     if (cache.tip && tip < cache.tip - LAG_BLOCKS) throw new Error(`explorer behind: tip ${tip}, last pass saw ${cache.tip} (${via(api)})`);
     if (cache.tip && tip > cache.tip + JUMP_BLOCKS) throw new Error(`tip jumped: ${tip}, last pass saw ${cache.tip} (${via(api)}) — delete ${CACHE} if the chain really grew that much`);
+    // A freeze is announced ahead of time and then stands: one set behind the
+    // chain would rewrite trades already folded in and paid, one that moves
+    // would make two replays disagree.
+    if (FREEZE !== null) {
+      if (!Number.isInteger(FREEZE) || FREEZE <= 0) throw new Error(`bad NOTUS_LTC_FREEZE ${process.env.NOTUS_LTC_FREEZE}`);
+      if (cache.freeze === undefined) {
+        if (FREEZE < tip) throw new Error(`NOTUS_LTC_FREEZE=${FREEZE} is behind the chain (tip ${tip}): a freeze must be announced for a future block`);
+        cache.freeze = FREEZE;
+      } else if (cache.freeze !== FREEZE) {
+        throw new Error(`NOTUS_LTC_FREEZE changed from ${cache.freeze} to ${FREEZE}: a freeze does not move (delete ${CACHE} to start over)`);
+      }
+    }
     await fetchTxs(api, desk, cache, tip, firstPass);
     await placeInBlocks(api, cache);
     cache.tip = tip;

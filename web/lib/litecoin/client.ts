@@ -38,6 +38,14 @@ export type LPayout = {
   id: string; kind: "sell" | "claim"; holder: string; to: string; lit: string;
   height: number; txid: string; paidTxid: string | null;
 };
+/** The ledger takes nothing new once a block past the freeze can be mined:
+ *  from the moment the chain tip reaches the freeze height. Before that a
+ *  freeze is announced, not in force. */
+export function isFrozen(state: Pick<LState, "freezeHeight" | "chainTip" | "height"> | null | undefined): boolean {
+  if (!state?.freezeHeight) return false;
+  return (state.chainTip ?? state.height) >= state.freezeHeight;
+}
+
 export type LState = {
   protocol: string; network: Network; height: number; stateRoot: string | null; txsRead: number;
   /** Set once the ledger is frozen for the migration to LitVM: no more trading here. */

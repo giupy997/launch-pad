@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { MEMO_MAX_BYTES, PARAMS, VIRTUAL_TOKEN, memo, memoBytes, quoteBuy, virtualLitAt } from "@/lib/litecoin/ledger";
-import { LTC_NETWORK, fmtCoins, fmtLtc, parseLtc, txLink, useLitecoinState, useLtcWallet } from "@/lib/litecoin/client";
+import { LTC_NETWORK, fmtCoins, fmtLtc, parseLtc, txLink, useLitecoinState, useLtcWallet, isFrozen } from "@/lib/litecoin/client";
 import { SendPanel } from "@/components/litecoin/SendPanel";
 import { NeedsLtcWallet } from "@/components/litecoin/Wallet";
 import { TokenLogo } from "@/components/TokenLogo";
@@ -40,7 +40,7 @@ export default function LitecoinCreate() {
   const nameFits = memoBytes(bare) <= MEMO_MAX_BYTES;
   const logoFits = memoBytes(withLogo) <= MEMO_MAX_BYTES;
   const desk = state?.desk.address ?? null;
-  const frozen = !!state?.freezeHeight;
+  const frozen = isFrozen(state);
   // the reserve a coin deployed now opens with (a rule change may be a few blocks away)
   const tip = state?.chainTip ?? Number.MAX_SAFE_INTEGER;
   const virtualLit = virtualLitAt(P, tip + 1);

@@ -12,13 +12,24 @@
 //   node litecoin/migration-snapshot.ts --allow-unfrozen   for a dry run on a live ledger
 //   node litecoin/migration-snapshot.ts --only LESTER      a partial run (rehearsals); the real migration takes every coin
 //
-// A holder without a known public key (they only ever received coins by
-// `send`, never spent from that address) cannot be minted to directly: their
-// balance is listed under `unresolved`, and either goes to --vault for a
-// later signed claim, or the run fails so nothing is silently dropped.
+// A holder who registered an EVM address on the ledger (`NOTUS1 evm 0x…`)
+// gets their coins there; anyone else at the address their public key
+// derives. A holder without a known public key (they only ever received
+// coins by `send`, never spent from that address) cannot be minted to
+// directly: their balance is listed under `unresolved`, and either goes to
+// --vault for a later signed claim, or the run fails so nothing is silently
+// dropped.
+//
+// The ledger must be frozen AND the freeze reached with margin: a snapshot
+// of a ledger that can still change is not a snapshot (--allow-unfrozen is
+// for dry runs only).
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import { evmAddressOfPubkey } from "../web/lib/litecoin/tx.ts";
+
+/** Blocks the freeze must be behind the chain tip before a snapshot is taken from it. */
+const FREEZE_MARGIN = 6;
 
 const ROOT = import.meta.dirname;
 const STATE = process.env.NOTUS_LTC_STATE ?? join(ROOT, "../web/public/litecoin/state.json");
@@ -36,27 +47,35 @@ const only = flag("--only")?.split(",").map((t) => t.trim().toUpperCase()).filte
 if (vault !== undefined && !/^0x[0-9a-fA-F]{40}$/.test(vault)) throw new Error("--vault must be an EVM address");
 
 type Snapshot = {
-  network: string; height: number; stateRoot: string | null; freezeHeight: number | null; liabilitiesLit: string;
+  network: string; height: number; chainTip?: number | null; stateRoot: string | null; freezeHeight: number | null; liabilitiesLit: string;
   coins: { ticker: string; name: string; logo: string; creator: string; feesToHolders: boolean; vLit: string; realLit: string; sold: string; graduated?: boolean; poolLit?: string; poolToken?: string }[];
   balances: Record<string, Record<string, string>>;
   pubkeys: Record<string, string>;
+  evm?: Record<string, string>;
   claimable: Record<string, string>;
   payouts: { paidTxid: string | null; lit: string }[];
 };
 const s = JSON.parse(readFileSync(STATE, "utf8")) as Snapshot;
-if (s.freezeHeight === null && !args.includes("--allow-unfrozen")) {
-  throw new Error("the ledger is not frozen (NOTUS_LTC_FREEZE unset): balances can still change. Freeze first, or pass --allow-unfrozen for a dry run");
+const dryRun = args.includes("--allow-unfrozen");
+if (!dryRun) {
+  if (s.freezeHeight === null) throw new Error("the ledger is not frozen (NOTUS_LTC_FREEZE unset): balances can still change. Freeze first, or pass --allow-unfrozen for a dry run");
+  if (s.height < s.freezeHeight) throw new Error(`the freeze at block ${s.freezeHeight} is not reached: the ledger is at ${s.height} and can still change`);
+  const tip = s.chainTip ?? s.height;
+  if (tip - s.freezeHeight < FREEZE_MARGIN) throw new Error(`the freeze at block ${s.freezeHeight} is only ${tip - s.freezeHeight} block(s) deep (tip ${tip}): wait for ${FREEZE_MARGIN}, a reorg could still change it`);
 }
 
-const evm = (ltcAddress: string) => (s.pubkeys[ltcAddress] ? evmAddressOfPubkey(s.pubkeys[ltcAddress]) : null);
+/** A holder's EVM address: the one they registered on the ledger, else the one their public key derives. */
+const evm = (ltcAddress: string) => s.evm?.[ltcAddress] ?? (s.pubkeys[ltcAddress] ? evmAddressOfPubkey(s.pubkeys[ltcAddress]) : null);
 const unresolved: { ticker: string; address: string; balance: string }[] = [];
 let bridgeWei = 0n;
 
 const picked = only ? s.coins.filter((c) => only.includes(c.ticker)) : s.coins;
 if (only && picked.length !== only.length) throw new Error(`--only: unknown ticker(s) ${only.filter((t) => !picked.some((c) => c.ticker === t)).join(", ")}`);
 const coins = picked.map((c) => {
-  const creator = evm(c.creator);
-  if (!creator) throw new Error(`${c.ticker}: the creator ${c.creator} has no public key on record — impossible, the deploy was signed`);
+  // a creator who signed from a script type whose key we cannot read (taproot, multisig) has no
+  // derived address; their creator fees on LitVM then accrue to the vault until a signed claim
+  const creator = evm(c.creator) ?? vault;
+  if (!creator) throw new Error(`${c.ticker}: the creator ${c.creator} has no public key on record (a script type without a readable key): pass --vault, or have them register with \`NOTUS1 evm 0x…\``);
   const holders: string[] = [];
   const balances: bigint[] = [];
   let vaulted = 0n;
@@ -109,13 +128,15 @@ for (const v of Object.values(s.claimable)) dueLit += BigInt(v);
 for (const p of s.payouts) if (!p.paidTxid) dueLit += BigInt(p.lit);
 // pending holder cashback is inside liabilities but not in `claimable` totals per coin; report the ledger's own number
 const liabilities = BigInt(s.liabilitiesLit);
-const inCurves = coins.reduce((t, c) => t + c.realQuote / SCALE, 0n); // curves and pools alike
+// what all the curves and pools hold, whether or not this run picks them: the rest is settled on Litecoin
+const inCurves = s.coins.reduce((t, c) => t + BigInt(c.graduated ? c.poolLit ?? "0" : c.realLit), 0n);
 
 const out = {
   network: s.network,
   height: s.height,
-  freezeHeight: s.freezeHeight,
+  freezeHeight: s.freezeHeight ?? s.height,
   stateRoot: s.stateRoot,
+  partial: !!only,
   generatedAt: new Date().toISOString(),
   totals: {
     coins: coins.length,
@@ -129,8 +150,10 @@ const out = {
   unresolved,
   coins,
 };
-// uint256 fields must be JSON numbers for vm.parseJson: stringify bigints raw
-const json = JSON.stringify(out, (_, v) => (typeof v === "bigint" ? `__big__${v}` : v), 1).replace(/"__big__(\d+)"/g, "$1");
+// uint256 fields must be JSON numbers for vm.parseJson: bigints are tagged with a
+// one-off marker no coin name can contain, then the quotes around them removed
+const tag = `__big_${randomBytes(8).toString("hex")}_`;
+const json = JSON.stringify(out, (_, v) => (typeof v === "bigint" ? `${tag}${v}` : v), 1).replace(new RegExp(`"${tag}(\\d+)"`, "g"), "$1");
 const outFile = flag("--out") ?? join(ROOT, "migration", `${s.network}-${s.freezeHeight ?? s.height}.json`);
 mkdirSync(join(outFile, ".."), { recursive: true });
 writeFileSync(outFile, json);

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { CURVE_SUPPLY, MEMO_MAX_BYTES, PARAMS, TOTAL_SUPPLY, memo, memoBytes, normalizeLink, quoteBuy, quoteSell, spotPrice, type CoinLinks } from "@/lib/litecoin/ledger";
 import { CARRY_LIT } from "@/lib/litecoin/tx";
-import { LTC_NETWORK, addressLink, curveOf, fmtCoins, fmtLtc, fmtMcap, fmtPrice, marketCapLtc, parseLtc, shortAddr, txLink, useLitecoinState, useLtcPrice, useLtcWallet, type LCoin, type LState } from "@/lib/litecoin/client";
+import { LTC_NETWORK, addressLink, curveOf, fmtCoins, fmtLtc, fmtMcap, fmtPrice, marketCapLtc, parseLtc, shortAddr, txLink, useLitecoinState, useLtcPrice, useLtcWallet, type LCoin, type LState, isFrozen } from "@/lib/litecoin/client";
 import { SendPanel } from "@/components/litecoin/SendPanel";
 import { NeedsLtcWallet } from "@/components/litecoin/Wallet";
 import { TokenLogo } from "@/components/TokenLogo";
@@ -146,10 +146,11 @@ export function CoinPage({ params }: { params: { ticker: string } }) {
       </div>
 
       <div className="order-1 lg:order-2 space-y-4">
-        {state.freezeHeight ? (
+        {isFrozen(state) ? (
           <FrozenNotice state={state} ticker={coin.ticker} />
         ) : (
           <>
+            {state.freezeHeight ? <FrozenNotice state={state} ticker={coin.ticker} compact /> : null}
             <TradeBox coin={coin} state={state} />
             <CreatorPanel coin={coin} state={state} />
             <LinksPanel coin={coin} state={state} />

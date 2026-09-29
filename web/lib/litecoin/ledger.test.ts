@@ -597,3 +597,33 @@ test("rules v2: only addresses the network can pay may receive a payout, a claim
   const v1 = replay("test", [...events, odd]);
   assert.equal(v1.payouts.length, 1);
 });
+
+test("rules v2: a holder registers where their coins go on LitVM; it moves no value and survives the freeze", () => {
+  const events = [
+    ev(ALICE, memo.deploy("CAT", "Lite Cat", false), PARAMS.test.deployFeeLit),
+    ev(REAL_BOB, memo.buy("CAT"), 1n * LTC),
+  ];
+  const before = replay("test", events, V2);
+  const rootBefore = before.roots.at(-1)!.root;
+  const reg = ev(REAL_BOB, memo.evm("0xAbCdEf0123456789abcdef0123456789ABCDEF01"), CARRY);
+  let s = replay("test", [...events, reg], V2);
+  assert.equal(s.evm.get(REAL_BOB), "0xabcdef0123456789abcdef0123456789abcdef01", "stored lower-case");
+  assert.equal(claimableLit(s, REAL_BOB) - claimableLit(before, REAL_BOB), CARRY, "the dust that carried it is credited back");
+  assert.notEqual(s.roots.at(-1)!.root, rootBefore, "a registration is part of the state root");
+  assert.equal(snapshot(s).evm[REAL_BOB], "0xabcdef0123456789abcdef0123456789abcdef01");
+  // a bad address is refused, the dust still credited
+  s = replay("test", [...events, ev(REAL_BOB, memo.evm("0x1234"), CARRY)], V2);
+  assert.equal(s.evm.size, 0);
+  assert.match(s.rejected.at(-1)!.reason, /bad evm address/);
+  // after the freeze it still applies, and can be changed until the snapshot
+  const frozen = { ...V2, freezeHeight: reg.height };
+  const later = ev(REAL_BOB, memo.evm("0x0000000000000000000000000000000000000002"), CARRY);
+  s = replay("test", [...events, reg, later], frozen);
+  assert.equal(s.evm.get(REAL_BOB), "0x0000000000000000000000000000000000000002");
+  // before rules v2 the instruction is just an unknown command
+  const v1 = replay("test", [...events, reg]);
+  assert.equal(v1.evm.size, 0);
+  assert.match(v1.rejected.at(-1)!.reason, /unknown command/);
+  // a state without registrations keeps the root it always had
+  assert.equal(replay("test", events, V2).roots.at(-1)!.root, rootBefore);
+});

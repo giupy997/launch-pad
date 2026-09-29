@@ -4,10 +4,10 @@ pragma solidity ^0.8.24;
 import {Test} from "forge-std/Test.sol";
 import {Launchpad} from "../src/Launchpad.sol";
 import {LaunchToken} from "../src/LaunchToken.sol";
-import {UniV2Migrator, IUniswapV2Router02} from "../src/UniV2Migrator.sol";
+import {UniV2Migrator} from "../src/UniV2Migrator.sol";
 import {IDexMigrator} from "../src/interfaces/IDexMigrator.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
-import {ERC20} from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
+import {MockWETH9, MockV2Factory, MockV2Pair, MockV2Router} from "./mocks/UniV2Mock.sol";
 
 contract RecordingMigrator is IDexMigrator {
     address public lastToken;
@@ -18,51 +18,6 @@ contract RecordingMigrator is IDexMigrator {
         lastToken = token;
         lastTokenAmount = tokenAmount;
         lastEthAmount = msg.value;
-    }
-}
-
-contract MockWETH is ERC20 {
-    constructor() ERC20("Wrapped zkLTC", "WzkLTC") {}
-}
-
-/// Just enough of a Uniswap v2 router to prove the adapter's plumbing: it
-/// takes the tokens and the native coin and hands back "LP" units.
-contract MockV2Router is IUniswapV2Router02 {
-    MockWETH public immutable weth = new MockWETH();
-    address public lastToken;
-    uint256 public lastTokenAmount;
-    uint256 public lastEthAmount;
-
-    function factory() external view returns (address) {
-        return address(this);
-    }
-
-    function WETH() external view returns (address) {
-        return address(weth);
-    }
-
-    function getPair(address, address) external pure returns (address) {
-        return address(0xBEEF);
-    }
-
-    function addLiquidity(address, address, uint256, uint256, uint256, uint256, address, uint256)
-        external
-        pure
-        returns (uint256, uint256, uint256)
-    {
-        revert("native only in this mock");
-    }
-
-    function addLiquidityETH(address token, uint256 amountTokenDesired, uint256, uint256, address, uint256)
-        external
-        payable
-        returns (uint256 amountToken, uint256 amountETH, uint256 liquidity)
-    {
-        IERC20(token).transferFrom(msg.sender, address(this), amountTokenDesired);
-        lastToken = token;
-        lastTokenAmount = amountTokenDesired;
-        lastEthAmount = msg.value;
-        return (amountTokenDesired, msg.value, amountTokenDesired / 1e9 + msg.value);
     }
 }
 
@@ -87,8 +42,11 @@ contract MigrationTest is Test {
     address[] holders = [alice, bob, carol];
     uint256 sold = bals[0] + bals[1] + bals[2];
 
+    bytes32 constant ROOT = bytes32(uint256(0x28bf69752873a3620128cb7ad5a7b2996f96650d0a165416fdc1980d5651721b));
+
     function setUp() public {
         pad = new Launchpad(treasury, address(0));
+        pad.setMigrationRoot(ROOT, 3_600_085, "test");
         vm.deal(address(this), 100 ether);
         vm.deal(dave, 100 ether);
     }
@@ -340,7 +298,9 @@ contract MigrationTest is Test {
     }
 
     function test_uniV2MigratorSeedsAndLocksThePool() public {
-        MockV2Router router = new MockV2Router();
+        MockWETH9 weth = new MockWETH9();
+        MockV2Factory factory = new MockV2Factory();
+        MockV2Router router = new MockV2Router(address(factory), address(weth));
         UniV2Migrator migrator = new UniV2Migrator(address(pad), address(router));
         pad.setMigrator(address(migrator));
         uint256[] memory full = new uint256[](3);
@@ -350,14 +310,15 @@ contract MigrationTest is Test {
         address token = pad.migrateToken{value: 0.64 ether}(
             _coin("Done", "DONE", creator, false, virtualQuote, pad.CURVE_SUPPLY()), holders, full
         );
-        assertEq(router.lastToken(), token);
-        assertEq(router.lastTokenAmount(), pad.DEX_RESERVE());
-        assertEq(router.lastEthAmount(), 0.64 ether);
-        assertEq(IERC20(token).balanceOf(address(router)), pad.DEX_RESERVE(), "the reserve sits in the pool");
+        address pair = factory.getPair(token, address(weth));
+        assertTrue(pair != address(0), "the pair was created");
+        assertEq(IERC20(token).balanceOf(pair), pad.DEX_RESERVE(), "the reserve sits in the pool");
+        assertEq(weth.balanceOf(pair), 0.64 ether, "the raise sits in the pool");
         assertEq(IERC20(token).balanceOf(address(migrator)), 0, "nothing stranded in the adapter");
-        assertEq(migrator.pairAsset(token), router.WETH());
+        assertEq(migrator.pairAsset(token), address(weth));
+        assertEq(migrator.pairOf(token), pair);
         assertGt(migrator.liquidity(token), 0);
-        assertEq(migrator.pairOf(token), address(0xBEEF));
+        assertEq(MockV2Pair(pair).balanceOf(address(migrator)), migrator.liquidity(token), "the adapter holds the LP tokens, and has no way to give them up");
         // nobody but the launchpad can use the adapter
         vm.expectRevert(UniV2Migrator.OnlyLaunchpad.selector);
         migrator.migrate(token, 1, address(0), 0);
@@ -369,6 +330,71 @@ contract MigrationTest is Test {
         assertEq(pad.migrationPending(token), 0);
         vm.prank(dave);
         pad.buy{value: 0.1 ether}(token, 0);
+        assertGt(IERC20(token).balanceOf(dave), 0);
+    }
+
+    function test_aBatchSentTwiceRevertsInsteadOfPayingTwice() public {
+        address[] memory first = new address[](1);
+        uint256[] memory firstBal = new uint256[](1);
+        first[0] = alice;
+        firstBal[0] = bals[0];
+        address token = pad.migrateToken{value: realQuote}(
+            _coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold), first, firstBal
+        );
+        address[] memory second = new address[](1);
+        uint256[] memory secondBal = new uint256[](1);
+        second[0] = bob;
+        secondBal[0] = bals[1];
+        pad.migrateBalances(token, second, secondBal);
+        // the same batch again (a script retrying after a timeout) must not deliver again
+        vm.expectRevert(abi.encodeWithSelector(Launchpad.AlreadyDelivered.selector, bob));
+        pad.migrateBalances(token, second, secondBal);
+        assertEq(IERC20(token).balanceOf(bob), bals[1], "delivered once");
+        assertEq(pad.migrationPending(token), bals[2], "carol's share is still there for her");
+        assertTrue(pad.migrationDelivered(token, bob));
+        assertFalse(pad.migrationDelivered(token, carol));
+    }
+
+    function test_aCurveCoinMustArriveWithItsReserve() public {
+        // the curve state implies the reserve: nothing, or twice as much, is refused
+        uint256 expected = pad.VIRTUAL_TOKEN() - sold;
+        expected = virtualQuote * sold / expected;
+        vm.expectRevert(abi.encodeWithSelector(Launchpad.WrongQuote.selector, expected, 0));
+        pad.migrateToken(_coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold), holders, bals);
+        vm.expectRevert(abi.encodeWithSelector(Launchpad.WrongQuote.selector, expected, realQuote * 2));
+        pad.migrateToken{value: realQuote * 2}(_coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold), holders, bals);
+        // rounding dust either way is fine
+        address token = pad.migrateToken{value: realQuote + 1e9}(_coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold), holders, bals);
+        (,, uint256 realEth,,,,) = pad.curves(token);
+        assertEq(realEth, realQuote + 1e9);
+    }
+
+    function test_aTickerMigratesOnce() public {
+        _migrate(false);
+        vm.expectRevert(abi.encodeWithSelector(Launchpad.TickerMigrated.selector, "LCAT"));
+        _migrate(false);
+        assertTrue(pad.migratedTicker(keccak256("LCAT")) != address(0));
+    }
+
+    function test_migrationNeedsARootAndEndsWhenClosed() public {
+        Launchpad fresh = new Launchpad(treasury, address(0));
+        vm.expectRevert(Launchpad.MigrationNotOpen.selector);
+        fresh.migrateToken{value: realQuote}(_coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold), holders, bals);
+        vm.expectRevert(Launchpad.BadMigration.selector);
+        fresh.setMigrationRoot(bytes32(0), 1, "test");
+        fresh.setMigrationRoot(ROOT, 3_600_085, "test");
+        assertEq(fresh.migrationRoot(), ROOT);
+        assertEq(fresh.migrationFreezeHeight(), 3_600_085);
+        vm.expectRevert(Launchpad.BadMigration.selector);
+        fresh.setMigrationRoot(bytes32(uint256(2)), 1, "test"); // never changed
+        vm.deal(address(this), 200 ether);
+        address token = fresh.migrateToken{value: realQuote}(_coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold), holders, bals);
+        fresh.closeMigration();
+        vm.expectRevert(Launchpad.MigrationNotOpen.selector);
+        fresh.migrateToken{value: realQuote}(_coin("Dog", "DOG", creator, false, virtualQuote, sold), holders, bals);
+        // what was already migrated keeps trading
+        vm.prank(dave);
+        fresh.buy{value: 0.01 ether}(token, 0);
         assertGt(IERC20(token).balanceOf(dave), 0);
     }
 }

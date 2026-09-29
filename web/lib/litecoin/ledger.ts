@@ -212,6 +212,9 @@ export type State = {
   /** Public key of every address that ever signed a transaction to the desk
    *  (not part of the state root: it is chain data, not ownership). */
   pubkeys: Map<string, string>;
+  /** EVM address a holder registered for the migration (`evm 0x…`), when the
+   *  one their key derives is not the one they can sign for (hardware wallets). */
+  evm: Map<string, string>;
   freezeHeight: number | null;
   /** The block at which retireEmptyCoinsAt was applied, once (not in the root). */
   retiredAt: number | null;
@@ -233,6 +236,7 @@ export function emptyState(network: Network): State {
     pending: new Map(),
     credit: new Map(),
     pubkeys: new Map(),
+    evm: new Map(),
     freezeHeight: null,
     retiredAt: null,
     treasuryLit: 0n,
@@ -368,6 +372,8 @@ export const memo = {
   claim: (payoutOutput?: number) => [PROTOCOL, "claim", ...(payoutOutput === undefined ? [] : [payoutOutput])].join(" "),
   /** LTC for the desk's own costs (payout fees): treasury, owed to nobody. */
   fund: () => [PROTOCOL, "fund"].join(" "),
+  /** Where this address's coins go on LitVM at the migration (rules v2). */
+  evm: (address: string) => [PROTOCOL, "evm", address].join(" "),
   paid: (ids: string[]) => [PROTOCOL, "paid", ...ids].join(" "),
 };
 
@@ -566,8 +572,22 @@ function apply(s: State, p: Params, e: TxEvent): string | null {
     addCredit(s, sender, e.valueLit);
     return "only the desk confirms payouts — credited";
   }
-  if (p.freezeHeight !== null && e.height > p.freezeHeight && cmd !== "claim" && cmd !== "fund") {
+  if (p.freezeHeight !== null && e.height > p.freezeHeight && cmd !== "claim" && cmd !== "fund" && cmd !== "evm") {
     return credited(s, sender, e, "ledger frozen for migration");
+  }
+
+  // Rules v2: a holder names the EVM address that receives their coins at the
+  // migration. It moves no value, so the frozen ledger still takes it (a
+  // holder learns of the migration when it is announced), and it can be
+  // changed until the snapshot is taken. Nothing else about the address is
+  // checked: what the holder signs for is theirs to know.
+  if (cmd === "evm") {
+    addCredit(s, sender, e.valueLit);
+    if (!rulesV2(p, e.height)) return "unknown command — credited";
+    const address = f[2];
+    if (!address || !/^0x[0-9a-fA-F]{40}$/.test(address)) return "bad evm address";
+    s.evm.set(sender, address.toLowerCase());
+    return null;
   }
 
   if (cmd === "deploy") {
@@ -802,6 +822,8 @@ function canonical(s: State): string {
       credit: Object.fromEntries(sortedEntries(s.credit)),
       treasuryLit: s.treasuryLit,
       payouts: s.payouts,
+      // where migrated coins go is ownership too; absent until someone registers, so older roots stand
+      ...(s.evm.size ? { evm: Object.fromEntries(sortedEntries(s.evm)) } : {}),
     },
     big
   );
@@ -833,6 +855,7 @@ export function snapshot(s: State) {
             .filter(([, v]) => v !== "0")
         ),
         pubkeys: Object.fromEntries(sortedEntries(s.pubkeys)),
+        evm: Object.fromEntries(sortedEntries(s.evm)),
         payouts: s.payouts,
         trades: s.trades.slice(-500),
         rejected: s.rejected.slice(-100),

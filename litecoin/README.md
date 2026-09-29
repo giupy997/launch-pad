@@ -98,31 +98,44 @@ coin on this ledger can move over with its holders and its price:
   every holder who ever bought revealed their public key in their own
   transaction to the desk. The indexer records it (`pubkeys` in the
   snapshot), so each Litecoin address maps to an EVM address — the wallet
-  page shows yours — and the migration mints straight to it. A holder who
-  only ever *received* coins by `send` has no key on record: their balance
-  is listed as unresolved and parked in a vault address for a signed claim.
-- **Freeze.** `NOTUS_LTC_FREEZE=<height>` on the indexer: past that block
-  the ledger takes no deploy, buy, sell, send or logo (the LTC they carry is
-  credited back); claims and payouts keep working, so the desk settles what
-  it owes on Litecoin. The frozen state root is what gets re-created. The
-  site shows the freeze on every Litecoin page and sends trading to LitVM:
-  publish `web/public/litecoin/migrated.json` (`{ chainId, launchpad,
-  tokens: { TICKER: 0x… } }`, from the migration script's `symbol -> token`
-  lines) and each coin page links straight to its LitVM token.
+  page shows yours — and the migration mints straight to it. A holder whose
+  key is not the one they can sign for on an EVM chain (a hardware wallet)
+  registers another with `NOTUS1 evm 0x…` (rules v2), which the frozen
+  ledger still takes; the writer prefers it. A holder who only ever
+  *received* coins by `send` has no key on record: their balance is listed
+  as unresolved and parked in a vault address for a signed claim.
+- **Freeze.** `NOTUS_LTC_FREEZE=<height>` on the indexer, announced for a
+  block still ahead of the chain (the indexer refuses one behind it, and one
+  that changes): until then the site says when trading stops, past that
+  block the ledger takes no deploy, buy, sell, send or logo (the LTC they
+  carry is credited back); claims, payouts and `evm` keep working, so the
+  desk settles what it owes on Litecoin. The frozen state root is what gets
+  re-created, and the migration script commits it to the Launchpad
+  (`setMigrationRoot`) before the first coin, so anyone can replay the
+  ledger to that root and compare. The site shows the freeze on every
+  Litecoin page and sends trading to LitVM: publish
+  `web/public/litecoin/migrated.json` (the map the script writes next to
+  the migration file) and each coin page links straight to its LitVM token.
 - **The file.** `node litecoin/migration-snapshot.ts` turns the frozen
-  snapshot into `litecoin/migration/<network>-<height>.json`: per coin the
+  snapshot — the freeze reached and six blocks deep, or it refuses — into
+  `litecoin/migration/<network>-<height>.json`: per coin the
   curve (virtual and real reserve, sold — for a graduated coin the pool's
   LTC and `poolToken`, its token side, with `sold` everything the holders
   own), creator and holders as EVM addresses, balances — scaled from 8 to
   18 decimals — plus the LTC to bridge (the sum of the curves' and pools'
   real reserves) and what remains to settle on Litecoin.
-- **The contracts.** `Launchpad.migrateToken` (owner only, once per coin)
-  re-creates the coin with that state: `msg.value` is the bridged reserve,
-  balances are delivered in batches (`migrateBalances`) and trading opens
-  when every holder has theirs, at exactly the ledger's price. A coin that
-  graduated on the ledger graduates again on delivery and its pool — the
-  bridged LTC against `poolToken` tokens, so at the same price — goes into
-  a locked Uniswap v2 pool (`UniV2Migrator`, LitVM has no v4).
+- **The contracts.** `Launchpad.migrateToken` (owner only, one token per
+  ticker, only while the migration is open) re-creates the coin with that
+  state: `msg.value` is the bridged reserve — for a curve coin it must be
+  what the curve implies, `virtual · sold / (1.05B − sold)`, or the call
+  reverts — balances are delivered in batches (`migrateBalances`, each
+  holder once: a batch sent twice reverts) and trading opens when every
+  holder has theirs, at exactly the ledger's price. A coin that graduated
+  on the ledger graduates again on delivery and its pool — the bridged LTC
+  against `poolToken` tokens, so at the same price — goes into a locked
+  Uniswap v2 pool (`UniV2Migrator`, LitVM has no v4). `closeMigration`
+  ends it for good. The script is safe to rerun: it skips tokens that exist
+  and holders already delivered.
 
 ```bash
 NOTUS_LTC_FREEZE=<height> node litecoin/indexer.ts     # freeze, publish the frozen snapshot
@@ -132,6 +145,7 @@ node litecoin/migration-snapshot.ts [--vault 0x...]    # the migration file
 forge script script/DeployLitVM.s.sol --rpc-url litvm_testnet --private-key "$PRIVATE_KEY" --broadcast
 LAUNCHPAD=0x... MIGRATION_FILE=../litecoin/migration/test-<height>.json \
   forge script script/MigrateFromLedger.s.sol --rpc-url litvm_testnet --private-key "$PRIVATE_KEY" --broadcast
+cp litecoin/migration/test-<height>.json.migrated.json web/public/litecoin/migrated.json   # the site links each coin to its token
 ```
 
 `forge test --match-contract Migration` runs the contract tests, including
