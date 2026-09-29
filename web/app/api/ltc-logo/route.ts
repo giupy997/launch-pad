@@ -10,7 +10,6 @@ import { bytesToHex } from "@noble/hashes/utils";
 import { MAX_LOGO_BYTES, decodeDataUri, pinLogo } from "@/lib/litecoin/pin";
 import { siteStore } from "@/lib/litecoin/logoStore";
 import { verifyLogo, type LogoAuth } from "@/lib/litecoin/logoAuth";
-import { addressOfPubkey } from "@/lib/litecoin/tx";
 import { PUBLIC_API } from "@/lib/litecoin/esplora";
 import { chainApi } from "@/lib/litecoin/chain";
 
@@ -22,9 +21,8 @@ const chain = chainApi(process.env.LTC_API_UPSTREAM ?? PUBLIC_API[NETWORK], NETW
 
 /** The wallet behind a signed upload, if the signature holds and the wallet holds LTC. */
 async function uploader(auth: LogoAuth | undefined, bytes: Uint8Array): Promise<{ address: string } | { error: string; status: number }> {
-  if (!verifyLogo(auth, bytes)) return { error: "sign the upload with your wallet (make one, or reload the page)", status: 401 };
-  const address = addressOfPubkey(auth!.pubkey, "v0_p2wpkh", NETWORK);
-  if (!address) return { error: "bad key", status: 401 };
+  const address = verifyLogo(auth, bytes, NETWORK);
+  if (!address) return { error: "sign the upload with your wallet (make one or connect Litescribe, or reload the page)", status: 401 };
   try {
     const coins = await chain.utxos(address);
     if (!coins.some((u) => u.value > 0n)) return { error: "fund your wallet first: an upload needs a wallet with some LTC in it", status: 402 };

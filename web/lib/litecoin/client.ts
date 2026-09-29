@@ -5,6 +5,8 @@ import { useQuery } from "@tanstack/react-query";
 import { spotPrice, type CurveView, type Network } from "./ledger.ts";
 import { Esplora, PUBLIC_EXPLORER } from "./esplora.ts";
 import { isSecret, newSecret, secretFromWif, walletFromSecret, type BuiltTx, type Utxo, type Wallet } from "./tx.ts";
+import { isAddress } from "./address.ts";
+import { createExtensionStore, providerNetwork, type ExtWallet } from "./extension.ts";
 
 export const LTC_NETWORK: Network = process.env.NEXT_PUBLIC_LTC_NETWORK === "main" ? "main" : "test";
 export const LTC_LABEL = LTC_NETWORK === "main" ? "Litecoin" : "Litecoin Testnet";
@@ -12,6 +14,8 @@ export const EXPLORER = PUBLIC_EXPLORER[LTC_NETWORK];
 /** The browser reaches the explorer through the site's own proxy (/api/ltc):
  *  no CORS surprises, and one place to point at another explorer or a node. */
 export const api = new Esplora(process.env.NEXT_PUBLIC_LTC_API ?? "/api/ltc");
+/** The extension wallet (Litescribe) connected to this site, if any. */
+export const extension = createExtensionStore(LTC_NETWORK);
 
 export type LCoin = {
   ticker: string; name: string; logo: string; creator: string; feesToHolders: boolean;
@@ -125,12 +129,39 @@ function subscribe(l: () => void) {
   };
 }
 
-/** The wallet lives only in this browser: an ordinary Litecoin key whose
- *  address owns the coins. Nothing can recover it if it is lost. */
-export function useLtcWallet() {
+export type ActiveWallet = {
+  /** False until the browser has read its storage and looked a remembered extension up. */
+  ready: boolean;
+  /** Which wallet acts: the site's own browser wallet, or a connected extension. */
+  kind: "hot" | "ext" | null;
+  /** The browser wallet's key, when it is the one acting. */
+  secret: string | null;
+  wallet: Wallet | null;
+  /** The address every action here is paid from; null until a wallet is here, on this network. */
+  address: string | null;
+  /** The connected extension, on the wrong network or not. */
+  ext: (ExtWallet & { wrongNetwork: boolean }) | null;
+  /** A browser wallet exists here (shown, or waiting behind the extension). */
+  hasBrowserWallet: boolean;
+  create: () => void;
+  restore: (input: string) => boolean;
+  forget: () => void;
+  connectExtension: () => Promise<void>;
+  disconnectExtension: () => void;
+  switchExtensionNetwork: () => Promise<void>;
+};
+
+/** The wallet that acts on the Litecoin pages. Either the extension the
+ *  person connected (Litescribe: its keys stay in it, it signs what the site
+ *  builds) or the wallet the site keeps in this browser: an ordinary
+ *  Litecoin key whose address owns the coins, which nothing can recover if
+ *  it is lost. A connected extension comes first, even on another network
+ *  (so the page can ask it to switch); the browser wallet waits behind it. */
+export function useLtcWallet(): ActiveWallet {
   // the server (and the hydration pass) knows nothing; the client reads storage
   const secret = useSyncExternalStore(subscribe, readSecret, () => null);
-  const ready = useSyncExternalStore(subscribe, () => true, () => false);
+  const hydrated = useSyncExternalStore(subscribe, () => true, () => false);
+  const { ext: connected, resolved } = extension.useWallet();
   // neither ever replaces a wallet that is here: forget it first (two tabs racing
   // "Make a wallet" must not overwrite a funded key)
   const create = useCallback(() => {
@@ -154,7 +185,27 @@ export function useLtcWallet() {
       return null;
     }
   }, [secret]);
-  return { ready, secret, wallet, address: wallet?.address ?? null, create, restore, forget: () => writeSecret(null) };
+  const ext = connected
+    ? { ...connected, wrongNetwork: connected.network !== providerNetwork(LTC_NETWORK) || !isAddress(connected.address, LTC_NETWORK) }
+    : null;
+  const kind = ext ? "ext" : wallet ? "hot" : null;
+  return {
+    ready: hydrated && resolved,
+    kind,
+    secret: kind === "hot" ? secret : null,
+    wallet: kind === "hot" ? wallet : null,
+    address: ext ? (ext.wrongNetwork ? null : ext.address) : wallet?.address ?? null,
+    ext,
+    hasBrowserWallet: !!wallet,
+    create,
+    restore,
+    forget: () => writeSecret(null),
+    connectExtension: async () => {
+      await extension.connect();
+    },
+    disconnectExtension: () => extension.disconnect(),
+    switchExtensionNetwork: () => extension.switchNetwork(),
+  };
 }
 
 /** The wallet's coins, straight from the explorer (unconfirmed included). */

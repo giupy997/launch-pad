@@ -4,13 +4,15 @@ import Link from "next/link";
 import { copyText } from "@/lib/clipboard";
 import { useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
-import { LTC_NETWORK, addressLink, fmtLtc, shortAddr, useLtcWallet, useUtxos } from "@/lib/litecoin/client";
+import { LTC_LABEL, LTC_NETWORK, addressLink, fmtLtc, shortAddr, useLtcWallet, useUtxos } from "@/lib/litecoin/client";
+import { EXTENSION_NAME, EXTENSION_URL, READY_EVENT, hasExtension } from "@/lib/litecoin/extension";
 
-/** Header chip on the Litecoin pages: the browser wallet stands in for
+/** Header chip on the Litecoin pages: the wallet that acts stands in for
  *  "connect". Open, it is a small menu: address, balance, the wallet page,
- *  funding, and forgetting the wallet on this device. */
+ *  funding, and letting go of the wallet (forgetting the browser one, or
+ *  disconnecting the extension). */
 export function LtcWalletChip() {
-  const { ready, address, secret, forget } = useLtcWallet();
+  const { ready, kind, address, secret, ext, hasBrowserWallet, forget, disconnectExtension, switchExtensionNetwork } = useLtcWallet();
   const { balance } = useUtxos(address);
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState<"" | "ok" | "fail">("");
@@ -23,10 +25,22 @@ export function LtcWalletChip() {
     return () => document.removeEventListener("mousedown", onClick);
   }, []);
   if (!ready) return null;
+  if (ext?.wrongNetwork) {
+    return (
+      <button
+        type="button"
+        onClick={() => switchExtensionNetwork().catch(() => {})}
+        className="btn-primary px-4 sm:px-5 py-2 text-sm whitespace-nowrap"
+        title={`${EXTENSION_NAME} is on ${ext.network}; this site runs on ${LTC_LABEL}`}
+      >
+        Switch {EXTENSION_NAME} to {LTC_NETWORK === "main" ? "mainnet" : "testnet"}
+      </button>
+    );
+  }
   if (!address) {
     return (
       <Link href="/litecoin/wallet" className="btn-primary px-4 sm:px-5 py-2 text-sm whitespace-nowrap">
-        Make a wallet
+        Wallet
       </Link>
     );
   }
@@ -37,7 +51,7 @@ export function LtcWalletChip() {
         type="button"
         onClick={() => setOpen((o) => !o)}
         className="btn-ghost px-3 sm:px-4 py-2 text-sm font-mono whitespace-nowrap"
-        title="Wallet"
+        title={kind === "ext" ? `${EXTENSION_NAME} wallet` : "Wallet"}
       >
         <span className="hidden sm:inline">{fmtLtc(balance)} LTC · </span>
         {shortAddr(address)}
@@ -45,7 +59,9 @@ export function LtcWalletChip() {
       {open && (
         <div className="absolute right-0 mt-2 w-72 glass rounded-2xl p-1.5 z-20 shadow-2xl shadow-black/70 fade-up">
           <div className="px-3 pt-2 pb-1">
-            <div className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">Litecoin wallet · {fmtLtc(balance)} LTC</div>
+            <div className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">
+              {kind === "ext" ? `${EXTENSION_NAME} wallet` : "Litecoin wallet"} · {fmtLtc(balance)} LTC
+            </div>
             <button
               type="button"
               onClick={async () => { setCopied((await copyText(address)) ? "ok" : "fail"); setTimeout(() => setCopied(""), 2000); }}
@@ -56,21 +72,34 @@ export function LtcWalletChip() {
             </button>
           </div>
           <Link href="/litecoin/wallet" onClick={() => setOpen(false)} className={item}>
-            Wallet page <span className="text-zinc-600">claims · withdraw · secret</span>
+            Wallet page <span className="text-zinc-600">{kind === "ext" ? "claims · withdraw" : "claims · withdraw · secret"}</span>
           </Link>
           <Link href="/litecoin/fund" onClick={() => setOpen(false)} className={item}>
             Fund with ETH, BNB… <span className="text-zinc-600">swap to LTC</span>
           </Link>
-          <button
-            type="button"
-            onClick={() => {
-              setOpen(false);
-              if (secret && confirmForget(secret)) forget();
-            }}
-            className={`${item} text-zinc-500`}
-          >
-            Forget on this device <span className="text-zinc-700">needs your saved secret to restore</span>
-          </button>
+          {kind === "ext" ? (
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                disconnectExtension();
+              }}
+              className={`${item} text-zinc-500`}
+            >
+              Disconnect {EXTENSION_NAME} <span className="text-zinc-700">{hasBrowserWallet ? "back to the browser wallet" : ""}</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                if (secret && confirmForget(secret)) forget();
+              }}
+              className={`${item} text-zinc-500`}
+            >
+              Forget on this device <span className="text-zinc-700">needs your saved secret to restore</span>
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -86,27 +115,72 @@ export function confirmForget(secret: string): boolean {
   return typed !== null && typed.trim().toLowerCase() === secret.slice(0, 8);
 }
 
-/** Inline prompt for pages that need a wallet before they can send anything. */
+/** Inline prompt for pages that need a wallet before they can send anything:
+ *  connect the extension, or make (or restore) the browser wallet. */
 export function NeedsLtcWallet() {
-  const { create, restore } = useLtcWallet();
+  const { create, restore, ext, connectExtension, disconnectExtension, switchExtensionNetwork } = useLtcWallet();
   // The restore field only appears on request: a landing page with a box
   // asking for a key looks like phishing, to people and to link scanners.
   const [restoring, setRestoring] = useState(false);
   const [value, setValue] = useState("");
   const [bad, setBad] = useState(false);
+  const [installed, setInstalled] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [extError, setExtError] = useState("");
+  useEffect(() => {
+    setInstalled(hasExtension());
+    const on = () => setInstalled(true);
+    window.addEventListener(READY_EVENT, on);
+    return () => window.removeEventListener(READY_EVENT, on);
+  }, []);
+  const withExtension = async (action: () => Promise<void>) => {
+    setBusy(true);
+    setExtError("");
+    try {
+      await action();
+    } catch (e) {
+      setExtError((e as Error).message ?? "the extension did not answer");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const primary = "w-full rounded-full bg-white py-2 text-sm font-semibold text-black hover:bg-zinc-100 transition-colors disabled:opacity-50";
+  const secondary = "w-full rounded-full border border-white/15 py-2 text-sm text-zinc-200 hover:border-white transition-colors disabled:opacity-50";
+  if (ext?.wrongNetwork) {
+    return (
+      <div className="card p-4 space-y-3">
+        <p className="text-sm text-zinc-300">
+          {EXTENSION_NAME} is on <b>{ext.network}</b>; this site runs on <b>{LTC_LABEL}</b>. Switch it to go on, or disconnect it to use
+          the wallet this browser keeps.
+        </p>
+        <button type="button" disabled={busy} onClick={() => withExtension(switchExtensionNetwork)} className={primary}>
+          {busy ? `Waiting for ${EXTENSION_NAME}…` : `Switch ${EXTENSION_NAME} to ${LTC_NETWORK === "main" ? "mainnet" : "testnet"}`}
+        </button>
+        <button type="button" onClick={disconnectExtension} className="w-full text-center text-xs text-zinc-500 hover:text-zinc-200">
+          Disconnect {EXTENSION_NAME}
+        </button>
+        {extError && <p className="text-xs text-zinc-400">⚠ {extError}</p>}
+      </div>
+    );
+  }
   return (
     <div className="card p-4 space-y-3">
       <p className="text-sm text-zinc-300">
-        Every action here is a Litecoin transaction you sign yourself, so the site keeps an ordinary
-        Litecoin <b>wallet</b> in this browser. It is created here, it never leaves the browser and nobody
-        can reset it: whoever holds its backup owns the balance. Notus never asks for the keys of any other wallet.
+        Every action here is a Litecoin transaction you sign yourself. Sign with <b>{EXTENSION_NAME}</b>, a Litecoin browser
+        extension whose keys stay in it, or let the site keep an ordinary Litecoin <b>wallet</b> in this browser: created here,
+        never leaving it, nobody able to reset it. Notus never asks for the keys of any other wallet.
       </p>
-      <button
-        type="button"
-        onClick={create}
-        className="w-full rounded-full bg-white py-2 text-sm font-semibold text-black hover:bg-zinc-100 transition-colors"
-      >
-        Make a wallet
+      {installed ? (
+        <button type="button" disabled={busy} onClick={() => withExtension(connectExtension)} className={primary}>
+          {busy ? `Waiting for ${EXTENSION_NAME}…` : `Connect ${EXTENSION_NAME}`}
+        </button>
+      ) : (
+        <a href={EXTENSION_URL} target="_blank" rel="noreferrer noopener" className={`${secondary} block text-center`}>
+          Get {EXTENSION_NAME} <span className="text-zinc-500">· Litecoin browser extension · then reload</span>
+        </a>
+      )}
+      <button type="button" onClick={create} className={installed ? secondary : primary}>
+        Make a wallet in this browser
       </button>
       {restoring ? (
         <div className="flex gap-2">
@@ -130,10 +204,11 @@ export function NeedsLtcWallet() {
         </div>
       ) : (
         <button type="button" onClick={() => setRestoring(true)} className="w-full text-center text-xs text-zinc-500 hover:text-zinc-200">
-          Made one on another device? Restore it from its backup
+          Made a browser wallet on another device? Restore it from its backup
         </button>
       )}
       {bad && <p className="text-xs text-zinc-400">⚠ That backup does not belong to a Notus wallet on this network.</p>}
+      {extError && <p className="text-xs text-zinc-400">⚠ {extError}</p>}
     </div>
   );
 }

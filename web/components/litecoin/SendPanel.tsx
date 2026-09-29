@@ -3,14 +3,16 @@
 import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { MEMO_MAX_BYTES, memoBytes } from "@/lib/litecoin/ledger";
-import { buildTx, type BuiltTx, type Payment } from "@/lib/litecoin/tx";
+import { buildTx, buildUnsigned, finishSigned, type BuiltTx, type Payment, type UnsignedTx } from "@/lib/litecoin/tx";
+import { EXTENSION_NAME, signPsbtWithExtension } from "@/lib/litecoin/extension";
 import { LTC_NETWORK, api, fmtLtc, noteSpend, txLink, useFeeRate, useLtcWallet, useUtxos } from "@/lib/litecoin/client";
 import { FundPanel, NeedsLtcWallet } from "./Wallet";
 
-/** Litecoin has no "connect wallet" and no memo field in most wallets, so
- *  the site builds the transaction itself from the browser wallet's coins —
- *  the payments, the OP_RETURN instruction and the change — shows exactly
- *  what it is, and signs and broadcasts it on one click. */
+/** Litecoin has no memo field in most wallets, so the site builds the
+ *  transaction itself from the wallet's coins — the payments, the OP_RETURN
+ *  instruction and the change — shows exactly what it is, and on one click
+ *  signs it (the browser wallet) or hands it to the extension to sign, then
+ *  broadcasts it. */
 export function SendPanel({
   payments,
   memo,
@@ -26,31 +28,37 @@ export function SendPanel({
   confirmLabel?: string;
   onSent?: (txid: string) => void;
 }) {
-  const { ready, secret, address } = useLtcWallet();
+  const { ready, kind, secret, address, ext } = useLtcWallet();
   const { utxos, isLoading, isError } = useUtxos(address);
   const { data: feeRate } = useFeeRate();
   const queryClient = useQueryClient();
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"" | "signing" | "broadcasting">("");
   const [sent, setSent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const pubkey = ext?.pubkey ?? null;
 
-  const built = useMemo<{ tx?: BuiltTx; problem?: string }>(() => {
-    if (!secret || !feeRate) return {};
+  const built = useMemo<{ tx?: BuiltTx; unsigned?: UnsignedTx; problem?: string }>(() => {
+    if (!feeRate || !address) return {};
     try {
-      return { tx: buildTx({ network: LTC_NETWORK, secret, utxos, payments, memo, feeRate }) };
+      if (kind === "hot" && secret) return { tx: buildTx({ network: LTC_NETWORK, secret, utxos, payments, memo, feeRate }) };
+      if (kind === "ext" && pubkey) return { unsigned: buildUnsigned({ network: LTC_NETWORK, address, pubkey, utxos, payments, memo, feeRate }) };
+      return {};
     } catch (e) {
       return { problem: (e as Error).message };
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- payments is rebuilt every render; compare by value
-  }, [secret, feeRate, utxos, memo, JSON.stringify(payments, (_, v) => (typeof v === "bigint" ? v.toString() : v))]);
+  }, [kind, secret, address, pubkey, feeRate, utxos, memo, JSON.stringify(payments, (_, v) => (typeof v === "bigint" ? v.toString() : v))]);
 
   if (ready && !address) return <NeedsLtcWallet />;
-  if (!address || !secret) return null;
+  if (!address) return null;
   const bytes = memo ? memoBytes(memo) : 0;
   if (bytes > MEMO_MAX_BYTES) {
     return <p className="text-sm text-zinc-400">⚠ The instruction is {bytes} bytes — an OP_RETURN holds {MEMO_MAX_BYTES}. Shorten the name or the URL.</p>;
   }
   const total = payments.reduce((t, p) => t + p.lit, 0n);
+  /** What the transaction does, whoever signs it. */
+  const plan = built.tx ?? built.unsigned;
+  const signer = kind === "ext" ? EXTENSION_NAME : null;
 
   if (sent) {
     return (
@@ -70,15 +78,33 @@ export function SendPanel({
   }
 
   async function submit() {
-    if (!built.tx) return;
-    setBusy(true);
+    if (!plan || !address) return;
     setError(null);
     const refresh = () => queryClient.invalidateQueries({ queryKey: ["ltc-utxos", address] });
+    // the signed transaction: from the browser wallet's key, or back from the extension
+    let hex: string;
+    let txid: string;
     try {
-      const txid = await api.broadcast(built.tx.hex);
-      if (address) noteSpend(built.tx, address); // the next transaction spends the change, not these coins again
-      setSent(txid);
-      onSent?.(txid);
+      if (built.tx) {
+        ({ hex, txid } = built.tx);
+      } else {
+        setBusy("signing");
+        const signed = await signPsbtWithExtension(built.unsigned!.psbt, built.unsigned!.toSign);
+        ({ hex, txid } = finishSigned(signed, built.unsigned!, LTC_NETWORK));
+      }
+    } catch (e) {
+      const msg = (e as Error).message ?? String(e);
+      setError(/reject|cancel|denied|closed/i.test(msg) ? `Not signed: ${EXTENSION_NAME} refused it, or the request was closed.` : msg);
+      setBusy("");
+      return;
+    }
+    setBusy("broadcasting");
+    const spent = { txid, inputs: plan.inputs, outputs: plan.outputs, change: plan.change };
+    try {
+      const id = await api.broadcast(hex);
+      noteSpend(spent, address); // the next transaction spends the change, not these coins again
+      setSent(id);
+      onSent?.(id);
       refresh();
       setTimeout(refresh, 5_000);
     } catch (e) {
@@ -90,14 +116,14 @@ export function SendPanel({
         );
       } else if (/timeout|aborted|HTTP 5\d\d|fetch failed|unreachable/i.test(msg)) {
         // the explorer did not answer: it may still have relayed the transaction
-        if (address) noteSpend(built.tx, address);
+        noteSpend(spent, address);
         refresh();
         setError(`${msg} — the transaction may have gone through anyway: check your address on the explorer before sending again.`);
       } else {
         setError(msg);
       }
     } finally {
-      setBusy(false);
+      setBusy("");
     }
   }
 
@@ -114,8 +140,8 @@ export function SendPanel({
           <Row key={i} k={i === 0 ? "To the desk" : `Output ${i}`} v={`${fmtLtc(p.lit, 8)} LTC → ${p.address.slice(0, 12)}…`} />
         ))}
         {memo && <Row k={`Memo · ${bytes}/${MEMO_MAX_BYTES} bytes`} v={memo} wrap />}
-        <Row k="Network fee" v={built.tx ? `${fmtLtc(built.tx.fee, 8)} LTC · ${built.tx.vsize} vB @ ${feeRate} lit/vB` : feeRate ? "—" : "fetching…"} />
-        <Row k="From" v={address} wrap />
+        <Row k="Network fee" v={plan ? `${fmtLtc(plan.fee, 8)} LTC · ${plan.vsize} vB @ ${feeRate} lit/vB` : feeRate ? "—" : "fetching…"} />
+        <Row k="From" v={signer ? `${address} · ${signer}` : address} wrap />
       </div>
       {isLoading && utxos.length === 0 && <p className="text-xs text-zinc-500">Looking up your coins…</p>}
       {isError && <p className="text-xs text-zinc-400">⚠ The explorer is not answering — coins cannot be looked up right now.</p>}
@@ -129,14 +155,14 @@ export function SendPanel({
       {error && <p className="text-xs text-zinc-400">⚠ {error}</p>}
       <button
         type="button"
-        disabled={!built.tx || busy}
+        disabled={!plan || !!busy}
         onClick={submit}
         className="btn-primary w-full py-2 text-sm"
       >
-        {busy ? "Broadcasting…" : confirmLabel}
+        {busy === "signing" ? `Waiting for ${EXTENSION_NAME}…` : busy ? "Broadcasting…" : signer ? confirmLabel.replace(/^Sign/, `Sign in ${signer}`) : confirmLabel}
       </button>
       <p className="text-[11px] text-zinc-600">
-        {note ?? "Signed in this browser with your wallet key; nothing but the signed transaction leaves it."} Folded into the
+        {note ?? (signer ? `Signed in ${signer}, whose keys stay there; nothing but the signed transaction leaves it.` : "Signed in this browser with your wallet key; nothing but the signed transaction leaves it.")} Folded into the
         ledger after 2 confirmations (~5 min).
       </p>
     </div>

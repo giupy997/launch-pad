@@ -114,19 +114,65 @@ export type BuiltTx = {
   outputs: { address: string | null; lit: bigint }[];
 };
 
+/** The same transaction for a wallet that signs elsewhere (a browser
+ *  extension): the PSBT to hand it, with the picture of what it does. */
+export type UnsignedTx = Omit<BuiltTx, "hex" | "txid"> & {
+  /** The unsigned PSBT, hex, every input carrying its coin (witness UTXO). */
+  psbt: string;
+  /** The inputs the wallet signs (all of them), each with the address it spends from. */
+  toSign: { index: number; address: string }[];
+  memo: string | null;
+};
+
+/** The coins the builder can spend: those a single key owns through native
+ *  segwit (the browser wallet's kind), taproot or segwit wrapped in P2SH, as
+ *  extensions offer them. Legacy (P2PKH) coins need the whole previous
+ *  transaction in the PSBT and are not offered. */
+export type InputKind = "wpkh" | "tr" | "sh-wpkh";
+
+/** What every input of a wallet's transactions carries. */
+type Spender = { address: string; kind: InputKind; script: Uint8Array; redeemScript?: Uint8Array; tapInternalKey?: Uint8Array };
+
+function spenderOfPubkey(pub: Uint8Array, kind: InputKind, network: Network): Spender {
+  const net = NETWORKS[network];
+  if (kind === "wpkh") {
+    const p = btc.p2wpkh(pub, net);
+    return { address: p.address!, kind, script: p.script };
+  }
+  if (kind === "tr") {
+    const p = btc.p2tr(pub.slice(1), undefined, net);
+    return { address: p.address!, kind, script: p.script, tapInternalKey: pub.slice(1) };
+  }
+  const p = btc.p2sh(btc.p2wpkh(pub, net), net);
+  return { address: p.address!, kind, script: p.script, redeemScript: p.redeemScript };
+}
+
+/** The kind of coins `address` holds given the compressed key behind it, or
+ *  null when it is not one of the kinds above (or not this key's address). */
+export function inputKindOf(address: string, pubkeyHex: string, network: Network): InputKind | null {
+  let pub: Uint8Array;
+  try {
+    pub = hex.decode(pubkeyHex);
+  } catch {
+    return null;
+  }
+  if (pub.length !== 33) return null;
+  for (const kind of ["wpkh", "tr", "sh-wpkh"] as const) {
+    try {
+      if (spenderOfPubkey(pub, kind, network).address === address) return kind;
+    } catch {}
+  }
+  return null;
+}
+
 export function sumLit(list: { value: bigint }[] | { lit: bigint }[]): bigint {
   let t = 0n;
   for (const x of list as ({ value?: bigint; lit?: bigint })[]) t += x.value ?? x.lit ?? 0n;
   return t;
 }
 
-/** Build and sign a transaction from the wallet's coins: the payments in
- *  order (so memo output pointers are stable), the OP_RETURN, and change.
- *  Coins are picked confirmed-first, then largest-first; the fee is
- *  measured on the signed transaction, not estimated. */
-export function buildTx(opts: {
+export type BuildOpts = {
   network: Network;
-  secret: string;
   utxos: Utxo[];
   payments: Payment[];
   memo?: string | null;
@@ -136,37 +182,48 @@ export function buildTx(opts: {
   mustSpend?: Utxo[];
   /** Signal BIP125 replaceability, so a stuck transaction can be fee-bumped. */
   rbf?: boolean;
-}): BuiltTx {
-  const net = NETWORKS[opts.network];
-  const wallet = walletFromSecret(opts.secret, opts.network);
-  const priv = hex.decode(opts.secret);
-  const feeRate = opts.feeRate ?? DEFAULT_FEE_RATE;
-  const memoScript = opts.memo ? opReturnScript(opts.memo) : null;
-  for (const p of opts.payments) {
-    if (!isAddress(p.address, opts.network)) throw new Error(`bad address ${p.address}`);
+};
+
+/** The transaction itself, unsigned: the coins, the payments in order (so
+ *  memo output pointers are stable), the OP_RETURN, and change. */
+function assemble(sp: Spender, o: BuildOpts, memoScript: Uint8Array | null, inputs: Utxo[], change: bigint): btc.Transaction {
+  const net = NETWORKS[o.network];
+  const sequence = o.rbf ? 0xfffffffd : undefined;
+  const tx = new btc.Transaction({ allowUnknownOutputs: true });
+  for (const u of inputs) {
+    tx.addInput({
+      txid: hex.decode(u.txid),
+      index: u.vout,
+      sequence,
+      witnessUtxo: { script: sp.script, amount: u.value },
+      ...(sp.redeemScript ? { redeemScript: sp.redeemScript } : {}),
+      ...(sp.tapInternalKey ? { tapInternalKey: sp.tapInternalKey } : {}),
+    });
+  }
+  for (const p of o.payments) tx.addOutputAddress(p.address, p.lit, net);
+  if (memoScript) tx.addOutput({ script: memoScript, amount: 0n });
+  if (change > 0n) tx.addOutputAddress(sp.address, change, net);
+  return tx;
+}
+
+/** Coin selection: forced coins first, then confirmed-first and
+ *  largest-first, until the coins cover the payments and the fee, which is
+ *  measured (by `vsizeOf`) on a real signed transaction, not estimated. */
+function plan(o: BuildOpts, sp: Spender, memoScript: Uint8Array | null, vsizeOf: (inputs: Utxo[], change: bigint) => number) {
+  const feeRate = o.feeRate ?? DEFAULT_FEE_RATE;
+  for (const p of o.payments) {
+    if (!isAddress(p.address, o.network)) throw new Error(`bad address ${p.address}`);
     if (p.lit < DUST_LIT) throw new Error(`payment below dust (${DUST_LIT} lit)`);
   }
-  const target = sumLit(opts.payments);
-  const must = opts.mustSpend ?? [];
+  const target = sumLit(o.payments);
+  const must = o.mustSpend ?? [];
   const key = (u: Utxo) => `${u.txid}:${u.vout}`;
   const forced = new Set(must.map(key));
   const candidates = [
     ...must,
-    ...[...opts.utxos].filter((u) => !forced.has(key(u))).sort((a, b) => Number(b.confirmed) - Number(a.confirmed) || (b.value > a.value ? 1 : b.value < a.value ? -1 : 0)),
+    ...[...o.utxos].filter((u) => !forced.has(key(u))).sort((a, b) => Number(b.confirmed) - Number(a.confirmed) || (b.value > a.value ? 1 : b.value < a.value ? -1 : 0)),
   ];
   if (candidates.length === 0) throw new Error("the wallet has no coins");
-  const sequence = opts.rbf ? 0xfffffffd : undefined;
-
-  const assemble = (inputs: Utxo[], change: bigint) => {
-    const tx = new btc.Transaction({ allowUnknownOutputs: true });
-    for (const u of inputs) tx.addInput({ txid: hex.decode(u.txid), index: u.vout, sequence, witnessUtxo: { script: wallet.script, amount: u.value } });
-    for (const p of opts.payments) tx.addOutputAddress(p.address, p.lit, net);
-    if (memoScript) tx.addOutput({ script: memoScript, amount: 0n });
-    if (change > 0n) tx.addOutputAddress(wallet.address, change, net);
-    tx.sign(priv);
-    tx.finalize();
-    return tx;
-  };
 
   const inputs: Utxo[] = [];
   let total = 0n;
@@ -175,30 +232,97 @@ export function buildTx(opts: {
     total += u.value;
     if (inputs.length < must.length) continue; // every forced coin goes in first
     if (total <= target) continue;
-    // measure the fee on a real signed transaction with a change output...
-    const probe = assemble(inputs, total - target);
-    const fee = BigInt(probe.vsize) * feeRate;
+    // measure the fee on a transaction with a change output...
+    const fee = BigInt(vsizeOf(inputs, total - target)) * feeRate;
     const change = total - target - fee;
     if (change < 0n) continue; // this coin does not even cover the fee: add another
-    // ...then build the one to broadcast, dropping change that would be dust
-    const tx = change >= DUST_LIT ? assemble(inputs, change) : assemble(inputs, 0n);
+    // ...then keep the change only when it is not dust (else it goes to the fee)
     const finalChange = change >= DUST_LIT ? change : 0n;
     return {
-      hex: tx.hex,
-      txid: tx.id,
-      fee: total - target - finalChange,
-      vsize: tx.vsize,
       inputs: [...inputs],
       change: finalChange,
+      fee: total - target - finalChange,
       outputs: [
-        ...opts.payments.map((p) => ({ address: p.address, lit: p.lit })),
-        ...(memoScript ? [{ address: null, lit: 0n }] : []),
-        ...(finalChange > 0n ? [{ address: wallet.address, lit: finalChange }] : []),
+        ...o.payments.map((p) => ({ address: p.address as string | null, lit: p.lit })),
+        ...(memoScript ? [{ address: null as string | null, lit: 0n }] : []),
+        ...(finalChange > 0n ? [{ address: sp.address as string | null, lit: finalChange }] : []),
       ],
     };
   }
   const short = target + BigInt(150 + 68 * candidates.length) * feeRate - total;
   throw new Error(`insufficient funds: about ${fmtLit(short)} LTC more needed`);
+}
+
+/** Build and sign a transaction from the browser wallet's coins. */
+export function buildTx(opts: BuildOpts & { secret: string }): BuiltTx {
+  const priv = hex.decode(opts.secret);
+  const sp = spenderOfPubkey(secp256k1.getPublicKey(priv, true), "wpkh", opts.network);
+  const memoScript = opts.memo ? opReturnScript(opts.memo) : null;
+  const signed = (inputs: Utxo[], change: bigint) => {
+    const tx = assemble(sp, opts, memoScript, inputs, change);
+    tx.sign(priv);
+    tx.finalize();
+    return tx;
+  };
+  const p = plan(opts, sp, memoScript, (inputs, change) => signed(inputs, change).vsize);
+  const tx = signed(p.inputs, p.change);
+  return { hex: tx.hex, txid: tx.id, fee: p.fee, vsize: tx.vsize, inputs: p.inputs, change: p.change, outputs: p.outputs };
+}
+
+/** A throwaway key for measuring: a transaction signed by it is the size of
+ *  the one the wallet will sign, whatever the key (one signature per input). */
+const PROBE_KEY = hex.decode("4e6f747573206d65617375726573206120736967206f6e206120636f696e2e21");
+
+/** The same transaction for a wallet that signs elsewhere: coins picked and
+ *  fee set as for the browser wallet, measured on a look-alike signed with a
+ *  throwaway key of the same kind, and returned as a PSBT for the wallet. */
+export function buildUnsigned(opts: BuildOpts & { address: string; pubkey: string }): UnsignedTx {
+  const kind = inputKindOf(opts.address, opts.pubkey, opts.network);
+  if (!kind) throw new Error("this wallet's address type is not supported here: switch it to Native Segwit or Taproot in the extension");
+  const sp = spenderOfPubkey(hex.decode(opts.pubkey), kind, opts.network);
+  const probe = spenderOfPubkey(secp256k1.getPublicKey(PROBE_KEY, true), kind, opts.network);
+  const memoScript = opts.memo ? opReturnScript(opts.memo) : null;
+  const lookAlike = (inputs: Utxo[], change: bigint) => {
+    const tx = assemble(probe, opts, memoScript, inputs, change);
+    tx.sign(PROBE_KEY);
+    tx.finalize();
+    return tx;
+  };
+  const p = plan(opts, sp, memoScript, (inputs, change) => lookAlike(inputs, change).vsize);
+  const tx = assemble(sp, opts, memoScript, p.inputs, p.change);
+  return {
+    psbt: hex.encode(tx.toPSBT()),
+    toSign: p.inputs.map((_, index) => ({ index, address: sp.address })),
+    memo: opts.memo ?? null,
+    fee: p.fee,
+    vsize: lookAlike(p.inputs, p.change).vsize,
+    inputs: p.inputs,
+    change: p.change,
+    outputs: p.outputs,
+  };
+}
+
+/** The signed PSBT back from the wallet, checked to be the transaction that
+ *  was handed over (same coins, same outputs, same memo), finalized and
+ *  extracted, ready to broadcast. */
+export function finishSigned(psbtHex: string, unsigned: UnsignedTx, network: Network): { hex: string; txid: string } {
+  const tx = btc.Transaction.fromPSBT(hex.decode(psbtHex), { allowUnknownOutputs: true });
+  const differs = () => new Error("the wallet returned a different transaction; nothing was sent");
+  if (tx.inputsLength !== unsigned.inputs.length || tx.outputsLength !== unsigned.outputs.length) throw differs();
+  for (let i = 0; i < tx.inputsLength; i++) {
+    const inp = tx.getInput(i);
+    if (!inp.txid || hex.encode(inp.txid) !== unsigned.inputs[i].txid || inp.index !== unsigned.inputs[i].vout) throw differs();
+  }
+  for (let i = 0; i < tx.outputsLength; i++) {
+    const out = tx.getOutput(i);
+    const want = unsigned.outputs[i];
+    if (!out.script || out.amount !== want.lit) throw differs();
+    const script = hex.encode(out.script);
+    if (addressOfScript(script, network) !== want.address) throw differs();
+    if (want.address === null && opReturnPayload(script) !== unsigned.memo) throw differs();
+  }
+  if (!tx.isFinal) tx.finalize();
+  return { hex: hex.encode(tx.extract()), txid: tx.id };
 }
 
 /** A parsed transaction's outputs, for checks and displays. */

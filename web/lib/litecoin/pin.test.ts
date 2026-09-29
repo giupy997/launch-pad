@@ -2,7 +2,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MAX_LOGO_BYTES, decodeDataUri, imageTypeOf, pinLogo } from "./pin.ts";
-import { LOGO_AUTH_WINDOW_S, signLogo, verifyLogo } from "./logoAuth.ts";
+import { secp256k1 } from "@noble/curves/secp256k1";
+import { hexToBytes } from "@noble/hashes/utils";
+import { LOGO_AUTH_WINDOW_S, logoMessageFor, signLogo, verifyLogo } from "./logoAuth.ts";
+import { addressesOfPubkey, signMessage } from "./message.ts";
+import { walletFromSecret } from "./tx.ts";
 
 const PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
 const png = "data:image/png;base64," + PNG_BYTES.toString("base64");
@@ -24,14 +28,34 @@ test("only small base64 images are accepted, and only when the bytes are what th
 
 test("an upload is signed by the wallet key over the very bytes, and only for a while", () => {
   const secret = "11".repeat(32);
+  const me = walletFromSecret(secret, "test").address;
   const auth = signLogo(secret, PNG_BYTES, 1_800_000_000);
-  assert.match(auth.pubkey, /^0[23][0-9a-f]{64}$/);
-  assert.ok(verifyLogo(auth, PNG_BYTES, 1_800_000_000 + 60));
-  assert.ok(!verifyLogo(auth, Buffer.from([...PNG_BYTES, 9]), 1_800_000_000 + 60), "other bytes, other signature");
-  assert.ok(!verifyLogo(auth, PNG_BYTES, 1_800_000_000 + LOGO_AUTH_WINDOW_S + 1), "too old");
-  assert.ok(!verifyLogo({ ...auth, pubkey: "02" + "ab".repeat(32) }, PNG_BYTES, 1_800_000_000), "another key did not sign this");
-  assert.ok(!verifyLogo(undefined, PNG_BYTES));
-  assert.ok(!verifyLogo({ ...auth, signature: "zz" }, PNG_BYTES, 1_800_000_000));
+  assert.match((auth as { pubkey: string }).pubkey, /^0[23][0-9a-f]{64}$/);
+  assert.equal(verifyLogo(auth, PNG_BYTES, "test", 1_800_000_000 + 60), me, "the wallet's address vouches");
+  assert.equal(verifyLogo(auth, Buffer.from([...PNG_BYTES, 9]), "test", 1_800_000_000 + 60), null, "other bytes, other signature");
+  assert.equal(verifyLogo(auth, PNG_BYTES, "test", 1_800_000_000 + LOGO_AUTH_WINDOW_S + 1), null, "too old");
+  assert.equal(verifyLogo({ ...auth, pubkey: "02" + "ab".repeat(32) }, PNG_BYTES, "test", 1_800_000_000), null, "another key did not sign this");
+  assert.equal(verifyLogo(undefined, PNG_BYTES, "test"), null);
+  assert.equal(verifyLogo({ ...auth, signature: "zz" }, PNG_BYTES, "test", 1_800_000_000), null);
+  assert.notEqual(verifyLogo(auth, PNG_BYTES, "main", 1_800_000_000), me, "the same key has another address on mainnet");
+});
+
+test("an extension wallet signs the same text the Litecoin way, for any of its address kinds", () => {
+  const secret = "22".repeat(32);
+  const pub = secp256k1.getPublicKey(hexToBytes(secret), true);
+  const { ts, text } = logoMessageFor(PNG_BYTES, 1_800_000_000);
+  for (const address of addressesOfPubkey(pub, "test")) {
+    const auth = { ts, address, signedMessage: signMessage(secret, text) };
+    assert.equal(verifyLogo(auth, PNG_BYTES, "test", ts + 30), address, `${address.slice(0, 6)}… vouches`);
+    assert.equal(verifyLogo(auth, Buffer.from([...PNG_BYTES, 9]), "test", ts + 30), null, "other bytes");
+    assert.equal(verifyLogo({ ...auth, ts: ts + 1 }, PNG_BYTES, "test", ts + 30), null, "other time, other text");
+  }
+  const [wpkh, tr] = addressesOfPubkey(pub, "test");
+  const other = walletFromSecret("33".repeat(32), "test").address;
+  assert.equal(verifyLogo({ ts, address: other, signedMessage: signMessage(secret, text) }, PNG_BYTES, "test", ts), null, "not that address's key");
+  assert.equal(verifyLogo({ ts, address: tr, signedMessage: signMessage(secret, text, "Bitcoin Signed Message:\n") }, PNG_BYTES, "test", ts), tr, "Bitcoin's magic is accepted too");
+  assert.equal(verifyLogo({ ts, address: wpkh, signedMessage: "not base64!" }, PNG_BYTES, "test", ts), null);
+  assert.equal(verifyLogo({ ts, address: "ltc1qbad", signedMessage: signMessage(secret, text) }, PNG_BYTES, "test", ts), null, "not an address of this network");
 });
 
 test("pins through Pinata as a CIDv0 and hands back the ipfs:// URI", async () => {

@@ -4,7 +4,11 @@ import assert from "node:assert/strict";
 import { sha256 } from "@noble/hashes/sha2";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils";
 import { memo } from "./ledger.ts";
-import { CARRY_LIT, DUST_LIT, addressOfPubkey, addressOfScript, buildTx, evmAddressOfPubkey, evmAddressOfSecret, isAddress, isSecret, opReturnPayload, parseTx, secretFromWif, walletFromSecret, type Utxo } from "./tx.ts";
+import * as btc from "@scure/btc-signer";
+import { hex } from "@scure/base";
+import { secp256k1 } from "@noble/curves/secp256k1";
+import { NETWORKS } from "./address.ts";
+import { CARRY_LIT, DUST_LIT, addressOfPubkey, addressOfScript, buildTx, buildUnsigned, evmAddressOfPubkey, evmAddressOfSecret, finishSigned, inputKindOf, isAddress, isSecret, opReturnPayload, parseTx, secretFromWif, walletFromSecret, type Utxo } from "./tx.ts";
 import { eventFromTx, pendingFromTx, senderPubkey, type EsploraTx } from "./esplora.ts";
 
 const secret = bytesToHex(sha256(utf8ToBytes("notus-litecoin-test-user")));
@@ -175,4 +179,72 @@ test("buildTx: forced coins go in first and RBF is signalled when asked", () => 
   assert.ok(/fdffffff/.test(raw), "sequence 0xfffffffd appears in the serialisation");
   const plain = buildTx({ network: "test", secret, utxos: [utxo(8, 5_000_000n)], payments: [{ address: desk.address, lit: 100_000n }], feeRate: 10n });
   assert.ok(!/fdffffff/.test(plain.hex), "not signalled by default");
+});
+
+// An extension wallet, stood in for by @scure/btc-signer: it gets the PSBT,
+// signs the inputs that are its own, finalizes them and hands it back.
+function extensionSigns(psbtHex: string, priv: Uint8Array): string {
+  const tx = btc.Transaction.fromPSBT(hex.decode(psbtHex), { allowUnknownOutputs: true });
+  tx.sign(priv);
+  tx.finalize();
+  return hex.encode(tx.toPSBT());
+}
+
+test("buildUnsigned: the same transaction as a PSBT, for native segwit, taproot and wrapped segwit keys alike", () => {
+  const extSecret = bytesToHex(sha256(utf8ToBytes("notus-litecoin-test-extension")));
+  const priv = hex.decode(extSecret);
+  const pub = secp256k1.getPublicKey(priv, true);
+  const pubkey = hex.encode(pub);
+  const net = NETWORKS.test;
+  const addresses = {
+    wpkh: btc.p2wpkh(pub, net).address!,
+    tr: btc.p2tr(pub.slice(1), undefined, net).address!,
+    "sh-wpkh": btc.p2sh(btc.p2wpkh(pub, net), net).address!,
+  };
+  const m = memo.buy("CAT", 123_456_789n);
+  for (const [kind, address] of Object.entries(addresses)) {
+    assert.equal(inputKindOf(address, pubkey, "test"), kind);
+    const unsigned = buildUnsigned({ network: "test", address, pubkey, utxos: [utxo(1, 1_000_000n), utxo(2, 300_000n)], payments: [{ address: desk.address, lit: 100_000n }], memo: m, feeRate: 10n });
+    assert.deepEqual(unsigned.toSign, [{ index: 0, address }], `${kind}: one input, theirs`);
+    assert.deepEqual(unsigned.outputs.map((o) => o.address), [desk.address, null, address]);
+    assert.equal(1_000_000n - 100_000n - unsigned.change, unsigned.fee, "inputs = outputs + fee");
+    const signed = extensionSigns(unsigned.psbt, priv);
+    const done = finishSigned(signed, unsigned, "test");
+    const parsed = parseTx(done.hex, "test");
+    assert.equal(parsed.txid, done.txid);
+    assert.deepEqual(parsed.outputs.map((o) => [o.address, o.lit, o.memo]), [[desk.address, 100_000n, null], [null, 0n, m], [address, unsigned.change, null]]);
+    // the fee measured on the look-alike is the fee of the real thing, give or take a byte of signature
+    const realVsize = btc.Transaction.fromRaw(hex.decode(done.hex), { allowUnknownOutputs: true, allowUnknownInputs: true, disableScriptCheck: true }).vsize;
+    assert.ok(Math.abs(realVsize - unsigned.vsize) <= 2, `${kind}: measured ${unsigned.vsize} vB, signed ${realVsize} vB`);
+    assert.ok(unsigned.fee >= BigInt(realVsize - 2) * 10n, `${kind}: fee ${unsigned.fee} covers ${realVsize} vB at 10 lit/vB`);
+  }
+  // the key's legacy address is not offered (its inputs would need whole previous transactions)
+  assert.equal(inputKindOf(btc.p2pkh(pub, net).address!, pubkey, "test"), null);
+  assert.throws(() => buildUnsigned({ network: "test", address: btc.p2pkh(pub, net).address!, pubkey, utxos: [utxo(1, 1_000_000n)], payments: [{ address: desk.address, lit: 100_000n }], feeRate: 10n }), /Native Segwit or Taproot/);
+  assert.equal(inputKindOf(addresses.wpkh, hex.encode(secp256k1.getPublicKey(hex.decode(secret), true)), "test"), null, "another key's address");
+});
+
+test("finishSigned: a wallet that returns anything but the transaction it was handed is refused", () => {
+  const extSecret = bytesToHex(sha256(utf8ToBytes("notus-litecoin-test-extension")));
+  const priv = hex.decode(extSecret);
+  const pub = secp256k1.getPublicKey(priv, true);
+  const address = btc.p2wpkh(pub, NETWORKS.test).address!;
+  const unsigned = buildUnsigned({ network: "test", address, pubkey: hex.encode(pub), utxos: [utxo(1, 1_000_000n)], payments: [{ address: desk.address, lit: 100_000n }], memo: memo.sell("CAT", 5n, 1n), feeRate: 10n });
+  // more to the desk than agreed, taken from the change
+  let tx = btc.Transaction.fromPSBT(hex.decode(unsigned.psbt), { allowUnknownOutputs: true });
+  tx.updateOutput(0, { amount: 150_000n });
+  tx.updateOutput(2, { amount: unsigned.change - 50_000n });
+  tx.sign(priv);
+  tx.finalize();
+  assert.throws(() => finishSigned(hex.encode(tx.toPSBT()), unsigned, "test"), /different transaction/);
+  // another instruction in the memo
+  tx = btc.Transaction.fromPSBT(hex.decode(unsigned.psbt), { allowUnknownOutputs: true });
+  tx.updateOutput(1, { script: btc.Script.encode(["RETURN", utf8ToBytes(memo.sell("CAT", 500n, 1n))]) });
+  tx.sign(priv);
+  tx.finalize();
+  assert.throws(() => finishSigned(hex.encode(tx.toPSBT()), unsigned, "test"), /different transaction/);
+  // an unsigned PSBT back cannot be finalized
+  assert.throws(() => finishSigned(unsigned.psbt, unsigned, "test"));
+  // the honest case still passes
+  assert.ok(finishSigned(extensionSigns(unsigned.psbt, priv), unsigned, "test").txid);
 });

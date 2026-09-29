@@ -9,10 +9,11 @@ import { FundPanel, NeedsLtcWallet } from "@/components/litecoin/Wallet";
 import { SendPanel } from "@/components/litecoin/SendPanel";
 import { Copyable } from "@/components/litecoin/Copyable";
 import { FrozenNotice } from "@/components/litecoin/FrozenNotice";
+import { EXTENSION_NAME } from "@/lib/litecoin/extension";
 
 export default function LitecoinWallet() {
   const { data: state } = useLitecoinState();
-  const { ready, secret, wallet, address, forget } = useLtcWallet();
+  const { ready, kind, secret, wallet, address, hasBrowserWallet, forget, disconnectExtension } = useLtcWallet();
   const { balance } = useUtxos(address);
   const [reveal, setReveal] = useState(false);
   const [claiming, setClaiming] = useState(false);
@@ -21,7 +22,7 @@ export default function LitecoinWallet() {
   const [fund, setFund] = useState("");
 
   if (!ready) return null;
-  if (!address || !secret || !wallet) {
+  if (!address) {
     return (
       <div className="max-w-md mx-auto space-y-4">
         <h1 className="display text-4xl text-white text-center">Wallet</h1>
@@ -169,33 +170,46 @@ export default function LitecoinWallet() {
         </section>
       )}
 
-      <section className="card p-5 space-y-3">
-        <Label>Key — back it up; it cannot be recovered or reset</Label>
-        {reveal ? (
-          <>
-            <Label>Secret (paste on another device to restore)</Label>
-            <Copyable value={secret} />
-            <Label>WIF (import into Electrum-LTC as p2wpkh:…)</Label>
-            <Copyable value={`p2wpkh:${wallet.wif}`} />
-            <Label>The same key on LitVM (EVM) — where these coins land if the ledger migrates</Label>
-            <Copyable value={evmAddressOfSecret(secret)} />
-            <p className="text-[11px] text-zinc-600">
-              Litecoin and EVM chains share the same curve: import the secret above into MetaMask as a private key and this is your address there.
-            </p>
-          </>
-        ) : (
-          <button type="button" onClick={() => setReveal(true)} className="rounded-full border border-white/15 px-4 py-1.5 text-xs text-zinc-300 hover:border-white">
-            Reveal secret
+      {kind === "hot" && secret && wallet ? (
+        <section className="card p-5 space-y-3">
+          <Label>Key — back it up; it cannot be recovered or reset</Label>
+          {reveal ? (
+            <>
+              <Label>Secret (paste on another device to restore)</Label>
+              <Copyable value={secret} />
+              <Label>WIF (import into Electrum-LTC as p2wpkh:…)</Label>
+              <Copyable value={`p2wpkh:${wallet.wif}`} />
+              <Label>The same key on LitVM (EVM) — where these coins land if the ledger migrates</Label>
+              <Copyable value={evmAddressOfSecret(secret)} />
+              <p className="text-[11px] text-zinc-600">
+                Litecoin and EVM chains share the same curve: import the secret above into MetaMask as a private key and this is your address there.
+              </p>
+            </>
+          ) : (
+            <button type="button" onClick={() => setReveal(true)} className="rounded-full border border-white/15 px-4 py-1.5 text-xs text-zinc-300 hover:border-white">
+              Reveal secret
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => confirm("Remove this wallet from this browser? Without a backup of the secret its LTC and coins are lost for good.") && forget()}
+            className="block text-xs text-zinc-600 underline"
+          >
+            Remove from this browser
           </button>
-        )}
-        <button
-          type="button"
-          onClick={() => confirm("Remove this wallet from this browser? Without a backup of the secret its LTC and coins are lost for good.") && forget()}
-          className="block text-xs text-zinc-600 underline"
-        >
-          Remove from this browser
-        </button>
-      </section>
+        </section>
+      ) : (
+        <section className="card p-5 space-y-3">
+          <Label>Connected with {EXTENSION_NAME} — its keys stay in the extension</Label>
+          <p className="text-xs text-zinc-500">
+            Every transaction here is built by the site and handed to {EXTENSION_NAME} to sign; the site never sees a key. Sells and
+            claims are paid to this address.{hasBrowserWallet && ` Disconnecting brings back the wallet this browser keeps.`}
+          </p>
+          <button type="button" onClick={disconnectExtension} className="block text-xs text-zinc-400 underline">
+            Disconnect {EXTENSION_NAME}
+          </button>
+        </section>
+      )}
     </div>
   );
 }
