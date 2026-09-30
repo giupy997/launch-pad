@@ -6,6 +6,7 @@ import { useTokens, useAppChain, isQuoteAsset } from "@/lib/hooks";
 import { CHAIN_LABEL, QUOTE_ASSETS } from "@/lib/config";
 import { TokenCard } from "@/components/TokenCard";
 import { NotDeployedNotice } from "@/components/NotDeployedNotice";
+import { MigrationNotice } from "@/components/MigrationNotice";
 
 type Sort = "newest" | "raised" | "progress";
 
@@ -41,6 +42,7 @@ export default function Explore() {
   return (
     <div className="space-y-10">
       <NotDeployedNotice />
+      <MigrationNotice />
       <section className="relative overflow-hidden rounded-3xl border border-white/10 px-6 py-14 sm:px-12 sm:py-20 card">
         {/* the light through the open head; black dissolves into the card */}
         <div

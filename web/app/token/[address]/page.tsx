@@ -27,6 +27,7 @@ import { safeLink } from "@/lib/sanitize";
 import { LiveStream } from "@/components/LiveStream";
 import { CreatorPanel } from "@/components/CreatorPanel";
 import { CashbackCard } from "@/components/CashbackCard";
+import { MigrationNotice } from "@/components/MigrationNotice";
 import { useAccount } from "wagmi";
 
 export default function TokenPage({ params }: { params: Promise<{ address: string }> }) {
@@ -106,6 +107,7 @@ export default function TokenPage({ params }: { params: Promise<{ address: strin
   return (
     <div className="grid gap-8 lg:grid-cols-[1fr_360px]">
       <div className="space-y-6 order-2 lg:order-1">
+        <MigrationNotice token={token} symbol={symbol} compact />
         <div className="flex items-start gap-4">
           <TokenLogo uri={meta.logoURI} symbol={symbol} size={72} />
           <div>

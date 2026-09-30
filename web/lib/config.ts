@@ -69,6 +69,11 @@ export const DEFAULT_CHAIN = base;
  *  brand stays out of the way. */
 export const CHAIN_LABEL: Record<number, string> = { [base.id]: "cbLTC" };
 
+/** Seconds a block takes, to turn a freeze block into a time. */
+export const BLOCK_SECONDS: Record<number, number> = { [base.id]: 2, [litvmTestnet.id]: 1 };
+/** Where a chain's coins go when the pad freezes for its migration (v8 pads). */
+export const MIGRATION_TARGET: Record<number, string> = { [base.id]: "LitVM mainnet" };
+
 // One address per chain: add future deployments here (multichain).
 export const LAUNCHPAD_ADDRESS: Record<number, `0x${string}` | undefined> = {
   [base.id]: "0x2cF3e6281dddD13f4351781c584C3585e08d9580", // v7.7 quoted in cbLTC; UniV2Migrator 0xcdF15b651650e53547006207404051c0c24b6725 → Uniswap v2 pools; ZapRouter below
