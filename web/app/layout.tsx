@@ -45,13 +45,13 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = { themeColor: "#07080b", colorScheme: "dark" };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   // a malformed wagmi cookie (any subdomain can set one) must not 500 every page
   let initialState: ReturnType<typeof cookieToInitialState>;
   try {
-    initialState = cookieToInitialState(config, headers().get("cookie"));
+    initialState = cookieToInitialState(config, (await headers()).get("cookie"));
   } catch {
     initialState = undefined;
   }

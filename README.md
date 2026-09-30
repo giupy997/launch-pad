@@ -66,7 +66,7 @@ Sepolia, Robinhood Chain); those integrations stay in the repository.
   owned by the paying address, every transaction signed by an in-browser
   Litecoin wallet or by a Litecoin browser extension (Litescribe, Enkrypt).
   See [litecoin/README.md](litecoin/README.md)
-- `web/` — Next.js 14 + wagmi v2 + viem frontend
+- `web/` — Next.js 16 + React 19 + wagmi v2 + viem frontend
   - `/` Explore: on-chain token list (multicall, 5s refresh) with search
     and sorting
   - `/create`: token creation with logo (1:1) and social links, a searchable

@@ -35,6 +35,8 @@ export function SendPanel({
   const [sent, setSent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const pubkey = ext?.pubkey ?? null;
+  // payments is rebuilt every render: compare it by value
+  const paymentsKey = JSON.stringify(payments, (_, v) => (typeof v === "bigint" ? v.toString() : v));
 
   const built = useMemo<{ tx?: BuiltTx; unsigned?: UnsignedTx; problem?: string }>(() => {
     if (!feeRate || !address) return {};
@@ -45,8 +47,8 @@ export function SendPanel({
     } catch (e) {
       return { problem: (e as Error).message };
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- payments is rebuilt every render; compare by value
-  }, [kind, secret, address, pubkey, feeRate, utxos, memo, JSON.stringify(payments, (_, v) => (typeof v === "bigint" ? v.toString() : v))]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- payments enters through paymentsKey
+  }, [kind, secret, address, pubkey, feeRate, utxos, memo, paymentsKey]);
 
   if (ready && !address) return <NeedsLtcWallet />;
   if (!address) return null;

@@ -5,11 +5,11 @@ import { spotPrice } from "@/lib/litecoin/ledger";
 import { tickerFromParam } from "@/lib/litecoin/ledger";
 import { CoinPage } from "./CoinPage";
 
-type Props = { params: { ticker: string } };
+type Props = { params: Promise<{ ticker: string }> };
 
 /** Link previews (Telegram, X, Discord) get the coin's name, cap and logo card. */
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const ticker = tickerFromParam(params.ticker);
+  const ticker = tickerFromParam((await params).ticker);
   if (!ticker) return { title: "Not found" };
   const found = await readCoin(ticker);
   if (!found) {
@@ -28,7 +28,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-export default function Page({ params }: Props) {
-  if (!tickerFromParam(params.ticker)) notFound();
-  return <CoinPage params={params} />;
+export default async function Page({ params }: Props) {
+  const { ticker } = await params;
+  if (!tickerFromParam(ticker)) notFound();
+  return <CoinPage params={{ ticker }} />;
 }

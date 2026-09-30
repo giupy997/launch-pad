@@ -1,5 +1,7 @@
 "use client";
 
+import { use } from "react";
+
 import { useReadContracts } from "wagmi";
 import { launchpadAbi, launchTokenAbi } from "@/lib/abi";
 import {
@@ -27,8 +29,9 @@ import { CreatorPanel } from "@/components/CreatorPanel";
 import { CashbackCard } from "@/components/CashbackCard";
 import { useAccount } from "wagmi";
 
-export default function TokenPage({ params }: { params: { address: string } }) {
-  const token = params.address as `0x${string}`;
+export default function TokenPage({ params }: { params: Promise<{ address: string }> }) {
+  const { address: addressParam } = use(params);
+  const token = addressParam as `0x${string}`;
   const { address: user } = useAccount();
   const { data: tradeData } = useTrades(token);
   const pad = useLaunchpadAddress() ?? ("0x0000000000000000000000000000000000000000" as `0x${string}`);

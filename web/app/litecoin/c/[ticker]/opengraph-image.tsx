@@ -29,8 +29,8 @@ async function readOwnLogo(id: string): Promise<string | null> {
   }
 }
 
-export default async function Image({ params }: { params: { ticker: string } }) {
-  const ticker = tickerFromParam(params.ticker);
+export default async function Image({ params }: { params: Promise<{ ticker: string }> }) {
+  const ticker = tickerFromParam((await params).ticker);
   if (!ticker) return new Response("not found", { status: 404 });
   const [found, regular, bold] = await Promise.all([
     readCoin(ticker),
@@ -54,7 +54,6 @@ export default async function Image({ params }: { params: { ticker: string } }) 
     (
       <div style={{ width: "100%", height: "100%", display: "flex", background: "#07080b", color: "#f4f4f5", position: "relative", fontFamily: "Geist" }}>
         {/* the light through the open head, faint behind the coin (the renderer has no CSS masks: gradients sit on top) */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={`${SITE_URL}/art/og-beam.jpg`}
           alt=""
@@ -67,13 +66,11 @@ export default async function Image({ params }: { params: { ticker: string } }) 
         <div style={{ position: "absolute", inset: 0, background: "radial-gradient(60% 50% at 30% 0%, rgba(255,255,255,0.1), transparent 70%)" }} />
         <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", padding: 64, width: "100%", height: "100%" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={`${SITE_URL}/art/wordmark.png`} alt="Notus" width={133} height={24} style={{ width: 133, height: 24 }} />
             <span style={{ fontSize: 22, letterSpacing: 4, color: "#6b7383" }}>ON LITECOIN</span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 36 }}>
             {logo ? (
-              // eslint-disable-next-line @next/next/no-img-element
               <img src={logo} alt="" width={168} height={168} style={{ width: 168, height: 168, borderRadius: 32, objectFit: "cover", border: "1px solid rgba(255,255,255,0.2)" }} />
             ) : (
               <div style={{ width: 168, height: 168, borderRadius: 32, border: "1px solid rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 84, color: "#8b93a3" }}>

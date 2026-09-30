@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, use } from "react";
 import { CURVE_SUPPLY, memo, quoteBuy, quoteSell, spotPrice } from "@/lib/zcash/ledger";
 import {
   DUST_ZAT, ZCASH_NETWORK, fmtCoins, fmtPrice, fmtZec, parseZec, shortKey,
@@ -11,8 +11,9 @@ import { NeedsHolderKey } from "@/components/zcash/HolderKey";
 import { TokenLogo } from "@/components/TokenLogo";
 import { PriceChart } from "@/components/PriceChart";
 
-export default function ZcashCoinPage({ params }: { params: { ticker: string } }) {
-  const ticker = decodeURIComponent(params.ticker).toUpperCase();
+export default function ZcashCoinPage({ params }: { params: Promise<{ ticker: string }> }) {
+  const { ticker: tickerParam } = use(params);
+  const ticker = decodeURIComponent(tickerParam).toUpperCase();
   const { data: state, isLoading } = useZcashState();
   const coin = state?.coins.find((c) => c.ticker === ticker);
 

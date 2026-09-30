@@ -1,15 +1,18 @@
 "use client";
 
+import { useNow } from "@/lib/useNow";
+
 import { useState } from "react";
 import { fmtZec, shortKey, useZcashState } from "@/lib/zcash/client";
 import { CLONE_LINE } from "@/lib/site";
 
 export default function ZcashLedger() {
   const { data: state } = useZcashState();
+  const now = useNow();
   if (!state) return <p className="text-zinc-500">The ledger snapshot is not published yet.</p>;
 
   const due = state.payouts.filter((p) => !p.paidTxid);
-  const age = Math.max(0, Math.floor(Date.now() / 1000) - state.updatedAt);
+  const age = Math.max(0, now - state.updatedAt);
 
   return (
     <div className="max-w-3xl mx-auto space-y-8">

@@ -14,7 +14,6 @@ export default async function Image() {
     (
       <div style={{ width: "100%", height: "100%", display: "flex", background: "#07080b", color: "#f4f4f5", position: "relative", fontFamily: "Geist" }}>
         {/* the profile under its crown, looking at the words (the renderer has no CSS masks: gradients sit on top) */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={`${SITE_URL}/art/og-profile.jpg`}
           alt=""
@@ -27,7 +26,6 @@ export default async function Image() {
         <div style={{ position: "absolute", inset: 0, background: "radial-gradient(60% 50% at 30% 0%, rgba(255,255,255,0.1), transparent 70%)" }} />
         <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", padding: 64, width: "100%", height: "100%" }}>
           <div style={{ display: "flex", alignItems: "center" }}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={`${SITE_URL}/art/wordmark.png`} alt="Notus" width={155} height={28} style={{ width: 155, height: 28 }} />
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
