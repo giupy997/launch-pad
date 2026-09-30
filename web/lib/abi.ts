@@ -133,6 +133,19 @@ export const launchpadAbi = [
   },
   {
     "type": "function",
+    "name": "announceFreeze",
+    "inputs": [
+      {
+        "name": "atBlock",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "authorizePoolFeeHook",
     "inputs": [
       {
@@ -228,6 +241,13 @@ export const launchpadAbi = [
   },
   {
     "type": "function",
+    "name": "cancelFreeze",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "cashbackDebt",
     "inputs": [
       {
@@ -297,6 +317,13 @@ export const launchpadAbi = [
         "internalType": "address"
       }
     ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "closeMigration",
+    "inputs": [],
     "outputs": [],
     "stateMutability": "nonpayable"
   },
@@ -637,6 +664,70 @@ export const launchpadAbi = [
   },
   {
     "type": "function",
+    "name": "freezeBlock",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "frozen",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "frozenFor",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "graduatedVia",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract IDexMigrator"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "holderCashbackBps",
     "inputs": [],
     "outputs": [
@@ -679,6 +770,300 @@ export const launchpadAbi = [
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "migrateBalances",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "holders",
+        "type": "address[]",
+        "internalType": "address[]"
+      },
+      {
+        "name": "balances",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "migrateOut",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "to",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "quoteOut",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "tokensBurned",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "migrateToken",
+    "inputs": [
+      {
+        "name": "coin",
+        "type": "tuple",
+        "internalType": "struct Launchpad.LedgerCoin",
+        "components": [
+          {
+            "name": "name",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "symbol",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "meta",
+            "type": "tuple",
+            "internalType": "struct Launchpad.TokenMetadata",
+            "components": [
+              {
+                "name": "logoURI",
+                "type": "string",
+                "internalType": "string"
+              },
+              {
+                "name": "website",
+                "type": "string",
+                "internalType": "string"
+              },
+              {
+                "name": "twitter",
+                "type": "string",
+                "internalType": "string"
+              },
+              {
+                "name": "telegram",
+                "type": "string",
+                "internalType": "string"
+              },
+              {
+                "name": "livestream",
+                "type": "string",
+                "internalType": "string"
+              },
+              {
+                "name": "description",
+                "type": "string",
+                "internalType": "string"
+              }
+            ]
+          },
+          {
+            "name": "creator",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "feesToHolders",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "virtualQuote",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "sold",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "poolToken",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ]
+      },
+      {
+        "name": "holders",
+        "type": "address[]",
+        "internalType": "address[]"
+      },
+      {
+        "name": "balances",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "payable"
+  },
+  {
+    "type": "function",
+    "name": "migratedOut",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "migratedPoolTokens",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "migratedTicker",
+    "inputs": [
+      {
+        "name": "symbolHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "migrationClosed",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "migrationDelivered",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "holder",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "migrationFreezeHeight",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "migrationPending",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "migrationRoot",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -914,6 +1299,24 @@ export const launchpadAbi = [
   },
   {
     "type": "function",
+    "name": "setMigrationRoot",
+    "inputs": [
+      {
+        "name": "root",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "freezeHeight",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "setMigrator",
     "inputs": [
       {
@@ -989,6 +1392,19 @@ export const launchpadAbi = [
   },
   {
     "type": "function",
+    "name": "tokenFactory",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract LaunchTokenFactory"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "tokenMetadata",
     "inputs": [
       {
@@ -1047,6 +1463,19 @@ export const launchpadAbi = [
   {
     "type": "function",
     "name": "treasury",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "unlocking",
     "inputs": [],
     "outputs": [
       {
@@ -1267,6 +1696,25 @@ export const launchpadAbi = [
   },
   {
     "type": "event",
+    "name": "FreezeAnnounced",
+    "inputs": [
+      {
+        "name": "freezeBlock",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "FreezeCancelled",
+    "inputs": [],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "Graduated",
     "inputs": [
       {
@@ -1345,6 +1793,87 @@ export const launchpadAbi = [
       },
       {
         "name": "ethAmount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "MigratedOut",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "to",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "quoteAmount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "tokensBurned",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "MigrationBalances",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "holders",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "pending",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "MigrationClosed",
+    "inputs": [],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "MigrationRootSet",
+    "inputs": [
+      {
+        "name": "root",
+        "type": "bytes32",
+        "indexed": false,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "freezeHeight",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
@@ -1511,6 +2040,43 @@ export const launchpadAbi = [
   },
   {
     "type": "event",
+    "name": "TokenMigrated",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "creator",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "virtualQuote",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "realQuote",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "sold",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "TreasuryUpdated",
     "inputs": [
       {
@@ -1524,7 +2090,33 @@ export const launchpadAbi = [
   },
   {
     "type": "error",
+    "name": "AlreadyDelivered",
+    "inputs": [
+      {
+        "name": "holder",
+        "type": "address",
+        "internalType": "address"
+      }
+    ]
+  },
+  {
+    "type": "error",
     "name": "AlreadyGraduated",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "AlreadyMigratedOut",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "BadFreeze",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "BadMigration",
     "inputs": []
   },
   {
@@ -1539,12 +2131,32 @@ export const launchpadAbi = [
   },
   {
     "type": "error",
+    "name": "Frozen",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "MigrationNotOpen",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "MigrationPending",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "MigratorNotSet",
     "inputs": []
   },
   {
     "type": "error",
     "name": "NotCreator",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NotFrozen",
     "inputs": []
   },
   {
@@ -1607,12 +2219,22 @@ export const launchpadAbi = [
   },
   {
     "type": "error",
+    "name": "TickerMigrated",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "UnknownToken",
     "inputs": []
   },
   {
     "type": "error",
     "name": "WrongPayment",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "WrongQuote",
     "inputs": []
   },
   {
@@ -1645,6 +2267,11 @@ export const launchTokenAbi = [
         "name": "transferable_",
         "type": "bool",
         "internalType": "bool"
+      },
+      {
+        "name": "launchpad_",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "stateMutability": "nonpayable"
@@ -1715,6 +2342,19 @@ export const launchTokenAbi = [
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "burn",
+    "inputs": [
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
@@ -2002,6 +2642,11 @@ export const launchTokenAbi = [
         "internalType": "address"
       }
     ]
+  },
+  {
+    "type": "error",
+    "name": "Frozen",
+    "inputs": []
   },
   {
     "type": "error",

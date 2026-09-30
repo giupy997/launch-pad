@@ -25,3 +25,7 @@ litecoin/desk-*/
 litecoin/user/
 litecoin/user-*/
 litecoin/cache/
+
+# local migration rehearsals (contracts/script/rehearse-local.sh)
+litecoin/migration/anvil-*
+litecoin/migration/rehearsal-*

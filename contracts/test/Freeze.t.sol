@@ -2,25 +2,12 @@
 pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
-import {ERC20} from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {Launchpad} from "../src/Launchpad.sol";
 import {LaunchToken} from "../src/LaunchToken.sol";
 import {UniV2Migrator} from "../src/UniV2Migrator.sol";
 import {MockWETH9, MockV2Factory, MockV2Router, MockV2Pair} from "./mocks/UniV2Mock.sol";
-
-/// cbLTC as the tests see it: an eight-decimal ERC-20.
-contract MockCbLTC is ERC20 {
-    constructor() ERC20("Coinbase Wrapped LTC", "cbLTC") {}
-
-    function decimals() public pure override returns (uint8) {
-        return 8;
-    }
-
-    function mint(address to, uint256 amount) external {
-        _mint(to, amount);
-    }
-}
+import {MockCbLTC} from "./mocks/MockCbLTC.sol";
 
 /// The migration to another chain, from this side: the freeze that makes the
 /// snapshot final, and migrateOut, which takes each coin's quote to the bridge.
