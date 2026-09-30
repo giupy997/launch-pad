@@ -74,19 +74,26 @@ contract ZapRouter is ReentrancyGuard {
 
         weth.deposit{value: msg.value}();
         IERC20(address(weth)).forceApprove(address(swapRouter), msg.value);
-        uint256 quoteOut = swapRouter.exactInput(
-            ISwapRouter02.ExactInputParams({
-                path: path,
-                recipient: address(this),
-                amountIn: msg.value,
-                amountOutMinimum: minQuoteOut
-            })
-        );
+        uint256 quoteOut = _swap(path, msg.value, minQuoteOut);
 
         IERC20(quote).forceApprove(launchpad, quoteOut);
         ILaunchpadZap(launchpad).buyWithQuoteFor(token, quoteOut, minTokensOut, msg.sender);
 
         emit ZappedBuy(token, msg.sender, msg.value, quoteOut);
+    }
+
+    /// The DEX leg: `amountIn` of WETH along `path`, at least `minOut` of the
+    /// path's last token, to this contract. SwapRouter02's shape here; a
+    /// router of another shape overrides it (SlipstreamZapRouter).
+    function _swap(bytes calldata path, uint256 amountIn, uint256 minOut) internal virtual returns (uint256) {
+        return swapRouter.exactInput(
+            ISwapRouter02.ExactInputParams({
+                path: path,
+                recipient: address(this),
+                amountIn: amountIn,
+                amountOutMinimum: minOut
+            })
+        );
     }
 
     /// @notice One-transaction ETH buy on a PRE-MARKET-quoted curve: buys the
