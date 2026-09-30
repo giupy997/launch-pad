@@ -1,16 +1,69 @@
+// Where the pages may reach out to, and nowhere else. The wallet key lives
+// in the browser's storage: a script that got in (a dependency gone bad)
+// must find no way to send it anywhere. Connections go to this origin, the
+// chains' RPCs and WalletConnect's relay and services; images come from
+// this origin (other hosts' logos through /api/img) and WalletConnect's
+// wallet icons; only WalletConnect's verify and secure frames may be
+// embedded. Scripts are this origin's: Next.js needs its inline ones, and
+// in development the tooling needs eval.
+const RPC_HOSTS = [
+  "https://liteforge.rpc.caldera.xyz", // LitVM Liteforge
+  "https://sepolia-rpc.giwa.io", // GIWA Sepolia
+  "https://rpc.mainnet.chain.robinhood.com", // Robinhood Chain
+  "https://11155111.rpc.thirdweb.com", // Sepolia (viem's default)
+  "https://ethereum.reth.rs", // Ethereum (viem's default)
+];
+const WALLETCONNECT_CONNECT = [
+  "wss://relay.walletconnect.org",
+  "wss://relay.walletconnect.com",
+  "https://rpc.walletconnect.org",
+  "https://rpc.walletconnect.com",
+  "https://pulse.walletconnect.org",
+  "https://api.web3modal.org",
+  "https://echo.walletconnect.com",
+  "https://explorer-api.walletconnect.com",
+  "https://verify.walletconnect.org",
+  "https://verify.walletconnect.com",
+];
+const WALLETCONNECT_IMAGES = ["https://api.web3modal.org", "https://explorer-api.walletconnect.com", "https://imagedelivery.net"];
+const WALLETCONNECT_FRAMES = [
+  "https://verify.walletconnect.org",
+  "https://verify.walletconnect.com",
+  "https://secure.walletconnect.org",
+  "https://secure-mobile.walletconnect.org",
+  "https://secure-mobile.walletconnect.com",
+];
+const dev = process.env.NODE_ENV === "development";
+const CSP = [
+  "default-src 'self'",
+  `script-src 'self' 'unsafe-inline'${dev ? " 'unsafe-eval'" : ""}`,
+  // WalletConnect's modal dresses itself in Inter from Google Fonts
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  `img-src 'self' data: blob: ${WALLETCONNECT_IMAGES.join(" ")}`,
+  "font-src 'self' data: https://fonts.gstatic.com",
+  "media-src 'self'",
+  `connect-src 'self' ${[...RPC_HOSTS, ...WALLETCONNECT_CONNECT].join(" ")}${dev ? " ws://localhost:* http://localhost:*" : ""}`,
+  `frame-src ${WALLETCONNECT_FRAMES.join(" ")}`,
+  "worker-src 'self' blob:",
+  "manifest-src 'self'",
+  "form-action 'self'",
+  "base-uri 'self'",
+  "object-src 'none'",
+  "frame-ancestors 'none'",
+  ...(dev ? [] : ["upgrade-insecure-requests"]),
+].join("; ");
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   poweredByHeader: false,
   // The usual hardening headers; the site frames nothing and needs no
-  // camera, microphone, location or payment API. The policy stops at
-  // framing, plugins and <base>: scripts and connections are left alone
-  // until the wallet flows (WalletConnect, AppKit) are mapped out.
+  // camera, microphone, location or payment API.
   async headers() {
     return [
       {
         source: "/(.*)",
         headers: [
-          { key: "Content-Security-Policy", value: "frame-ancestors 'none'; object-src 'none'; base-uri 'self'" },
+          { key: "Content-Security-Policy", value: CSP },
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "X-Frame-Options", value: "DENY" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },

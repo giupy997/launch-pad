@@ -2,7 +2,7 @@
 //   node --test --experimental-strip-types lib/sanitize.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { safeLink, safeLogo } from "./sanitize.ts";
+import { logoOrigin, safeLink, safeLogo } from "./sanitize.ts";
 import { siteLogoId } from "./site.ts";
 
 test("a logo the site stored is served from the current origin, whichever hostname the ledger recorded", () => {
@@ -17,8 +17,12 @@ test("a logo the site stored is served from the current origin, whichever hostna
 });
 
 test("every other logo keeps its rules", () => {
-  assert.equal(safeLogo("ipfs://QmX"), "https://ipfs.io/ipfs/QmX");
-  assert.equal(safeLogo("https://example.com/a.png"), "https://example.com/a.png");
+  assert.equal(safeLogo("ipfs://QmX"), "/api/img?u=" + encodeURIComponent("https://ipfs.io/ipfs/QmX"), "ipfs through a gateway, through the proxy");
+  assert.equal(safeLogo("https://example.com/a.png"), "/api/img?u=" + encodeURIComponent("https://example.com/a.png"), "another host, through the proxy");
+  assert.equal(safeLogo("http://example.com/a.png"), "/api/img?u=" + encodeURIComponent("https://example.com/a.png"), "http upgraded");
+  assert.equal(logoOrigin("ipfs://QmX"), "https://ipfs.io/ipfs/QmX");
+  assert.equal(logoOrigin("https://example.com/a.png"), "https://example.com/a.png");
+  assert.equal(logoOrigin("javascript:alert(1)"), null);
   assert.equal(safeLogo("data:image/png;base64,AAAA"), "data:image/png;base64,AAAA");
   assert.equal(safeLogo("javascript:alert(1)"), null);
   assert.equal(safeLogo(""), null);
