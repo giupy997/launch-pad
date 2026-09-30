@@ -29,3 +29,6 @@ litecoin/cache/
 # local migration rehearsals (contracts/script/rehearse-local.sh)
 litecoin/migration/anvil-*
 litecoin/migration/rehearsal-*
+
+# throwaway tests written by review agents
+contracts/test/_review_*
