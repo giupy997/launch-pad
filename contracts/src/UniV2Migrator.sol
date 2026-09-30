@@ -78,7 +78,6 @@ contract UniV2Migrator is IDexMigrator, IDexMigratorUnlock, ReentrancyGuard {
     error OnlyLaunchpad();
     error NothingToSeed();
     error NothingToUnlock();
-    error EthTransferFailed();
 
     constructor(address launchpad_, address router_) {
         launchpad = launchpad_;
@@ -135,25 +134,25 @@ contract UniV2Migrator is IDexMigrator, IDexMigratorUnlock, ReentrancyGuard {
     }
 
     /// @inheritdoc IDexMigratorUnlock
-    function unlock(address token, address to) external nonReentrant returns (uint256 quoteOut, uint256 tokenOut) {
+    function unlock(address token, address to)
+        external
+        nonReentrant
+        returns (uint256 quoteOut, uint256 tokenOut, address pair)
+    {
         if (msg.sender != launchpad) revert OnlyLaunchpad();
         address quote = pairAsset[token];
         uint256 lp = liquidity[token];
         if (quote == address(0) || lp == 0) revert NothingToUnlock();
         liquidity[token] = 0;
-        address pair = factory.getPair(token, quote);
+        pair = factory.getPair(token, quote);
         // our share of the pool, swap fees included: the pair pays out against the LP it is handed
         IERC20(pair).safeTransfer(pair, lp);
         (uint256 amount0, uint256 amount1) = IUniswapV2Pair(pair).burn(address(this));
         (tokenOut, quoteOut) = IUniswapV2Pair(pair).token0() == token ? (amount0, amount1) : (amount1, amount0);
         IERC20(token).safeTransfer(launchpad, tokenOut);
-        if (quote == weth) {
-            IWETH(weth).withdraw(quoteOut);
-            (bool ok,) = to.call{value: quoteOut}("");
-            if (!ok) revert EthTransferFailed();
-        } else {
-            IERC20(quote).safeTransfer(to, quoteOut);
-        }
+        // the quote as the pool holds it — WETH for a native pool: a transfer,
+        // never a call into `to` while the coin's transfers are open
+        IERC20(quote).safeTransfer(to, quoteOut);
         emit PoolUnlocked(token, pair, tokenOut, quoteOut, lp);
     }
 

@@ -3,8 +3,10 @@ pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {Math} from "openzeppelin-contracts/contracts/utils/math/Math.sol";
 import {Launchpad} from "../src/Launchpad.sol";
 import {LaunchToken} from "../src/LaunchToken.sol";
+import {LaunchTokenFactory} from "../src/LaunchTokenFactory.sol";
 import {UniV2Migrator} from "../src/UniV2Migrator.sol";
 import {MockWETH9, MockV2Factory, MockV2Router, MockV2Pair} from "./mocks/UniV2Mock.sol";
 import {MockCbLTC} from "./mocks/MockCbLTC.sol";
@@ -15,6 +17,7 @@ contract FreezeTest is Test {
     Launchpad pad;
     UniV2Migrator migrator;
     MockCbLTC quote;
+    MockWETH9 weth;
     MockV2Factory factory;
     address treasury = makeAddr("treasury");
     address alice = makeAddr("alice"); // creates both coins
@@ -30,7 +33,8 @@ contract FreezeTest is Test {
         pad = new Launchpad(treasury, address(0));
         quote = new MockCbLTC();
         pad.setQuoteAsset(address(quote), 30e8); // 30 cbLTC virtual, as on Base
-        MockWETH9 weth = new MockWETH9();
+        pad.setQuoteAsset(address(0), 0); // and cbLTC alone, as on Base
+        weth = new MockWETH9();
         factory = new MockV2Factory();
         migrator = new UniV2Migrator(address(pad), address(new MockV2Router(address(factory), address(weth))));
         pad.setMigrator(address(migrator));
@@ -65,6 +69,11 @@ contract FreezeTest is Test {
         assertTrue(pad.frozen());
     }
 
+    function _reserves(address pair, address token) internal view returns (uint256 rToken, uint256 rQuote) {
+        (uint112 r0, uint112 r1,) = MockV2Pair(pair).getReserves();
+        (rToken, rQuote) = MockV2Pair(pair).token0() == token ? (r0, r1) : (r1, r0);
+    }
+
     // ------------------------------------------------------------ the freeze
 
     function test_announcedFreezeLandsAtItsBlock() public {
@@ -93,7 +102,7 @@ contract FreezeTest is Test {
         IERC20(curveCoin).approve(address(pad), bal);
         vm.expectRevert(Launchpad.Frozen.selector);
         pad.sell(curveCoin, bal, 0);
-        vm.expectRevert(Launchpad.Frozen.selector);
+        vm.expectRevert(Launchpad.CreationClosed.selector);
         pad.createToken("Late", "LATE", 0, meta, address(quote), false);
         vm.stopPrank();
 
@@ -208,5 +217,265 @@ contract FreezeTest is Test {
         assertEq(quoteOut, reserve);
         assertEq(burned, 0);
         assertEq(_curve(parked).realEth, 0);
+    }
+
+    // ------------------------------------------------- what the pad takes in
+
+    function test_nativeQuoteIsOffOnThisPad() public {
+        vm.prank(alice);
+        vm.expectRevert(Launchpad.QuoteAssetNotEnabled.selector);
+        pad.createToken("Eth Coin", "ETHC", 0, meta, address(0), false);
+        // a pad quoted in its chain's own coin switches it on like any other quote
+        pad.setQuoteAsset(address(0), pad.VIRTUAL_ETH());
+        vm.prank(alice);
+        address coin = pad.createToken("Eth Coin", "ETHC", 0, meta, address(0), false);
+        assertEq(_curve(coin).vEth, 1.25 ether);
+    }
+
+    function test_creationClosesAtTheAnnouncement() public {
+        pad.announceFreeze(block.number + 5);
+        vm.prank(alice);
+        vm.expectRevert(Launchpad.CreationClosed.selector);
+        pad.createToken("Late", "LATE", 0, meta, address(quote), false);
+        _buy(bob, curveCoin, 1e8); // trading goes on until the block
+        pad.cancelFreeze();
+        vm.prank(alice);
+        pad.createToken("Late", "LATE", 0, meta, address(quote), false); // open again
+    }
+
+    function test_sameBlockFreezeIsImmediate() public {
+        pad.announceFreeze(block.number);
+        assertTrue(pad.frozen());
+        vm.expectRevert(Launchpad.BadFreeze.selector);
+        pad.cancelFreeze();
+    }
+
+    function test_strangerCannotUseTheFactory() public {
+        LaunchTokenFactory f = pad.tokenFactory();
+        assertEq(f.launchpad(), address(pad));
+        vm.prank(bob);
+        vm.expectRevert(LaunchTokenFactory.OnlyLaunchpad.selector);
+        f.create("Fake", "FAKE", 1e18, true);
+    }
+
+    function test_inboundMigrationStopsWithTheFreeze() public {
+        // a coin arriving from a ledger, half delivered: no freeze is announced over it
+        pad.setMigrationRoot(bytes32(uint256(1)), 1);
+        uint256 sold = 100e18;
+        uint256 quoteIn = Math.mulDiv(1.25 ether, sold, pad.VIRTUAL_TOKEN() - sold);
+        Launchpad.LedgerCoin memory coin = Launchpad.LedgerCoin("Ledger Coin", "LEDG", meta, alice, false, 1.25 ether, sold, 0);
+        address[] memory holders = new address[](1);
+        uint256[] memory balances = new uint256[](1);
+        holders[0] = bob;
+        balances[0] = sold / 2;
+        vm.deal(address(this), quoteIn);
+        address token = pad.migrateToken{value: quoteIn}(coin, holders, balances);
+        assertEq(pad.migrationPending(token), sold / 2);
+        assertEq(pad.pendingCoins(), 1);
+        vm.expectRevert(Launchpad.MigrationPending.selector);
+        pad.announceFreeze(block.number + 5);
+        // delivered whole, the freeze can come; announced, no coin arrives; landed, none is delivered
+        holders[0] = carol;
+        pad.migrateBalances(token, holders, balances);
+        assertEq(pad.pendingCoins(), 0);
+        pad.announceFreeze(block.number + 5);
+        Launchpad.LedgerCoin memory another = Launchpad.LedgerCoin("Another", "ANOT", meta, alice, false, 1.25 ether, 0, 0);
+        vm.expectRevert(Launchpad.CreationClosed.selector);
+        pad.migrateToken(another, new address[](0), new uint256[](0));
+        vm.roll(block.number + 5);
+        vm.expectRevert(Launchpad.Frozen.selector);
+        pad.migrateBalances(token, holders, balances);
+    }
+
+    function test_claimCashbackWhileFrozen() public {
+        vm.prank(alice);
+        address h = pad.createToken("Holders Coin", "HOLD", 0, meta, address(quote), true);
+        _buy(bob, h, 5e8);
+        _buy(carol, h, 5e8); // carol's fee is bob's cashback
+        uint256 owed = pad.cashbackOf(h, bob);
+        assertGt(owed, 0);
+        _freeze();
+        vm.prank(bob);
+        pad.claimCashback(h);
+        assertEq(quote.balanceOf(bob), owed);
+    }
+
+    /// The pad's own arithmetic for a first buy of `first` on a fresh 30 cbLTC curve,
+    /// and the amount that then sells the curve out (rounded against the buyer).
+    function _needAfter(uint256 first) internal view returns (uint256 need) {
+        uint256 vEth = 30e8;
+        uint256 vToken = pad.VIRTUAL_TOKEN();
+        uint256 forCurve = first - first / 100;
+        uint256 out = vToken - (vEth * vToken) / (vEth + forCurve);
+        uint256 x = vEth + forCurve;
+        uint256 y = vToken - out;
+        need = (x * y) / (y - (pad.CURVE_SUPPLY() - out)) - x + 1;
+    }
+
+    function test_graduatingBuyRoundingComesOffTheFee() public {
+        // the wei the fee gross-up can add must never come out of the other coins' reserves: find a
+        // first buy after which the amount that sells the curve out is a multiple of 99, then buy
+        // exactly that with an ethIn ending in 99 — the case where fee + curve would be ethIn + 1
+        pad.setMigrator(address(0)); // the reserve stays parked, so the pad's balance must cover it
+        vm.prank(alice);
+        address coin = pad.createToken("Round", "RND", 0, meta, address(quote), false);
+        uint256 first = 1e8;
+        while (_needAfter(first) % 99 != 0) first++;
+        uint256 need = _needAfter(first);
+        _buy(bob, coin, first);
+        assertEq(_curve(coin).vEth, 30e8 + first - first / 100, "the model matches the pad");
+        uint256 ethIn = (need / 99) * 100 - 1; // its fee is need/99 - 1, so the curve gets exactly `need`
+        _buy(dave, coin, ethIn);
+        assertTrue(_curve(coin).graduated);
+        uint256 owed = _curve(coin).realEth + _curve(curveCoin).realEth + pad.creatorFees(alice, address(quote));
+        assertGe(quote.balanceOf(address(pad)), owed, "the pad covers every reserve and every fee");
+    }
+
+    // ------------------------------------------ the pool a migrated coin left
+
+    function test_otherProvidersLeaveThePoolAfterMigrateOut() public {
+        (address pair, uint256 lp, uint256 addQuote) = _daveAddsLiquidity();
+        uint256 lpOurs = migrator.liquidity(gradCoin);
+        uint256 lpTotal = MockV2Pair(pair).totalSupply();
+        (uint256 rToken, uint256 rQuote) = _reserves(pair, gradCoin);
+        _freeze();
+
+        // frozen: the pool pays nobody out
+        _expectSwapFrozen(pair);
+
+        // migrateOut takes our share and no more: what the snapshot counted as the pool
+        (uint256 quoteOut, uint256 burned) = pad.migrateOut(gradCoin, cold);
+        assertEq(pad.migratedPair(gradCoin), pair);
+        assertEq(quoteOut, (rQuote * lpOurs) / lpTotal, "our LP's share of the pool's quote, dave's stays");
+        assertEq(burned, (rToken * lpOurs) / lpTotal, "and of its coins");
+
+        _bobBuysOutOfThePool(pair);
+        _daveWithdraws(pair, lp, addQuote);
+        // but nothing goes the other way: not to a wallet, not into the pool
+        vm.startPrank(dave);
+        vm.expectRevert(LaunchToken.Frozen.selector);
+        IERC20(gradCoin).transfer(bob, 1);
+        vm.expectRevert(LaunchToken.Frozen.selector);
+        IERC20(gradCoin).transfer(pair, 1);
+        vm.stopPrank();
+    }
+
+    /// dave adds liquidity of his own to the graduated coin's pool, before the freeze
+    function _daveAddsLiquidity() internal returns (address pair, uint256 lp, uint256 addQuote) {
+        pair = migrator.pairOf(gradCoin);
+        (uint256 rToken, uint256 rQuote) = _reserves(pair, gradCoin);
+        addQuote = rQuote / 10 + 1;
+        quote.mint(dave, addQuote);
+        vm.startPrank(dave);
+        IERC20(gradCoin).transfer(pair, rToken / 10);
+        quote.transfer(pair, addQuote);
+        lp = MockV2Pair(pair).mint(dave);
+        vm.stopPrank();
+        assertGt(lp, 0);
+    }
+
+    function _expectSwapFrozen(address pair) internal {
+        (uint256 out0, uint256 out1) =
+            MockV2Pair(pair).token0() == gradCoin ? (uint256(1e18), uint256(0)) : (uint256(0), uint256(1e18));
+        vm.prank(bob);
+        vm.expectRevert(LaunchToken.Frozen.selector);
+        MockV2Pair(pair).swap(out0, out1, bob, "");
+    }
+
+    /// the pool is open on the way out: bob may buy the inert Base copy out of it
+    function _bobBuysOutOfThePool(address pair) internal {
+        quote.mint(bob, 1e6);
+        (uint256 rToken, uint256 rQuote) = _reserves(pair, gradCoin);
+        uint256 out = (1e6 * 997 * rToken) / (rQuote * 1000 + 1e6 * 997);
+        (uint256 out0, uint256 out1) = MockV2Pair(pair).token0() == gradCoin ? (out, uint256(0)) : (uint256(0), out);
+        vm.startPrank(bob);
+        quote.transfer(pair, 1e6);
+        MockV2Pair(pair).swap(out0, out1, bob, "");
+        vm.stopPrank();
+        assertEq(IERC20(gradCoin).balanceOf(bob), out);
+    }
+
+    /// and dave withdraws his liquidity, his cbLTC whole
+    function _daveWithdraws(address pair, uint256 lp, uint256 addQuote) internal {
+        uint256 daveCoins = IERC20(gradCoin).balanceOf(dave);
+        uint256 daveQuote = quote.balanceOf(dave); // the refund of his graduating buy is in there
+        vm.startPrank(dave);
+        MockV2Pair(pair).transfer(pair, lp);
+        (uint256 a0, uint256 a1) = MockV2Pair(pair).burn(dave);
+        vm.stopPrank();
+        assertGt(a0, 0);
+        assertGt(a1, 0);
+        assertGt(IERC20(gradCoin).balanceOf(dave), daveCoins);
+        assertApproxEqRel(quote.balanceOf(dave) - daveQuote, addQuote, 0.01e18);
+    }
+
+    function test_nativeGraduatedCoinUnlocksToWeth() public {
+        pad.setQuoteAsset(address(0), pad.VIRTUAL_ETH());
+        vm.prank(alice);
+        address coin = pad.createToken("Eth Coin", "ETHC", 0, meta, address(0), false);
+        vm.deal(dave, 10 ether);
+        vm.prank(dave);
+        pad.buy{value: 6 ether}(coin, 0); // the curve raises ~4 ETH: it graduates into a token/WETH pool
+        assertTrue(_curve(coin).graduated);
+        address pair = migrator.pairOf(coin);
+        (, uint256 rQuote) = _reserves(pair, coin);
+        assertGt(rQuote, 3 ether);
+        _freeze();
+        (uint256 quoteOut, uint256 burned) = pad.migrateOut(coin, cold);
+        assertGe(quoteOut, (rQuote * 999) / 1000);
+        assertEq(weth.balanceOf(cold), quoteOut, "the pool's WETH as WETH: no call into the bridge account");
+        assertEq(cold.balance, 0);
+        assertGt(burned, 0);
+    }
+
+    // ------------------------------------------ coins quoted in a pre-market
+
+    function test_coinsQuotedInAPreMarketMigrateOutAndPayTheirFees() public {
+        (address pre, address x, address y) = _preMarketWorld();
+        uint256 owedPre = pad.creatorFees(alice, pre);
+        assertGt(owedPre, 0);
+        uint256 xReserve = _curve(x).realEth;
+        _freeze();
+
+        // the pre-market is frozen like any coin of this pad...
+        vm.prank(bob);
+        vm.expectRevert(LaunchToken.Frozen.selector);
+        IERC20(pre).transfer(carol, 1e18);
+        // ...and still the pad pays out in it: fee claims, the reserves leaving, the pool unlocking
+        vm.prank(alice);
+        pad.claimCreatorFees(pre);
+        assertEq(IERC20(pre).balanceOf(alice), owedPre);
+        (uint256 outX,) = pad.migrateOut(x, cold);
+        assertEq(outX, xReserve);
+        (uint256 outY, uint256 burnedY) = pad.migrateOut(y, cold);
+        assertGt(outY, 0);
+        assertGt(burnedY, 0);
+        assertEq(IERC20(pre).balanceOf(cold), xReserve + outY);
+        assertEq(pad.unlocking(), address(0));
+        // PRE's own ETH reserve leaves like any curve's
+        (uint256 outPre,) = pad.migrateOut(pre, cold);
+        assertGt(outPre, 0);
+        assertEq(cold.balance, outPre);
+    }
+
+    /// a pre-market on its ETH curve, a coin on a PRE curve and one graduated into a PRE pool
+    function _preMarketWorld() internal returns (address pre, address x, address y) {
+        pad.setQuoteAsset(address(0), pad.VIRTUAL_ETH()); // a pre-market lives on an ETH curve
+        pre = pad.createPreMarket("Pre Market", "PRE", meta, 1_000_000e18); // curves paired with it open at 1M PRE virtual
+        vm.deal(bob, 10 ether);
+        vm.prank(bob);
+        pad.buy{value: 2 ether}(pre, 0);
+        assertGt(IERC20(pre).balanceOf(bob), 5_000_000e18);
+        vm.startPrank(alice);
+        x = pad.createToken("X Coin", "XC", 0, meta, pre, false);
+        y = pad.createToken("Y Coin", "YC", 0, meta, pre, false);
+        vm.stopPrank();
+        vm.startPrank(bob);
+        IERC20(pre).approve(address(pad), type(uint256).max);
+        pad.buyWithQuote(x, 100_000e18, 0);
+        pad.buyWithQuote(y, 4_000_000e18, 0); // the curve raises ~3.2M PRE: it graduates
+        vm.stopPrank();
+        assertTrue(_curve(y).graduated);
+        assertGt(migrator.liquidity(y), 0);
     }
 }

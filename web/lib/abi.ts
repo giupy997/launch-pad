@@ -696,6 +696,11 @@ export const launchpadAbi = [
         "name": "token",
         "type": "address",
         "internalType": "address"
+      },
+      {
+        "name": "from",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "outputs": [
@@ -947,6 +952,25 @@ export const launchpadAbi = [
   },
   {
     "type": "function",
+    "name": "migratedPair",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "migratedPoolTokens",
     "inputs": [
       {
@@ -1129,6 +1153,19 @@ export const launchpadAbi = [
         "internalType": "address"
       }
     ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "pendingCoins",
+    "inputs": [],
     "outputs": [
       {
         "name": "",
@@ -2117,6 +2154,11 @@ export const launchpadAbi = [
   {
     "type": "error",
     "name": "BadMigration",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "CreationClosed",
     "inputs": []
   },
   {

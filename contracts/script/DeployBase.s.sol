@@ -22,9 +22,11 @@ import {SlipstreamZapRouter} from "../src/SlipstreamZapRouter.sol";
 ///
 /// CBLTC_VIRTUAL is the virtual reserve a cbLTC curve opens with, in cbLTC
 /// units (8 decimals): 30 cbLTC by default — about $2K of opening market cap
-/// with LTC at $66, ~96 LTC raised to graduate. TIMELOCK_DELAY defaults to
-/// 24 hours; PROPOSER (default the deployer) may schedule and cancel, anyone
-/// may execute what is ready.
+/// with LTC at $66, ~96 LTC raised to graduate. cbLTC is the pad's only
+/// quote: the native one is switched off, so no coin can be created that
+/// the migration would leave behind. TIMELOCK_DELAY defaults to 24 hours;
+/// PROPOSER (default the deployer) may schedule and cancel, anyone may
+/// execute what is ready.
 ///
 /// Verify on Blockscout (base.blockscout.com) from this very checkout, each
 /// with its constructor arguments (`cast abi-encode`): Launchpad
@@ -62,6 +64,7 @@ contract DeployBase is Script {
         UniV2Migrator migrator = new UniV2Migrator(address(pad), UNIV2_ROUTER);
         pad.setMigrator(address(migrator));
         pad.setQuoteAsset(CBLTC, virtualReserve);
+        pad.setQuoteAsset(address(0), 0); // cbLTC alone: every coin here must be able to move to LitVM
         SlipstreamZapRouter zap = new SlipstreamZapRouter(address(pad), SLIPSTREAM_ROUTER, WETH);
         TimelockController timelock = new TimelockController(delay, proposers, executors, address(0));
         pad.transferOwnership(address(timelock));
@@ -76,6 +79,7 @@ contract DeployBase is Script {
         console.log("Proposer:           ", proposer);
         console.log("Treasury:           ", treasury);
         console.log("cbLTC virtual:      ", virtualReserve, "(8 decimals)");
+        console.log("Native quote:        off");
         console.log("Deploy block:       ", block.number);
         if (MULTICALL3.code.length == 0) console.log("No Multicall3 on this chain: the web app falls back to single reads");
     }

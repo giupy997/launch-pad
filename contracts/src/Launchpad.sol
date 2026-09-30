@@ -129,6 +129,10 @@ contract Launchpad is Ownable, ReentrancyGuard {
     /// Coins migrated from a ledger: tokens still to be handed to their
     /// holders. Trading waits for zero.
     mapping(address token => uint256) public migrationPending;
+    /// How many migrated coins still have holders to deliver: a freeze is
+    /// not announced over one (its deliveries could never finish), and none
+    /// arrives once a freeze is announced.
+    uint256 public pendingCoins;
     /// Coins that graduated on the ledger: the token side of the locked pool
     /// they arrived with, handed to the DEX in place of DEX_RESERVE.
     mapping(address token => uint256) public migratedPoolTokens;
@@ -160,6 +164,10 @@ contract Launchpad is Ownable, ReentrancyGuard {
     /// The coin whose pool is being unlocked right now: its tokens may move
     /// while everything else is frozen.
     address public unlocking;
+    /// The pool a migrated coin left behind (its migrator's pair): transfers
+    /// out of it stay free after migrateOut, so the liquidity somebody else
+    /// added there can be withdrawn — nothing can be sold into it or added.
+    mapping(address token => address) public migratedPair;
     /// Per-token override for where the creator share of fees accrues.
     /// address(0) = the token's creator.
     mapping(address token => address) public feeRecipient;
@@ -227,6 +235,8 @@ contract Launchpad is Ownable, ReentrancyGuard {
     error WrongQuote();
     /// the launchpad stands still for a migration (see freezeBlock).
     error Frozen();
+    /// a freeze is announced: no new coin here until the coins have moved.
+    error CreationClosed();
     /// migrateOut before the freeze block.
     error NotFrozen();
     /// a freeze is already announced (cancel it first) or would be in the past.
@@ -238,6 +248,10 @@ contract Launchpad is Ownable, ReentrancyGuard {
         treasury = treasury_;
         poolManager = poolManager_;
         tokenFactory = new LaunchTokenFactory();
+        // the native coin is a quote asset like any other, on from the start;
+        // a pad quoted in an ERC-20 alone switches it off (setQuoteAsset(0, 0))
+        quoteVirtualReserve[address(0)] = VIRTUAL_ETH;
+        emit QuoteAssetUpdated(address(0), VIRTUAL_ETH);
     }
 
     // ---------------------------------------------------------------- create
@@ -289,12 +303,11 @@ contract Launchpad is Ownable, ReentrancyGuard {
         bool feesToHolders_,
         bool transferable_
     ) internal returns (address token) {
-        if (frozen()) revert Frozen();
-        uint256 vQuote = VIRTUAL_ETH;
-        if (quoteAsset != address(0)) {
-            vQuote = quoteVirtualReserve[quoteAsset];
-            if (vQuote == 0) revert QuoteAssetNotEnabled();
-        }
+        // announced or landed, a freeze closes the pad to new coins: the list
+        // of coins that move to the other chain is final from the announcement
+        if (freezeBlock != 0) revert CreationClosed();
+        uint256 vQuote = quoteVirtualReserve[quoteAsset];
+        if (vQuote == 0) revert QuoteAssetNotEnabled();
         token = tokenFactory.create(name, symbol, TOTAL_SUPPLY, transferable_);
         curves[token] = Curve({
             vEth: vQuote,
@@ -388,10 +401,15 @@ contract Launchpad is Ownable, ReentrancyGuard {
                 ethForCurve = ethNeeded;
             }
             fee = (ethForCurve * feeBps) / (FEE_DENOMINATOR - feeBps); // fee on the used part
-            // Rounding in the fee gross-up can exceed ethIn by a wei: saturate
-            // instead of underflowing, so the graduating buy can never revert here.
+            // Rounding in the fee gross-up can exceed ethIn by a wei: that wei
+            // comes off the fee, never out of the pad's other pots, and the
+            // graduating buy never reverts here.
             uint256 total = ethForCurve + fee;
-            refund = ethIn > total ? ethIn - total : 0;
+            if (total > ethIn) {
+                fee -= total - ethIn;
+                total = ethIn;
+            }
+            refund = ethIn - total;
         }
         if (tokensOut == 0) revert ZeroAmount();
         if (tokensOut < minTokensOut) revert Slippage();
@@ -549,6 +567,7 @@ contract Launchpad is Ownable, ReentrancyGuard {
         nonReentrant
         returns (address token)
     {
+        if (freezeBlock != 0) revert CreationClosed();
         _checkLedgerCoin(coin, holders.length);
         token = tokenFactory.create(coin.name, coin.symbol, TOTAL_SUPPLY, false);
         _claimTicker(coin.symbol, token);
@@ -558,6 +577,7 @@ contract Launchpad is Ownable, ReentrancyGuard {
         if (coin.poolToken != 0) migratedPoolTokens[token] = coin.poolToken;
         allTokens.push(token);
         migrationPending[token] = coin.sold;
+        if (coin.sold != 0) pendingCoins++;
         emit TokenCreated(token, coin.creator, coin.name, coin.symbol, coin.feesToHolders);
         emit MetadataUpdated(
             token, coin.meta.logoURI, coin.meta.website, coin.meta.twitter, coin.meta.telegram, coin.meta.livestream
@@ -617,6 +637,7 @@ contract Launchpad is Ownable, ReentrancyGuard {
         onlyOwner
         nonReentrant
     {
+        if (frozen()) revert Frozen();
         if (curves[token].vEth == 0) revert UnknownToken();
         _migrateBalances(token, holders, balances);
     }
@@ -634,9 +655,12 @@ contract Launchpad is Ownable, ReentrancyGuard {
         }
         migrationPending[token] = pending;
         emit MigrationBalances(token, holders.length, pending);
-        // a coin whose curve had sold out on the ledger graduates as soon as
-        // its holders have their tokens
-        if (pending == 0 && curves[token].sold == CURVE_SUPPLY) _graduate(token, curves[token]);
+        if (pending == 0) {
+            pendingCoins--;
+            // a coin whose curve had sold out on the ledger graduates as soon as
+            // its holders have their tokens
+            if (curves[token].sold == CURVE_SUPPLY) _graduate(token, curves[token]);
+        }
     }
 
     // ---------------------------------------------------------------- fees
@@ -843,21 +867,34 @@ contract Launchpad is Ownable, ReentrancyGuard {
         return freezeBlock != 0 && block.number >= freezeBlock;
     }
 
-    /// @notice Whether `token`'s transfers are frozen right now: everything
-    ///         is, once the freeze lands, except the coin whose pool is being
-    ///         unlocked for the migration. LaunchToken asks on every transfer.
-    function frozenFor(address token) external view returns (bool) {
-        return frozen() && unlocking != token;
+    /// @notice Whether a transfer of `token` from `from` is frozen right now.
+    ///         Once the freeze lands everything is, except: the pad's own
+    ///         transfers (each of its paths is frozen on its own, so what it
+    ///         still moves — fee claims, a reserve leaving, the burn — is
+    ///         meant to); the coin whose pool is being unlocked, and that
+    ///         pool's quote when it is a coin of this pad (a pre-market); and,
+    ///         after migrateOut, transfers out of the pool the coin left, so
+    ///         its other liquidity providers can withdraw. The LaunchToken
+    ///         asks on every transfer.
+    function frozenFor(address token, address from) external view returns (bool) {
+        if (!frozen() || from == address(this)) return false;
+        address u = unlocking;
+        if (u != address(0) && (token == u || token == curves[u].quoteAsset)) return false;
+        return !(migratedOut[token] && from == migratedPair[token]);
     }
 
     /// @notice Announce the block from which the launchpad stands still, so
     ///         its coins can be re-created on another chain: the block must
-    ///         not be past, and only one freeze can be announced at a time.
-    ///         The owner is a timelock, so the announcement is public for
-    ///         the delay before it can be made, and the block itself can be
-    ///         chosen further ahead still.
+    ///         not be past, only one freeze can be announced at a time, and
+    ///         not over a migrated coin still delivering its holders. From
+    ///         the announcement on no new coin is created here. The
+    ///         owner is a timelock, so the announcement is public for the
+    ///         delay before it can be made; and since cancelFreeze takes the
+    ///         same delay, a freeze can only be called off if its block lies
+    ///         more than one delay past the announcement.
     function announceFreeze(uint256 atBlock) external onlyOwner {
         if (freezeBlock != 0 || atBlock < block.number) revert BadFreeze();
+        if (pendingCoins != 0) revert MigrationPending();
         freezeBlock = atBlock;
         emit FreezeAnnounced(atBlock);
     }
@@ -874,10 +911,14 @@ contract Launchpad is Ownable, ReentrancyGuard {
     ///         where the coin is re-created: a curve coin's reserve as it
     ///         stands; a graduated coin's pool, unlocked by the migrator that
     ///         seeded it — its quote side leaves, its token side comes back
-    ///         here and is burned, so the supply mirrors what holders own.
-    ///         Cashback and creator fees accrued here stay claimable here.
-    ///         Once per coin; this is the operator's custody of the reserve,
-    ///         announced through the timelock like the freeze itself.
+    ///         here and is burned, so the supply mirrors what holders own,
+    ///         and the pool stays open to withdrawals (migratedPair). The
+    ///         migrator must be able to give the pool back (IDexMigratorUnlock):
+    ///         one that cannot makes this revert, and the coin stays.
+    ///         Cashback and creator fees accrued here stay claimable here,
+    ///         whatever their quote. Once per coin; this is the operator's
+    ///         custody of the reserve, announced through the timelock like
+    ///         the freeze itself.
     function migrateOut(address token, address to)
         external
         onlyOwner
@@ -899,9 +940,11 @@ contract Launchpad is Ownable, ReentrancyGuard {
             _payOut(c.quoteAsset, to, quoteOut);
         } else {
             unlocking = token;
-            (quoteOut, tokensBurned) = IDexMigratorUnlock(address(via)).unlock(token, to);
+            address pool;
+            (quoteOut, tokensBurned, pool) = IDexMigratorUnlock(address(via)).unlock(token, to);
             if (tokensBurned > 0) LaunchToken(token).burn(tokensBurned);
             unlocking = address(0);
+            migratedPair[token] = pool;
         }
         emit MigratedOut(token, to, quoteOut, tokensBurned);
     }

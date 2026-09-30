@@ -51,7 +51,13 @@ export default function AboutPage() {
         </li>
         <li>
           The timelock announces a freeze block at least a day ahead; every page shows the countdown. Trading goes on until
-          that block. From it, the launchpad stands still: no buys, sells or transfers, so the snapshot is final.
+          that block, and no new coin is created from the announcement on, so the list of coins that move is final. From the
+          block, the launchpad stands still: no buys, sells or transfers, so the snapshot is final.
+        </li>
+        <li>
+          The pool that moves is the one the launchpad seeded and locked. Liquidity anyone else added to a coin&apos;s pool on
+          Base stays in that pool and can be withdrawn once the coin has moved; nothing can be sold into it or added to it
+          after the freeze.
         </li>
         <li>
           The snapshot reads every balance and every curve at that block, from the chain, and anyone can recompute it. The

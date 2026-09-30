@@ -43,6 +43,7 @@ contract RehearseSource is Script {
         e.migrator = new UniV2Migrator(address(e.pad), address(e.router));
         e.pad.setMigrator(address(e.migrator));
         e.pad.setQuoteAsset(address(e.quote), 30e8);
+        e.pad.setQuoteAsset(address(0), 0); // as on Base: cbLTC alone
         e.quote.mint(vm.addr(Keys.ALICE), 10e8);
         e.quote.mint(vm.addr(Keys.BOB), 10e8);
         e.quote.mint(vm.addr(Keys.CAROL), 300e8);

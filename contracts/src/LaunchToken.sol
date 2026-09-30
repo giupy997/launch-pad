@@ -6,8 +6,10 @@ import {ERC20} from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 interface ILaunchpadHook {
     function onTokenTransfer(address from, address to, uint256 value) external;
     /// True while the launchpad stands still for a migration to another
-    /// chain, except for the coin whose pool is being unlocked for it.
-    function frozenFor(address token) external view returns (bool);
+    /// chain, for a transfer of `token` from `from` — with the exceptions
+    /// the launchpad makes (its own transfers, the pool being unlocked, the
+    /// pool a migrated coin left).
+    function frozenFor(address token, address from) external view returns (bool);
 }
 
 /// @title LaunchToken
@@ -61,8 +63,8 @@ contract LaunchToken is ERC20 {
             revert NotGraduated();
         }
         // Frozen for a migration: nothing moves (the mint at birth aside),
-        // except the coin whose pool the launchpad is unlocking.
-        if (from != address(0) && ILaunchpadHook(launchpad).frozenFor(address(this))) revert Frozen();
+        // except what the launchpad itself still moves or lets out of a pool.
+        if (from != address(0) && ILaunchpadHook(launchpad).frozenFor(address(this), from)) revert Frozen();
         super._update(from, to, value);
         // Settle cashback for both wallets right after balances change.
         ILaunchpadHook(launchpad).onTokenTransfer(from, to, value);
