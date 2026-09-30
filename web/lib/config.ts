@@ -98,8 +98,10 @@ export type QuoteAssetInfo = {
   name?: string;
   decimals: number;
   kind: QuoteAssetKind;
-  /** Uniswap v3 fee hops from WETH for ETH zap buys (existing RWA pools):
-   *  [f1] = WETH -f1-> asset · [f1, f2] = WETH -f1-> USDG -f2-> asset.
+  /** The hops of the ETH zap route from WETH, one 3-byte value per pool:
+   *  [f1] = WETH -f1-> asset · [f1, f2] = WETH -f1-> via -f2-> asset. On a
+   *  Uniswap-v3-style router the value is the pool's fee (500 = 0.05%); on
+   *  Aerodrome Slipstream it is the pool's tick spacing (200 for CL200).
    *  Measured from live pool liquidity. Omitted = no ETH pool route; for
    *  premarket assets ETH still zaps through their own curve instead. */
   zapFees?: number[];
@@ -114,10 +116,11 @@ export const PRE_IPO_DISCLAIMER =
 export const QUOTE_ASSETS: Record<number, QuoteAssetInfo[]> = {
   // Base: every coin is quoted in cbLTC — Coinbase Wrapped LTC, one LTC in
   // Coinbase custody per token (public proof of reserves), 8 decimals. ETH
-  // buys zap through PancakeSwap v3 by way of cbBTC; `zapFees` follows once
-  // the route is measured (WETH -f1-> cbBTC -f2-> cbLTC).
+  // buys zap through Aerodrome Slipstream's cbLTC/WETH pool (tick spacing
+  // 200, 0.25%): measured 2026-09-30 at 0.4–0.5% under spot from 0.01 to
+  // 0.5 ETH, while PancakeSwap's cbLTC pools were empty.
   [base.id]: [
-    { address: "0xcb17C9Db87B595717C857a08468793f5bAb6445F", symbol: "cbLTC", name: "Coinbase Wrapped LTC", decimals: 8, kind: "crypto", logo: "/chains/litecoin.svg", zapVia: "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf" },
+    { address: "0xcb17C9Db87B595717C857a08468793f5bAb6445F", symbol: "cbLTC", name: "Coinbase Wrapped LTC", decimals: 8, kind: "crypto", logo: "/chains/litecoin.svg", zapFees: [200] },
   ],
   [giwaSepolia.id]: [{ address: null, symbol: "ETH", decimals: 18, kind: "native" }],
   [litvmTestnet.id]: [{ address: null, symbol: "zkLTC", decimals: 18, kind: "native" }],
@@ -208,14 +211,15 @@ export function rwaLogo(asset: QuoteAssetInfo): string | undefined {
 }
 
 // ETH-zap infrastructure: a router deployed per launchpad, and the quoter of
-// the v3 DEX it swaps on — Uniswap on Robinhood, PancakeSwap on Base, where
-// cbLTC's pools are (both quoters speak QuoterV2's ABI).
+// the DEX it swaps on — Uniswap v3 on Robinhood; on Base, Aerodrome
+// Slipstream, where cbLTC's liquidity is (SlipstreamZapRouter speaks that
+// router's shape; both quoters answer QuoterV2's ABI).
 export const ZAP_ROUTER: Record<number, `0x${string}` | undefined> = {
-  [base.id]: "0x07b29FEe7369646cE53E40fB7e59FAd291aEb91b",
+  [base.id]: "0x549D92E218B8633B5098acf08055b334c5089f8E", // SlipstreamZapRouter → Aerodrome (the PancakeSwap one, 0x07b2…b91b, found no liquidity)
   [robinhood.id]: "0xfd0C942E3DB34672715B862A8e19838bC9EDa7B5", // v7.4
 };
 export const UNISWAP_QUOTER: Record<number, `0x${string}` | undefined> = {
-  [base.id]: "0xB048Bbc1Ee6b733FFfCFb9e9CeF7375518e25997", // PancakeSwap v3 QuoterV2
+  [base.id]: "0x254cF9E1E6e233aa1AC962CB9B05b2cfeAaE15b0", // Aerodrome Slipstream QuoterV2 (paths carry tick spacings)
   [robinhood.id]: "0x33e885ed0ec9bf04ecfb19341582aadcb4c8a9e7",
 };
 export const WETH9: Record<number, `0x${string}` | undefined> = {
