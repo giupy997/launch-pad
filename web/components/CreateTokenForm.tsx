@@ -347,7 +347,17 @@ export function CreateTokenForm() {
 
       {/* ------------------------------------------------ live preview */}
       <aside className="order-1 lg:order-2">
-        <div className="lg:sticky lg:top-24 card p-5 space-y-4">
+        <div className="lg:sticky lg:top-24 space-y-4">
+        {/* the head with its astrolabe, above the preview */}
+        <div className="relative hidden h-44 overflow-hidden rounded-2xl border border-white/10 card lg:block">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 bg-[url('/art/statue-orbit.webp')] bg-cover bg-[center_18%] opacity-90 mix-blend-screen"
+          />
+          <div aria-hidden className="pointer-events-none absolute inset-0 bg-gradient-to-t from-ink/90 via-transparent to-transparent" />
+          <div className="absolute bottom-3 left-4 label">See the next rotation</div>
+        </div>
+        <div className="card p-5 space-y-4">
           <div className="flex items-center justify-between">
             <span className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">
               Your coin
@@ -407,6 +417,7 @@ export function CreateTokenForm() {
               ? `One transaction deploys your coin and its bonding curve. At graduation, liquidity moves to a Uniswap v4 pool, locked forever, and every swap there keeps paying the 1% fee — ${feesToHolders ? "to your holders" : "to you"}, as chosen above.`
               : "One transaction deploys your coin and its bonding curve. At graduation, liquidity moves to the DEX automatically and is locked forever."}
           </p>
+        </div>
         </div>
       </aside>
     </div>
