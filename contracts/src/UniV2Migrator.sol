@@ -5,7 +5,7 @@ import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "openzeppelin-contracts/contracts/utils/ReentrancyGuard.sol";
 import {Math} from "openzeppelin-contracts/contracts/utils/math/Math.sol";
-import {IDexMigrator} from "./interfaces/IDexMigrator.sol";
+import {IDexMigrator, IDexMigratorUnlock} from "./interfaces/IDexMigrator.sol";
 
 interface IUniswapV2Router02 {
     function factory() external view returns (address);
@@ -22,6 +22,7 @@ interface IUniswapV2Pair {
     function getReserves() external view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast);
     function totalSupply() external view returns (uint256);
     function mint(address to) external returns (uint256 liquidity);
+    function burn(address to) external returns (uint256 amount0, uint256 amount1);
     function swap(uint256 amount0Out, uint256 amount1Out, address to, bytes calldata data) external;
 }
 
@@ -38,9 +39,11 @@ interface ILaunchpadTreasury {
 /// @notice Graduation adapter for chains whose DEX is Uniswap v2 (LitVM at
 ///         launch): receives a graduated token's DEX reserve plus the quote
 ///         raised on the curve and seeds a v2 pool at the curve's final
-///         price. The LP tokens stay in this contract forever — liquidity is
-///         locked, nobody can pull it — and the pool's 0.3% swap fees simply
-///         accrue to that locked position, deepening it.
+///         price. The LP tokens stay in this contract — liquidity is locked,
+///         nobody trades it away — and the pool's 0.3% swap fees simply accrue
+///         to that locked position, deepening it. The one way out is the
+///         launchpad's migration to another chain: frozen, it asks for the
+///         pool back (unlock), quote to the bridge, tokens to be burned.
 ///
 ///         The pair may already exist by the time a token graduates, and
 ///         anyone can put whatever they like in it beforehand, so nothing
@@ -51,7 +54,7 @@ interface ILaunchpadTreasury {
 ///         its ratio. The reserve always ends up in the pool at (about) the
 ///         price the curve closed at, never swept aside because the pool
 ///         disagreed.
-contract UniV2Migrator is IDexMigrator, ReentrancyGuard {
+contract UniV2Migrator is IDexMigrator, IDexMigratorUnlock, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     address public immutable launchpad;
@@ -69,9 +72,13 @@ contract UniV2Migrator is IDexMigrator, ReentrancyGuard {
     event PoolSeeded(address indexed token, address pair, uint256 tokenAmount, uint256 quoteAmount, uint256 liquidity);
     /// The pool held liquidity at another price: what was traded to bring it to ours.
     event PoolRebalanced(address indexed token, address pair, uint256 tokenIn, uint256 quoteIn);
+    /// The pool came back out for a migration: what our liquidity was worth.
+    event PoolUnlocked(address indexed token, address pair, uint256 tokenAmount, uint256 quoteAmount, uint256 liquidity);
 
     error OnlyLaunchpad();
     error NothingToSeed();
+    error NothingToUnlock();
+    error EthTransferFailed();
 
     constructor(address launchpad_, address router_) {
         launchpad = launchpad_;
@@ -125,6 +132,29 @@ contract UniV2Migrator is IDexMigrator, ReentrancyGuard {
             _sweep(IERC20(quote));
         }
         emit PoolSeeded(token, pair, useToken, useQuote, lp);
+    }
+
+    /// @inheritdoc IDexMigratorUnlock
+    function unlock(address token, address to) external nonReentrant returns (uint256 quoteOut, uint256 tokenOut) {
+        if (msg.sender != launchpad) revert OnlyLaunchpad();
+        address quote = pairAsset[token];
+        uint256 lp = liquidity[token];
+        if (quote == address(0) || lp == 0) revert NothingToUnlock();
+        liquidity[token] = 0;
+        address pair = factory.getPair(token, quote);
+        // our share of the pool, swap fees included: the pair pays out against the LP it is handed
+        IERC20(pair).safeTransfer(pair, lp);
+        (uint256 amount0, uint256 amount1) = IUniswapV2Pair(pair).burn(address(this));
+        (tokenOut, quoteOut) = IUniswapV2Pair(pair).token0() == token ? (amount0, amount1) : (amount1, amount0);
+        IERC20(token).safeTransfer(launchpad, tokenOut);
+        if (quote == weth) {
+            IWETH(weth).withdraw(quoteOut);
+            (bool ok,) = to.call{value: quoteOut}("");
+            if (!ok) revert EthTransferFailed();
+        } else {
+            IERC20(quote).safeTransfer(to, quoteOut);
+        }
+        emit PoolUnlocked(token, pair, tokenOut, quoteOut, lp);
     }
 
     /// @notice The locked pool of a graduated token.

@@ -15,3 +15,14 @@ interface IDexMigrator {
         external
         payable;
 }
+
+/// @title IDexMigratorUnlock
+/// @notice The way back: for a migration to another chain, the launchpad
+///         (frozen) asks the adapter that seeded a graduated token's pool to
+///         pull that liquidity out again. The quote side goes to `to` — the
+///         account that bridges it — and the token side back to the caller,
+///         the launchpad, which burns it. Adapters that lock liquidity in a
+///         way they cannot undo simply do not implement this.
+interface IDexMigratorUnlock {
+    function unlock(address token, address to) external returns (uint256 quoteOut, uint256 tokenOut);
+}

@@ -7,7 +7,8 @@ import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Math} from "openzeppelin-contracts/contracts/utils/math/Math.sol";
 import {LaunchToken} from "./LaunchToken.sol";
-import {IDexMigrator} from "./interfaces/IDexMigrator.sol";
+import {LaunchTokenFactory} from "./LaunchTokenFactory.sol";
+import {IDexMigrator, IDexMigratorUnlock} from "./interfaces/IDexMigrator.sol";
 
 /// @title Launchpad
 /// @notice pump.fun-style launchpad: anyone creates a token, the full supply is
@@ -45,6 +46,8 @@ contract Launchpad is Ownable, ReentrancyGuard {
     uint256 public holderCashbackBps = 3_000;
     address public treasury;
     IDexMigrator public migrator;
+    /// Deploys the coins' tokens: their creation code lives there, not here.
+    LaunchTokenFactory public immutable tokenFactory;
 
     /// Creator fee accruals per recipient per asset (address(0) = ETH).
     mapping(address recipient => mapping(address asset => uint256)) public creatorFees;
@@ -141,6 +144,22 @@ contract Launchpad is Ownable, ReentrancyGuard {
     /// Each holder of a migrated coin is delivered once: a batch sent twice
     /// reverts instead of paying twice and starving the holders after it.
     mapping(address token => mapping(address holder => bool)) public migrationDelivered;
+
+    // ------------------------------------------- migration to another chain
+    /// The block from which this launchpad stands still so that its coins can
+    /// be re-created on another chain (Base → LitVM) with the same holders and
+    /// the same price: from it on, no creation, buy, sell or token transfer.
+    /// 0 = none announced. Announced by the owner — a timelock, so the block
+    /// is public for the timelock's delay before it can even be set.
+    uint256 public freezeBlock;
+    /// Coins whose reserve left for the other chain (migrateOut).
+    mapping(address token => bool) public migratedOut;
+    /// The migrator that seeded each graduated coin's pool: the one that can
+    /// unlock it again for a migration.
+    mapping(address token => IDexMigrator) public graduatedVia;
+    /// The coin whose pool is being unlocked right now: its tokens may move
+    /// while everything else is frozen.
+    address public unlocking;
     /// Per-token override for where the creator share of fees accrues.
     /// address(0) = the token's creator.
     mapping(address token => address) public feeRecipient;
@@ -178,6 +197,9 @@ contract Launchpad is Ownable, ReentrancyGuard {
     event MigrationBalances(address indexed token, uint256 holders, uint256 pending);
     event MigrationRootSet(bytes32 root, uint256 freezeHeight);
     event MigrationClosed();
+    event FreezeAnnounced(uint256 freezeBlock);
+    event FreezeCancelled();
+    event MigratedOut(address indexed token, address indexed to, uint256 quoteAmount, uint256 tokensBurned);
 
     // ---------------------------------------------------------------- errors
 
@@ -203,10 +225,19 @@ contract Launchpad is Ownable, ReentrancyGuard {
     error AlreadyDelivered(address holder);
     /// a curve coin's reserve does not match its curve state.
     error WrongQuote();
+    /// the launchpad stands still for a migration (see freezeBlock).
+    error Frozen();
+    /// migrateOut before the freeze block.
+    error NotFrozen();
+    /// a freeze is already announced (cancel it first) or would be in the past.
+    error BadFreeze();
+    /// a coin's reserve already left.
+    error AlreadyMigratedOut();
 
     constructor(address treasury_, address poolManager_) Ownable(msg.sender) {
         treasury = treasury_;
         poolManager = poolManager_;
+        tokenFactory = new LaunchTokenFactory();
     }
 
     // ---------------------------------------------------------------- create
@@ -258,12 +289,13 @@ contract Launchpad is Ownable, ReentrancyGuard {
         bool feesToHolders_,
         bool transferable_
     ) internal returns (address token) {
+        if (frozen()) revert Frozen();
         uint256 vQuote = VIRTUAL_ETH;
         if (quoteAsset != address(0)) {
             vQuote = quoteVirtualReserve[quoteAsset];
             if (vQuote == 0) revert QuoteAssetNotEnabled();
         }
-        token = address(new LaunchToken(name, symbol, TOTAL_SUPPLY, transferable_));
+        token = tokenFactory.create(name, symbol, TOTAL_SUPPLY, transferable_);
         curves[token] = Curve({
             vEth: vQuote,
             vToken: VIRTUAL_TOKEN,
@@ -336,6 +368,7 @@ contract Launchpad is Ownable, ReentrancyGuard {
         if (c.vEth == 0) revert UnknownToken();
         if (c.graduated) revert AlreadyGraduated();
         if (migrationPending[token] != 0) revert MigrationPending();
+        if (frozen()) revert Frozen();
 
         uint256 fee = (ethIn * feeBps) / FEE_DENOMINATOR;
         uint256 ethForCurve = ethIn - fee;
@@ -406,6 +439,7 @@ contract Launchpad is Ownable, ReentrancyGuard {
         if (c.vEth == 0) revert UnknownToken();
         if (c.graduated) revert AlreadyGraduated();
         if (migrationPending[token] != 0) revert MigrationPending();
+        if (frozen()) revert Frozen();
 
         uint256 k = c.vEth * c.vToken;
         uint256 ethOut = c.vEth - k / (c.vToken + tokensIn);
@@ -473,10 +507,12 @@ contract Launchpad is Ownable, ReentrancyGuard {
         if (c.vEth == 0) revert UnknownToken();
         if (!c.graduated) revert NotYetGraduated();
         if (address(migrator) == address(0)) revert MigratorNotSet();
+        if (frozen()) revert Frozen();
 
         uint256 ethAmount = c.realEth;
         if (ethAmount == 0) revert ZeroAmount(); // already migrated
         c.realEth = 0;
+        graduatedVia[token] = migrator;
 
         // a coin that graduated on a ledger brings its own pool's token side
         uint256 reserve = migratedPoolTokens[token];
@@ -514,7 +550,7 @@ contract Launchpad is Ownable, ReentrancyGuard {
         returns (address token)
     {
         _checkLedgerCoin(coin, holders.length);
-        token = address(new LaunchToken(coin.name, coin.symbol, TOTAL_SUPPLY, false));
+        token = tokenFactory.create(coin.name, coin.symbol, TOTAL_SUPPLY, false);
         _claimTicker(coin.symbol, token);
         curves[token] = _ledgerCurve(coin);
         tokenMetadata[token] = coin.meta;
@@ -797,6 +833,77 @@ contract Launchpad is Ownable, ReentrancyGuard {
     function closeMigration() external onlyOwner {
         migrationClosed = true;
         emit MigrationClosed();
+    }
+
+    // ------------------------------------------- migration to another chain
+
+    /// @notice Whether this launchpad stands still: the freeze block was
+    ///         announced and is reached.
+    function frozen() public view returns (bool) {
+        return freezeBlock != 0 && block.number >= freezeBlock;
+    }
+
+    /// @notice Whether `token`'s transfers are frozen right now: everything
+    ///         is, once the freeze lands, except the coin whose pool is being
+    ///         unlocked for the migration. LaunchToken asks on every transfer.
+    function frozenFor(address token) external view returns (bool) {
+        return frozen() && unlocking != token;
+    }
+
+    /// @notice Announce the block from which the launchpad stands still, so
+    ///         its coins can be re-created on another chain: the block must
+    ///         not be past, and only one freeze can be announced at a time.
+    ///         The owner is a timelock, so the announcement is public for
+    ///         the delay before it can be made, and the block itself can be
+    ///         chosen further ahead still.
+    function announceFreeze(uint256 atBlock) external onlyOwner {
+        if (freezeBlock != 0 || atBlock < block.number) revert BadFreeze();
+        freezeBlock = atBlock;
+        emit FreezeAnnounced(atBlock);
+    }
+
+    /// @notice Withdraw an announced freeze before it lands (the other chain
+    ///         is late); after it lands there is no way back.
+    function cancelFreeze() external onlyOwner {
+        if (freezeBlock == 0 || block.number >= freezeBlock) revert BadFreeze();
+        freezeBlock = 0;
+        emit FreezeCancelled();
+    }
+
+    /// @notice Once frozen, take a coin's quote out to bridge it to the chain
+    ///         where the coin is re-created: a curve coin's reserve as it
+    ///         stands; a graduated coin's pool, unlocked by the migrator that
+    ///         seeded it — its quote side leaves, its token side comes back
+    ///         here and is burned, so the supply mirrors what holders own.
+    ///         Cashback and creator fees accrued here stay claimable here.
+    ///         Once per coin; this is the operator's custody of the reserve,
+    ///         announced through the timelock like the freeze itself.
+    function migrateOut(address token, address to)
+        external
+        onlyOwner
+        nonReentrant
+        returns (uint256 quoteOut, uint256 tokensBurned)
+    {
+        if (!frozen()) revert NotFrozen();
+        if (to == address(0)) revert ZeroAmount();
+        Curve storage c = curves[token];
+        if (c.vEth == 0) revert UnknownToken();
+        if (migratedOut[token]) revert AlreadyMigratedOut();
+        migratedOut[token] = true;
+
+        IDexMigrator via = graduatedVia[token];
+        if (!c.graduated || address(via) == address(0)) {
+            // on its curve — or graduated with its reserve still parked here
+            quoteOut = c.realEth;
+            c.realEth = 0;
+            _payOut(c.quoteAsset, to, quoteOut);
+        } else {
+            unlocking = token;
+            (quoteOut, tokensBurned) = IDexMigratorUnlock(address(via)).unlock(token, to);
+            if (tokensBurned > 0) LaunchToken(token).burn(tokensBurned);
+            unlocking = address(0);
+        }
+        emit MigratedOut(token, to, quoteOut, tokensBurned);
     }
 
     function _payOut(address asset, address to, uint256 amount) internal {

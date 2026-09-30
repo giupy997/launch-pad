@@ -5,6 +5,9 @@ import {ERC20} from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 
 interface ILaunchpadHook {
     function onTokenTransfer(address from, address to, uint256 value) external;
+    /// True while the launchpad stands still for a migration to another
+    /// chain, except for the coin whose pool is being unlocked for it.
+    function frozenFor(address token) external view returns (bool);
 }
 
 /// @title LaunchToken
@@ -23,18 +26,31 @@ contract LaunchToken is ERC20 {
 
     error OnlyLaunchpad();
     error NotGraduated();
+    /// The launchpad stands still for a migration: balances are being copied
+    /// to another chain, so none may change.
+    error Frozen();
 
-    constructor(string memory name_, string memory symbol_, uint256 supply_, bool transferable_)
+    /// @param launchpad_ the launchpad the token answers to and is minted to
+    ///        (its factory deploys the token on its behalf).
+    constructor(string memory name_, string memory symbol_, uint256 supply_, bool transferable_, address launchpad_)
         ERC20(name_, symbol_)
     {
-        launchpad = msg.sender;
+        launchpad = launchpad_;
         transferable = transferable_;
-        _mint(msg.sender, supply_);
+        _mint(launchpad_, supply_);
     }
 
     function setGraduated() external {
         if (msg.sender != launchpad) revert OnlyLaunchpad();
         graduated = true;
+    }
+
+    /// @notice The launchpad burns its own tokens: at a migration, the token
+    ///         side of an unlocked pool comes back to it and is retired here,
+    ///         so the supply left is exactly what holders own.
+    function burn(uint256 amount) external {
+        if (msg.sender != launchpad) revert OnlyLaunchpad();
+        _burn(msg.sender, amount);
     }
 
     function _update(address from, address to, uint256 value) internal override {
@@ -44,6 +60,9 @@ contract LaunchToken is ERC20 {
         if (!graduated && !transferable && from != launchpad && to != launchpad && from != address(0)) {
             revert NotGraduated();
         }
+        // Frozen for a migration: nothing moves (the mint at birth aside),
+        // except the coin whose pool the launchpad is unlocking.
+        if (from != address(0) && ILaunchpadHook(launchpad).frozenFor(address(this))) revert Frozen();
         super._update(from, to, value);
         // Settle cashback for both wallets right after balances change.
         ILaunchpadHook(launchpad).onTokenTransfer(from, to, value);

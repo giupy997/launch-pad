@@ -80,6 +80,21 @@ contract MockV2Pair is ERC20 {
         emit Mint(msg.sender, a0, a1);
     }
 
+    /// Uniswap's burn: the LP the pair holds is redeemed pro rata against its balances.
+    function burn(address to) external returns (uint256 amount0, uint256 amount1) {
+        uint256 liquidity = balanceOf(address(this));
+        uint256 b0 = IERC20(token0).balanceOf(address(this));
+        uint256 b1 = IERC20(token1).balanceOf(address(this));
+        uint256 ts = totalSupply();
+        amount0 = (liquidity * b0) / ts;
+        amount1 = (liquidity * b1) / ts;
+        require(amount0 > 0 && amount1 > 0, "INSUFFICIENT_LIQUIDITY_BURNED");
+        _burn(address(this), liquidity);
+        IERC20(token0).transfer(to, amount0);
+        IERC20(token1).transfer(to, amount1);
+        _update(IERC20(token0).balanceOf(address(this)), IERC20(token1).balanceOf(address(this)));
+    }
+
     function swap(uint256 amount0Out, uint256 amount1Out, address to, bytes calldata) external {
         require(amount0Out > 0 || amount1Out > 0, "INSUFFICIENT_OUTPUT_AMOUNT");
         (uint112 r0, uint112 r1,) = getReserves();
