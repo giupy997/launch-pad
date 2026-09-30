@@ -2,7 +2,7 @@
 
 Every coin on the Base launchpad — quoted in cbLTC, on its curve or graduated
 into its pool — is re-created on LitVM mainnet with the same holders and the
-same price, its pool real, the day LitVM mainnet is live. The launchpad (v8)
+same price, its pool real, the day LitVM mainnet is live. The launchpad (v9)
 was built for it: a **freeze** announced through the timelock stops the pad at
 a block, so the snapshot is final — and closes it to new coins from the
 announcement on, so the list of coins to move is final too; **migrateOut**,
@@ -57,10 +57,10 @@ One file holds the names as they arrive; every block below sources it:
 ```bash
 cat > ~/notus-litvm.env <<'EOF2'
 export PATH="$HOME/.foundry/bin:$PATH"
-export BASE_PAD=            # the v8 Launchpad on Base
-export BASE_TIMELOCK=       # its TimelockController
+export BASE_PAD=0x0ba4dD0782e10a1D3946531dACC12F3797b74955       # the v9 Launchpad on Base
+export BASE_TIMELOCK=0xb97a4A1e998198bE8926a316361a4F3720f7d92c  # its TimelockController (24 h)
 export BASE_QUOTE=0xcb17C9Db87B595717C857a08468793f5bAb6445F
-export BASE_FROM_BLOCK=     # the pad's deploy block
+export BASE_FROM_BLOCK=52009454                                   # the pad's deploy block
 export BRIDGE_FROM=         # the EVM account that receives the cbLTC and takes it through Coinbase
 export VAULT=               # an account of yours: coins with no holder to go to are parked there (step 2)
 export LITVM_RPC=           # LitVM mainnet RPC

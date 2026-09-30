@@ -76,7 +76,7 @@ export const MIGRATION_TARGET: Record<number, string> = { [base.id]: "LitVM main
 
 // One address per chain: add future deployments here (multichain).
 export const LAUNCHPAD_ADDRESS: Record<number, `0x${string}` | undefined> = {
-  [base.id]: "0x2cF3e6281dddD13f4351781c584C3585e08d9580", // v7.7 quoted in cbLTC; UniV2Migrator 0xcdF15b651650e53547006207404051c0c24b6725 → Uniswap v2 pools; ZapRouter below
+  [base.id]: "0x0ba4dD0782e10a1D3946531dACC12F3797b74955", // v9 quoted in cbLTC, owned by the timelock 0xb97a4A1e998198bE8926a316361a4F3720f7d92c (24 h); UniV2Migrator 0x4D3C63F873bc2aC79E529C8003321d60643a4025 → Uniswap v2 pools; zap below
   [giwaSepolia.id]: "0x8E1a1308E3b176528Ee9278d7a531F185F9fBeFD",
   [robinhood.id]: "0x4A84c7B0dc45a473eA67f56617BC5903CA2c001c", // v7.4
   [litvmTestnet.id]: "0x4D3C63F873bc2aC79E529C8003321d60643a4025", // v7.7 (migrateToken bound to the ledger snapshot); UniV2Migrator 0xE34b882BD48D3b13A92C5A7C99469485d1761776 → Lester Labs v2 router
@@ -84,7 +84,7 @@ export const LAUNCHPAD_ADDRESS: Record<number, `0x${string}` | undefined> = {
 
 // Launchpad deployment blocks: where on-chain event scans start.
 export const LAUNCHPAD_DEPLOY_BLOCK: Record<number, bigint> = {
-  [base.id]: 51_997_864n,
+  [base.id]: 52_009_454n,
   [giwaSepolia.id]: 31_997_798n, // v7.1
   [robinhood.id]: 61_447_720n, // v7.4
   [litvmTestnet.id]: 55_934_572n, // v7.7 (the v7.6 pad 0xcdF1…6725, block 55_461_046, and the v7.5 pad 0x2cF3…9580 are retired)
@@ -225,7 +225,7 @@ export function rwaLogo(asset: QuoteAssetInfo): string | undefined {
 // Slipstream, where cbLTC's liquidity is (SlipstreamZapRouter speaks that
 // router's shape; both quoters answer QuoterV2's ABI).
 export const ZAP_ROUTER: Record<number, `0x${string}` | undefined> = {
-  [base.id]: "0x549D92E218B8633B5098acf08055b334c5089f8E", // SlipstreamZapRouter → Aerodrome (the PancakeSwap one, 0x07b2…b91b, found no liquidity)
+  [base.id]: "0xd7404Fe1aA4aAB4d27D1843c46e0b8cadA333C55", // SlipstreamZapRouter → Aerodrome, for the v9 pad
   [robinhood.id]: "0xfd0C942E3DB34672715B862A8e19838bC9EDa7B5", // v7.4
 };
 export const UNISWAP_QUOTER: Record<number, `0x${string}` | undefined> = {
