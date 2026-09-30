@@ -65,7 +65,8 @@ export async function POST(req: NextRequest) {
     const store = siteStore();
     if (!store) return NextResponse.json({ error: "uploads are off on this site: paste an image URL instead" }, { status: 503 });
     const id = bytesToHex(sha256(bytes)).slice(0, 16); // content-addressed: the same image is the same URL
-    await store.set(id, new Blob([new Uint8Array(bytes)], { type }), { metadata: { type, name: name.slice(0, 32) } });
+    // dated, so the collector (gc/route.ts) can tell an upload nobody used from a fresh one
+    await store.set(id, new Blob([new Uint8Array(bytes)], { type }), { metadata: { type, name: name.slice(0, 32), uploadedAt: Math.floor(Date.now() / 1000) } });
     return NextResponse.json({ uri: `${origin(req)}/i/${id}`, via: "site" }, { headers: { "cache-control": "no-store" } });
   } catch (e) {
     const msg = (e as Error).message;

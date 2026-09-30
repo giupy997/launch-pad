@@ -286,6 +286,16 @@ on Netlify in the site's own blob store, served at `/i/<id>` (nothing to
 set up) — or, with a Pinata key in `PINATA_JWT`, pinned to IPFS and carried
 by the instruction as `ipfs://Qm…`. An OP_RETURN cannot hold the image
 itself, only its short URL. Elsewhere, with neither, creators paste a URL.
+Uploads nobody deployed a coin with are collected: with `LOGO_GC_SECRET`
+set on the site (16+ characters), a daily `POST /api/ltc-logo/gc` with the
+header `x-gc-secret` compares the store with the ledger and deletes the
+blobs no coin and no waiting instruction refers to, once they are a day
+old (`?dry=1` only reports). From the desk's machine:
+
+```bash
+# crontab -e on the VPS, once a day at 04:10
+10 4 * * * curl -s -X POST -H "x-gc-secret: $LOGO_GC_SECRET" https://notus-pad.fun/api/ltc-logo/gc >> ~/logo-gc.log 2>&1
+```
 
 To verify the published ledger you need no key at all:
 
