@@ -5,14 +5,16 @@ import { usePathname, useRouter } from "next/navigation";
 import { useSwitchChain } from "wagmi";
 import { VISIBLE_CHAINS } from "@/lib/config";
 import { useAppChain } from "@/lib/hooks";
-import { LTC_LABEL, LTC_NETWORK } from "@/lib/litecoin/client";
 
-// Litecoin is not an EVM chain: it has no wagmi chain, only its own section
-// of the site. The switcher treats it as one more network, listed first.
-// (Zcash has a section too, reachable at /zcash, out of the menu for now.)
-const SECTIONS = [{ id: -2, path: "/litecoin", name: "Litecoin", label: LTC_LABEL, testnet: LTC_NETWORK === "test" }];
+// The contract-less networks (Litecoin, Zcash) are not EVM chains: each has
+// its own section of the site, which the switcher lists as one more network.
+// Both are out of the menu: the Litecoin ledger is winding down (its pages
+// stay at /litecoin for claims), Zcash was a testnet. One line brings one
+// back, e.g. { id: -2, path: "/litecoin", name: "Litecoin", label: "Litecoin", testnet: false }.
+const SECTIONS: { id: number; path: string; name: string; label: string; testnet: boolean }[] = [];
 
 const CHAIN_LOGOS: Record<number, string> = {
+  8453: "/chains/base.svg",
   91342: "/chains/giwa.png",
   4663: "/chains/robinhood.png",
   4441: "/chains/litvm.svg",

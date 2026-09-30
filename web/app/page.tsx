@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useTokens, useAppChain, isQuoteAsset } from "@/lib/hooks";
-import { litvmTestnet } from "@/lib/config";
+import { QUOTE_ASSETS } from "@/lib/config";
 import { TokenCard } from "@/components/TokenCard";
 import { NotDeployedNotice } from "@/components/NotDeployedNotice";
 
@@ -12,6 +12,8 @@ type Sort = "newest" | "raised" | "progress";
 export default function Explore() {
   const { tokens: allTokens, isLoading, count } = useTokens();
   const chain = useAppChain();
+  // what the coins are quoted in: the chain's first quote asset, else its gas coin
+  const quote = QUOTE_ASSETS[chain.id]?.[0]?.symbol ?? chain.nativeCurrency.symbol;
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<Sort>("newest");
 
@@ -54,21 +56,21 @@ export default function Explore() {
           </h1>
           <p className="fade-up-2 max-w-xl text-base sm:text-lg leading-relaxed text-zinc-400">
             A transparent bonding curve: the price rises with every buy, the coin graduates at 800M sold and its liquidity
-            moves into a locked DEX pool. Quoted in {chain.nativeCurrency.symbol}, settled by the contract, no admin key.
+            moves into a locked DEX pool. Quoted in {quote}, settled by the contract, no admin key.
           </p>
-          {chain.id === litvmTestnet.id && (
+          {quote === "cbLTC" && (
             <p className="fade-up-2 max-w-xl text-sm leading-relaxed text-zinc-300">
-              Litecoin&apos;s EVM layer. The coins launched on{" "}
-              <Link href="/litecoin" className="underline hover:text-white">Notus on Litecoin</Link> migrate here{" "}
-              <span className="text-white">automatically when LitVM mainnet goes live</span>: same holders, same price.
+              cbLTC is Litecoin wrapped by Coinbase: one LTC in custody for every token, proof of reserves published.
+              Pay with ETH and the buy swaps it for you, or bring cbLTC —{" "}
+              <Link href="/bridge" className="underline hover:text-white">how to get it</Link>.
             </p>
           )}
           <div className="fade-up-3 flex flex-wrap items-center gap-3 pt-1">
             <Link href="/create" className="btn-primary px-6 py-3 text-sm">
               Create a token
             </Link>
-            <Link href="/litecoin" className="btn-ghost px-5 py-3 text-sm">
-              Notus on Litecoin
+            <Link href="/about" className="btn-ghost px-5 py-3 text-sm">
+              How it works
             </Link>
           </div>
         </div>

@@ -444,7 +444,7 @@ function PairSelect({
       a.address?.toLowerCase() === s
   );
   const groups: { label: string; note?: string; assets: QuoteAssetInfo[] }[] = [
-    { label: "", assets: matches.filter((a) => a.kind === "native" || a.kind === "stable") },
+    { label: "", assets: matches.filter((a) => a.kind === "native" || a.kind === "stable" || a.kind === "crypto") },
     {
       label: "◆ Pre-IPO",
       note: "no public market",
@@ -544,10 +544,10 @@ function PairSelect({
   );
 }
 
-/** Official Robinhood logo for RWAs, monogram fallback for everything else. */
+/** The asset's own logo, else Robinhood's for RWAs, else a monogram. */
 function AssetLogo({ asset, size }: { asset: QuoteAssetInfo; size: number }) {
   const [failed, setFailed] = useState(false);
-  const src = rwaLogo(asset);
+  const src = asset.logo ?? rwaLogo(asset);
   if (src && !failed) {
     return (
       // eslint-disable-next-line @next/next/no-img-element

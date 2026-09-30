@@ -26,21 +26,21 @@ const geistMono = localFont({
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") || "https://notus-pad.fun";
 const DESCRIPTION =
-  "Launch and trade coins on Litecoin itself — an OP_RETURN ledger, no smart contracts — and on LitVM, Litecoin's EVM layer. Every coin on Litecoin migrates to LitVM automatically at mainnet: same holders, same price.";
+  "Launch and trade coins on Base, quoted in cbLTC — Litecoin wrapped by Coinbase. A transparent bonding curve, a locked pool at graduation, no admin key.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: { default: "Notus — launch your coin on Litecoin", template: "%s · Notus" },
+  title: { default: "Notus — launch your coin on Base", template: "%s · Notus" },
   description: DESCRIPTION,
   applicationName: "Notus",
   openGraph: {
     type: "website",
     siteName: "Notus",
-    title: "Notus — launch your coin on Litecoin",
+    title: "Notus — launch your coin on Base",
     description: DESCRIPTION,
     url: SITE_URL,
   },
-  twitter: { card: "summary_large_image", title: "Notus — launch your coin on Litecoin", description: DESCRIPTION },
+  twitter: { card: "summary_large_image", title: "Notus — launch your coin on Base", description: DESCRIPTION },
 };
 
 export const viewport: Viewport = { themeColor: "#07080b", colorScheme: "dark" };
@@ -85,7 +85,7 @@ export default async function RootLayout({
               <div className="space-y-2">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src="/art/wordmark.png" alt="Notus" draggable={false} className="h-6 w-auto select-none" />
-                <div className="label">Litecoin · LitVM</div>
+                <div className="label">Base · cbLTC</div>
                 <div className="font-mono text-xs text-zinc-500 flex flex-wrap gap-x-3 gap-y-1">
                   <Link className="underline hover:text-zinc-200" href="/about">
                     About
@@ -104,7 +104,7 @@ export default async function RootLayout({
               </div>
               <p className="text-xs leading-relaxed text-zinc-500">
                 Notus is an independent token launchpad{SOURCE_URL ? ", open source" : "; its code is published at launch"}. It is not
-                affiliated with, endorsed by, or operated by Litecoin, the Litecoin Foundation, LitVM or Lester Labs — their names identify the
+                affiliated with, endorsed by, or operated by Coinbase, Base, Litecoin, the Litecoin Foundation, LitVM or Lester Labs — their names identify the
                 public blockchain networks and protocols this app connects to. Cryptoassets are highly volatile; nothing here is financial
                 advice.
               </p>

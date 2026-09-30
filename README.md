@@ -1,17 +1,19 @@
 # Notus
 
-**https://notus-pad.fun** — a token launchpad on Litecoin and on LitVM,
-Litecoin's EVM layer. What it is, how keys are handled and how to reach us:
-[notus-pad.fun/about](https://notus-pad.fun/about).
+**https://notus-pad.fun** — a token launchpad on Base, quoted in cbLTC:
+Litecoin wrapped by Coinbase, one LTC in custody for every token, with a
+public proof of reserves. What it is, how keys are handled and how to reach
+us: [notus-pad.fun/about](https://notus-pad.fun/about).
 
-On Litecoin there are no smart contracts, so Notus runs as an OP_RETURN
-ledger: one desk address, instructions in the memos of ordinary Litecoin
-transactions signed by the user, balances anyone can recompute from the chain
-(live on Litecoin mainnet). On LitVM the same launchpad runs as Solidity
-contracts (Liteforge testnet today); when LitVM mainnet goes live, every coin
-on the Litecoin ledger migrates there automatically, same holders, same price.
-The contracts are chain-agnostic and have run on other EVM chains (GIWA
-Sepolia, Robinhood Chain); those integrations stay in the repository.
+The same Solidity contracts run on LitVM's Liteforge testnet (Litecoin's EVM
+layer; its mainnet is expected later in 2026) and have run on GIWA Sepolia and
+Robinhood Chain; those integrations stay in the repository. Notus started as
+an OP_RETURN ledger on Litecoin itself — one desk address, instructions in the
+memos of ordinary transactions, balances anyone recomputes from the chain —
+which is winding down: its only buyer was its operator, and a key kept in the
+browser plus LTC that has to arrive from another chain proved more than a user
+takes on. The ledger, its desk and its migration tooling stay in `litecoin/`
+and at `/litecoin`, out of the menu.
 
 ## Structure
 
@@ -106,6 +108,8 @@ Sepolia, Robinhood Chain); those integrations stay in the repository.
 
 | Chain | Contract | Address |
 |---|---|---|
+| Base (8453) | Launchpad | [`0x2cF3e6281dddD13f4351781c584C3585e08d9580`](https://base.blockscout.com/address/0x2cF3e6281dddD13f4351781c584C3585e08d9580) — v7.7, quoted in cbLTC (`0xcb17…445F`, 8 decimals, 30 cbLTC virtual reserve); deploy block 51,997,864; graduation seeds a locked Uniswap v2 pool (token/cbLTC) through `UniV2Migrator` [`0xcdF15b651650e53547006207404051c0c24b6725`](https://base.blockscout.com/address/0xcdF15b651650e53547006207404051c0c24b6725) |
+| Base (8453) | ZapRouter | [`0x07b29FEe7369646cE53E40fB7e59FAd291aEb91b`](https://base.blockscout.com/address/0x07b29FEe7369646cE53E40fB7e59FAd291aEb91b) — one-transaction ETH buys, swapping on PancakeSwap v3 (WETH → cbBTC → cbLTC) |
 | GIWA Sepolia (91342) | Launchpad | [`0x8E1a1308E3b176528Ee9278d7a531F185F9fBeFD`](https://sepolia-explorer.giwa.io/address/0x8E1a1308E3b176528Ee9278d7a531F185F9fBeFD) — v7.1 (v7.4 redeploy pending) |
 | Robinhood Chain (4663) | Launchpad | [`0x4A84c7B0dc45a473eA67f56617BC5903CA2c001c`](https://robinhoodchain.blockscout.com/address/0x4A84c7B0dc45a473eA67f56617BC5903CA2c001c) — v7.4, 64 quote assets |
 | Robinhood Chain (4663) | NotusV4Hook | [`0x11E98A9d691B8730990d9bE1da9CD012f4e320cC`](https://robinhoodchain.blockscout.com/address/0x11E98A9d691B8730990d9bE1da9CD012f4e320cC) — v4 graduation + pool fees |
@@ -153,12 +157,13 @@ equity, no backing, no affiliation with the companies.
 
 ## Multichain
 
-The app has a chain switcher in the header. It offers **Litecoin** (the
-contract-less ledger, its own section of the site at `/litecoin`) and **LitVM
-Liteforge**; GIWA Sepolia, Robinhood Chain and Zcash Testnet (`/zcash`) stay
-wired — addresses, assets, pages — but out of the menu (`VISIBLE_CHAINS` in
-`web/lib/config.ts` lists what the menu shows; LitVM is the default EVM
-chain). LitVM (chain 4441, RPC `https://liteforge.rpc.caldera.xyz/infra-partner-http`,
+The app has a chain switcher in the header. It offers **Base** (chain 8453,
+RPC `https://mainnet.base.org`, explorer `https://base.blockscout.com`, gas in
+ETH), where every coin is quoted in cbLTC; LitVM Liteforge, GIWA Sepolia,
+Robinhood Chain, the Litecoin ledger (`/litecoin`) and Zcash Testnet (`/zcash`)
+stay wired — addresses, assets, pages — but out of the menu (`VISIBLE_CHAINS`
+in `web/lib/config.ts` lists what the menu shows; Base is the default chain).
+LitVM (chain 4441, RPC `https://liteforge.rpc.caldera.xyz/infra-partner-http`,
 explorer `https://liteforge.explorer.caldera.xyz`, gas in zkLTC) is Litecoin's
 EVM layer 2: when LitVM mainnet goes live, the Litecoin ledger's coins migrate
 there automatically — same holders, same price, each coin's pool moved to a

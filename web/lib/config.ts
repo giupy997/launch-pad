@@ -1,5 +1,5 @@
 import { defineChain } from "viem";
-import { mainnet, sepolia } from "viem/chains";
+import { base, mainnet, sepolia } from "viem/chains";
 import { cookieStorage, createConfig, createStorage, http, injected } from "wagmi";
 import { walletConnect } from "wagmi/connectors";
 
@@ -53,18 +53,20 @@ export const litvmTestnet = defineChain({
   testnet: true,
 });
 
-export { sepolia, mainnet };
+export { sepolia, mainnet, base };
 
 // Chains the app runs on (shown in the chain switcher).
 /** Every EVM chain the app is wired for (addresses, quote assets, deploy blocks). */
-export const APP_CHAINS = [giwaSepolia, robinhood, litvmTestnet] as const;
-/** The chains the site offers: Litecoin's EVM layer, next to Litecoin itself.
- *  GIWA and Robinhood stay wired above but out of the menu, one line to bring back. */
-export const VISIBLE_CHAINS = [litvmTestnet] as const;
-export const DEFAULT_CHAIN = litvmTestnet;
+export const APP_CHAINS = [base, giwaSepolia, robinhood, litvmTestnet] as const;
+/** The chain the site offers: Base, where every coin is quoted in cbLTC.
+ *  Liteforge, GIWA and Robinhood stay wired above but out of the menu, one
+ *  line to bring back. */
+export const VISIBLE_CHAINS = [base] as const;
+export const DEFAULT_CHAIN = base;
 
 // One address per chain: add future deployments here (multichain).
 export const LAUNCHPAD_ADDRESS: Record<number, `0x${string}` | undefined> = {
+  [base.id]: "0x2cF3e6281dddD13f4351781c584C3585e08d9580", // v7.7 quoted in cbLTC; UniV2Migrator 0xcdF15b651650e53547006207404051c0c24b6725 → Uniswap v2 pools; ZapRouter below
   [giwaSepolia.id]: "0x8E1a1308E3b176528Ee9278d7a531F185F9fBeFD",
   [robinhood.id]: "0x4A84c7B0dc45a473eA67f56617BC5903CA2c001c", // v7.4
   [litvmTestnet.id]: "0x4D3C63F873bc2aC79E529C8003321d60643a4025", // v7.7 (migrateToken bound to the ledger snapshot); UniV2Migrator 0xE34b882BD48D3b13A92C5A7C99469485d1761776 → Lester Labs v2 router
@@ -72,6 +74,7 @@ export const LAUNCHPAD_ADDRESS: Record<number, `0x${string}` | undefined> = {
 
 // Launchpad deployment blocks: where on-chain event scans start.
 export const LAUNCHPAD_DEPLOY_BLOCK: Record<number, bigint> = {
+  [base.id]: 51_997_864n,
   [giwaSepolia.id]: 31_997_798n, // v7.1
   [robinhood.id]: 61_447_720n, // v7.4
   [litvmTestnet.id]: 55_934_572n, // v7.7 (the v7.6 pad 0xcdF1…6725, block 55_461_046, and the v7.5 pad 0x2cF3…9580 are retired)
@@ -85,7 +88,8 @@ export const LAUNCHPAD_DEPLOY_BLOCK: Record<number, bigint> = {
  *  Notus synthetic pre-market (createPreMarket): a transferable launch token
  *  on its own ETH curve, whitelisted as a quote asset from day one, pure
  *  community price discovery with no equity or backing. */
-export type QuoteAssetKind = "native" | "stable" | "stock" | "etf" | "preipo" | "premarket";
+/** crypto = a wrapped crypto asset with a market of its own (cbLTC on Base). */
+export type QuoteAssetKind = "native" | "stable" | "crypto" | "stock" | "etf" | "preipo" | "premarket";
 
 export type QuoteAssetInfo = {
   address: `0x${string}` | null;
@@ -101,11 +105,20 @@ export type QuoteAssetInfo = {
   zapFees?: number[];
   /** The middle token of a two-hop zap route (WETH → via → asset); the chain's USDG when omitted. */
   zapVia?: `0x${string}`;
+  /** The asset's logo, a path under /public or a URL; RWAs take Robinhood's CDN when omitted. */
+  logo?: string;
 };
 
 export const PRE_IPO_DISCLAIMER =
   "Synthetic community pre-market: price discovery only. No equity, no backing, no affiliation with the company.";
 export const QUOTE_ASSETS: Record<number, QuoteAssetInfo[]> = {
+  // Base: every coin is quoted in cbLTC — Coinbase Wrapped LTC, one LTC in
+  // Coinbase custody per token (public proof of reserves), 8 decimals. ETH
+  // buys zap through PancakeSwap v3 by way of cbBTC; `zapFees` follows once
+  // the route is measured (WETH -f1-> cbBTC -f2-> cbLTC).
+  [base.id]: [
+    { address: "0xcb17C9Db87B595717C857a08468793f5bAb6445F", symbol: "cbLTC", name: "Coinbase Wrapped LTC", decimals: 8, kind: "crypto", logo: "/chains/litecoin.svg", zapVia: "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf" },
+  ],
   [giwaSepolia.id]: [{ address: null, symbol: "ETH", decimals: 18, kind: "native" }],
   [litvmTestnet.id]: [{ address: null, symbol: "zkLTC", decimals: 18, kind: "native" }],
   [robinhood.id]: [
@@ -190,18 +203,23 @@ export const QUOTE_ASSETS: Record<number, QuoteAssetInfo[]> = {
  *  Notus pre-markets have no CDN logo and fall back to their on-chain one. */
 export function rwaLogo(asset: QuoteAssetInfo): string | undefined {
   if (!asset.address || asset.kind === "premarket" || asset.kind === "native") return undefined;
-  if (asset.kind === "stable") return undefined;
+  if (asset.kind === "stable" || asset.kind === "crypto") return undefined;
   return `https://cdn.robinhood.com/ncw_assets/logos/${asset.address.toLowerCase()}.png`;
 }
 
-// ETH-zap infrastructure on Robinhood Chain (router deployed per launchpad).
+// ETH-zap infrastructure: a router deployed per launchpad, and the quoter of
+// the v3 DEX it swaps on — Uniswap on Robinhood, PancakeSwap on Base, where
+// cbLTC's pools are (both quoters speak QuoterV2's ABI).
 export const ZAP_ROUTER: Record<number, `0x${string}` | undefined> = {
+  [base.id]: "0x07b29FEe7369646cE53E40fB7e59FAd291aEb91b",
   [robinhood.id]: "0xfd0C942E3DB34672715B862A8e19838bC9EDa7B5", // v7.4
 };
 export const UNISWAP_QUOTER: Record<number, `0x${string}` | undefined> = {
+  [base.id]: "0xB048Bbc1Ee6b733FFfCFb9e9CeF7375518e25997", // PancakeSwap v3 QuoterV2
   [robinhood.id]: "0x33e885ed0ec9bf04ecfb19341582aadcb4c8a9e7",
 };
 export const WETH9: Record<number, `0x${string}` | undefined> = {
+  [base.id]: "0x4200000000000000000000000000000000000006",
   [robinhood.id]: "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
 };
 export const USDG: Record<number, `0x${string}` | undefined> = {
@@ -231,7 +249,7 @@ export const config = createConfig({
   // so selection survives reloads without hydration mismatches.
   ssr: true,
   storage: createStorage({ storage: cookieStorage }),
-  chains: [litvmTestnet, giwaSepolia, robinhood, sepolia, mainnet], // the first is the default before a wallet connects
+  chains: [base, litvmTestnet, giwaSepolia, robinhood, sepolia, mainnet], // the first is the default before a wallet connects
   connectors: [
     injected(),
     ...(WC_PROJECT_ID
@@ -239,13 +257,14 @@ export const config = createConfig({
           walletConnect({
             projectId: WC_PROJECT_ID,
             showQrModal: true,
-            metadata: { name: "Notus", description: "Token launchpad on Litecoin and LitVM", url: SITE, icons: [`${SITE}/icon.png`] },
+            metadata: { name: "Notus", description: "Token launchpad on Base, quoted in cbLTC", url: SITE, icons: [`${SITE}/icon.png`] },
           }),
         ]
       : []),
   ],
   batch: { multicall: { wait: 16 } },
   transports: {
+    [base.id]: transport(),
     [giwaSepolia.id]: transport(),
     [robinhood.id]: transport(),
     [litvmTestnet.id]: transport(),
