@@ -22,6 +22,7 @@ import {
   type TxEvent,
   normalizeLink,
   parseLinks,
+  stateRoot,
 } from "./ledger.ts";
 
 const LTC = 100_000_000n;
@@ -289,6 +290,30 @@ test("fund: LTC for the desk's fees goes to the treasury, owed to nobody", () =>
   // still allowed after a freeze: the desk keeps paying out
   const frozen = replay("test", [...events, { ...ev(ALICE, memo.fund(), 5_000n), height: 9_000 }], { ...PARAMS.test, freezeHeight: 8_000 });
   assert.equal(frozen.treasuryLit, 1_005_000n);
+});
+
+test("sweep: the desk moves treasury to cold storage; rules v2 only, never more than the treasury", () => {
+  const funded = [ev(ALICE, memo.fund(), 3_000_000n), ev(BOB, null, 1_000_000n)];
+  /** The desk sending `lit` to cold storage with the sweep memo. */
+  const sweep = (lit: bigint, height: number): TxEvent => ({
+    ...deskPays([{ to: COLD, lit }], []),
+    memo: memo.sweep(),
+    height,
+  });
+  const v2 = { ...PARAMS.test, rulesV2From: 2_000 };
+  // before rules v2: a desk transaction without a payout memo, as ever
+  const before = replay("test", [...funded, sweep(1_000_000n, 1_500)], v2);
+  assert.equal(before.treasuryLit, 3_000_000n);
+  assert.equal(before.rejected.at(-1)!.reason, "desk transaction without a payout memo");
+  // under rules v2: the treasury shrinks by what left the desk; what is owed (Bob's credit) is untouched
+  const after = replay("test", [...funded, sweep(1_000_000n, 2_500)], v2);
+  assert.equal(after.treasuryLit, 2_000_000n);
+  assert.equal(claimableLit(after, BOB), 1_000_000n);
+  assert.equal(after.rejected.length, before.rejected.length - 1);
+  // more than the treasury: clamped, the ledger never records a negative treasury
+  const over = replay("test", [...funded, sweep(9_000_000n, 2_500)], v2);
+  assert.equal(over.treasuryLit, 0n);
+  assert.notEqual(stateRoot(before), stateRoot(after), "a sweep is part of the state");
 });
 
 test("logo: set at deploy when it fits, changed later only by the creator", () => {

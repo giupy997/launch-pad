@@ -160,6 +160,31 @@ done, scheduled or delivered.
 `forge test --match-contract Migration` runs the contract tests, including
 the demo ledger's file end to end (`test/fixtures/migration-demo.json`).
 
+## Cold storage
+
+Only the treasury is the operator's: deploy fees, the desk's 20% of trade
+fees, `fund` gifts. Everything else on the desk address is owed — to the
+curves and pools, to claims, to payouts — and stays. `litecoin/sweep.ts`
+moves the treasury, less a reserve for payout fees, to a cold address,
+never so much that the confirmed balance would stop covering what the
+ledger owes. The transaction carries the `sweep` memo: under rules v2 the
+ledger takes the amount off its treasury, and every verifier sees the
+money move. Run it with the desk stopped and no payout in flight, so the
+two never spend the same coins:
+
+```bash
+sudo systemctl stop notus-desk-main
+NOTUS_LTC_NETWORK=main NOTUS_LTC_STATE=litecoin/cache/main-state.json NOTUS_LTC_DESK_DIR=litecoin/desk-main \
+  NOTUS_LTC_DESK_KEY_FILE=/etc/notus/desk-main.key \
+  node litecoin/sweep.ts --to <cold address> --reserve 0.05        # shows what it would send
+# …the same with --yes to broadcast, then:
+sudo systemctl start notus-desk-main
+```
+
+`--max <LTC>` caps one sweep. The key file needs to be readable by whoever
+runs it (systemd hands it to the service alone; run the sweep as root, or
+copy the service's environment).
+
 ## What is custodial
 
 The desk holds the LTC in the curves — there is no escrow script on Litecoin

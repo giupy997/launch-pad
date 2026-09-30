@@ -376,6 +376,8 @@ export const memo = {
   /** Where this address's coins go on LitVM at the migration (rules v2). */
   evm: (address: string) => [PROTOCOL, "evm", address].join(" "),
   paid: (ids: string[]) => [PROTOCOL, "paid", ...ids].join(" "),
+  /** The desk moving its own money (treasury) to cold storage (rules v2). */
+  sweep: () => [PROTOCOL, "sweep"].join(" "),
 };
 
 const TICKER = /^[A-Z0-9]{2,8}$/;
@@ -553,8 +555,17 @@ function apply(s: State, p: Params, e: TxEvent): string | null {
   const cmd = isNotus ? f[1] : undefined;
 
   if (e.fromDesk) {
-    if (cmd !== "paid") return "desk transaction without a payout memo";
-    return paid(s, e, f.slice(2));
+    if (cmd === "paid") return paid(s, e, f.slice(2));
+    // Rules v2: the desk takes its own money — the treasury, owed to nobody —
+    // to cold storage. What left the desk is no longer treasury; the LTC the
+    // ledger owes never was, so the desk's balance still covers it.
+    if (cmd === "sweep" && rulesV2(p, e.height)) {
+      let out = 0n;
+      for (const o of e.outputs) if (!o.toDesk && o.address !== null) out += o.lit;
+      s.treasuryLit -= out > s.treasuryLit ? s.treasuryLit : out;
+      return null;
+    }
+    return "desk transaction without a payout memo";
   }
 
   // A payment to the desk always has an owner: the address that funded it.
