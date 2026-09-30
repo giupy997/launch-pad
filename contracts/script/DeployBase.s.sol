@@ -17,8 +17,10 @@ import {SlipstreamZapRouter} from "../src/SlipstreamZapRouter.sol";
 /// mainnet — is public for TIMELOCK_DELAY before it lands.
 ///
 ///   cd contracts && source .env && \
-///   TREASURY=0x... [TIMELOCK_DELAY=86400] [CBLTC_VIRTUAL=3000000000] forge script script/DeployBase.s.sol \
+///   [TREASURY=0x...] [TIMELOCK_DELAY=86400] [CBLTC_VIRTUAL=3000000000] forge script script/DeployBase.s.sol \
 ///     --rpc-url base --private-key "$PRIVATE_KEY" --broadcast
+///
+/// TREASURY defaults to the Notus treasury below.
 ///
 /// CBLTC_VIRTUAL is the virtual reserve a cbLTC curve opens with, in cbLTC
 /// units (8 decimals): 30 cbLTC by default — about $2K of opening market cap
@@ -43,10 +45,12 @@ contract DeployBase is Script {
     /// Aerodrome Slipstream SwapRouter (initial deployment, CL factory 0x5e7BB104…): the ETH → cbLTC leg of a zap.
     address constant SLIPSTREAM_ROUTER = 0xBE6D8f0d05cC4be24d5167a3eF062215bE6D18a5;
     address constant WETH = 0x4200000000000000000000000000000000000006;
+    /// The Notus treasury: the platform fee's share of every trade goes here (TREASURY overrides it).
+    address constant TREASURY_DEFAULT = 0x24622320D93Da2d9c626EE469ad0C2c48a1ED7F7;
     address constant MULTICALL3 = 0xcA11bde05977b3631167028862bE2a173976CA11;
 
     function run() external {
-        address treasury = vm.envOr("TREASURY", msg.sender);
+        address treasury = vm.envOr("TREASURY", TREASURY_DEFAULT);
         uint256 virtualReserve = vm.envOr("CBLTC_VIRTUAL", uint256(30 * 1e8));
         uint256 delay = vm.envOr("TIMELOCK_DELAY", uint256(24 hours));
         address proposer = vm.envOr("PROPOSER", msg.sender);
