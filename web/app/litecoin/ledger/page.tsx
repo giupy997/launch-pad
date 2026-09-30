@@ -33,6 +33,7 @@ export default function LitecoinLedger() {
         <Stat label="Snapshot age" value={state.updatedAt ? (age < 120 ? `${age}s` : `${Math.floor(age / 60)} min`) : "—"} />
         <Stat label="Owed to users" value={`${fmtLtc(state.liabilitiesLit, 8)} LTC`} />
         <Stat label="Desk fees" value={`${fmtLtc(state.treasuryLit, 8)} LTC`} />
+        {state.bridgedLit && state.bridgedLit !== "0" && <Stat label="Bridged to LitVM" value={`${fmtLtc(state.bridgedLit, 8)} LTC`} />}
         <Stat label="Payouts due" value={String(due.length)} />
         <Stat label="Network" value={state.network === "test" ? "testnet" : "mainnet"} />
       </section>

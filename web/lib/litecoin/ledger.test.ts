@@ -316,6 +316,47 @@ test("sweep: the desk moves treasury to cold storage; rules v2 only, never more 
   assert.notEqual(stateRoot(before), stateRoot(after), "a sweep is part of the state");
 });
 
+test("bridge: after the freeze the desk takes the curves' LTC to LitVM; what left is owed there, not here", () => {
+  const live = [
+    ev(ALICE, memo.deploy("BRG", "Bridged", false), PARAMS.test.deployFeeLit),
+    ev(BOB, memo.buy("BRG"), LTC),
+  ];
+  const freezeHeight = live[1].height;
+  const params = { ...PARAMS.test, rulesV2From: 1_000, freezeHeight };
+  const frozen = replay("test", live, params);
+  const inCurves = frozen.coins.get("BRG")!.realLit;
+  assert.ok(inCurves > 0n);
+  const owed = liabilitiesLit(frozen);
+  /** The desk sending `lit` away with the bridge memo, at `height`. */
+  const bridge = (lit: bigint, height: number): TxEvent => ({ ...deskPays([{ to: COLD, lit }], []), memo: memo.bridge(), height });
+  // at the freeze block the curves still trade: refused, nothing changes
+  const early = replay("test", [...live, bridge(inCurves, freezeHeight)], params);
+  assert.equal(early.rejected.at(-1)!.reason, "bridge before the freeze");
+  assert.equal(early.bridgedLit, 0n);
+  assert.equal(liabilitiesLit(early), owed);
+  // after it: the curves' LTC is owed on LitVM now; the treasury and Bob's coins are untouched
+  const after = replay("test", [...live, bridge(inCurves, freezeHeight + 1)], params);
+  assert.equal(after.bridgedLit, inCurves);
+  assert.equal(liabilitiesLit(after), owed - inCurves);
+  assert.equal(after.treasuryLit, frozen.treasuryLit);
+  assert.equal(after.balances.get("BRG")!.get(BOB), frozen.balances.get("BRG")!.get(BOB));
+  assert.equal(after.rejected.length, early.rejected.length - 1);
+  assert.notEqual(stateRoot(frozen), stateRoot(after), "what was bridged is part of the state");
+  // more than the curves hold: clamped, the ledger never owes less than nothing for them
+  const over = replay("test", [...live, bridge(inCurves * 3n, freezeHeight + 1)], params);
+  assert.equal(over.bridgedLit, inCurves);
+  assert.equal(liabilitiesLit(over), owed - inCurves);
+  // a second run only takes what is left
+  const twice = replay("test", [...live, bridge(inCurves / 2n, freezeHeight + 1), bridge(inCurves, freezeHeight + 2)], params);
+  assert.equal(twice.bridgedLit, inCurves);
+  // without a freeze, or before rules v2: not a bridge at all
+  const unfrozen = replay("test", [...live, bridge(inCurves, freezeHeight + 1)], { ...params, freezeHeight: null });
+  assert.equal(unfrozen.rejected.at(-1)!.reason, "bridge before the freeze");
+  const v1 = replay("test", [...live, bridge(inCurves, freezeHeight + 1)], { ...params, rulesV2From: 5_000 });
+  assert.equal(v1.rejected.at(-1)!.reason, "desk transaction without a payout memo");
+  assert.equal(liabilitiesLit(v1), owed);
+});
+
 test("logo: set at deploy when it fits, changed later only by the creator", () => {
   const events = [
     ev(ALICE, memo.deploy("PIC", "Picture", false, "https://i.example/p.png"), PARAMS.test.deployFeeLit),

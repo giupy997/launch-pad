@@ -33,7 +33,9 @@ const OUT = STATE_PATH;
 const CACHE = process.env.NOTUS_LTC_CACHE ?? join(ROOT, "cache", `${NETWORK}.json`);
 /** Transactions fold into the ledger once this deep, so a reorg cannot unwind them. */
 const CONFIRMATIONS = Number(process.env.NOTUS_LTC_CONFIRMATIONS ?? 2);
-/** Migration freeze height (see Params.freezeHeight); unset = the ledger is live. */
+/** Migration freeze height (see Params.freezeHeight): announced here first, and
+ *  committed to PARAMS once it is history, so every replay agrees without the
+ *  variable. Unset = the one in PARAMS, else the ledger is live. */
 const FREEZE = process.env.NOTUS_LTC_FREEZE ? Number(process.env.NOTUS_LTC_FREEZE) : null;
 /** Deeper than this, a cached transaction is taken as final and not re-fetched. */
 const SETTLED = 12;
@@ -190,7 +192,7 @@ export async function pass(sync: boolean) {
   }
   const maxHeight = tip === null ? Number.MAX_SAFE_INTEGER : tip - (CONFIRMATIONS - 1);
   const events = eventsFromCache(cache, desk, maxHeight);
-  const state = replay(NETWORK, events, { ...PARAMS[NETWORK], freezeHeight: FREEZE }, tip === null ? undefined : maxHeight);
+  const state = replay(NETWORK, events, { ...PARAMS[NETWORK], freezeHeight: FREEZE ?? PARAMS[NETWORK].freezeHeight }, tip === null ? undefined : maxHeight);
   const out = {
     ...snapshot(state),
     desk: { address: desk, network: NETWORK },

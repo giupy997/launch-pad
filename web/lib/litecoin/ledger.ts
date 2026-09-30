@@ -220,6 +220,9 @@ export type State = {
   /** The block at which retireEmptyCoinsAt was applied, once (not in the root). */
   retiredAt: number | null;
   treasuryLit: bigint;
+  /** LTC the desk took to LitVM for the frozen curves and pools (`bridge`):
+   *  the migration owes it there, so the ledger no longer counts it here. */
+  bridgedLit: bigint;
   payouts: Payout[];
   trades: Trade[];
   rejected: Rejection[];
@@ -241,6 +244,7 @@ export function emptyState(network: Network): State {
     freezeHeight: null,
     retiredAt: null,
     treasuryLit: 0n,
+    bridgedLit: 0n,
     payouts: [],
     trades: [],
     rejected: [],
@@ -378,6 +382,9 @@ export const memo = {
   paid: (ids: string[]) => [PROTOCOL, "paid", ...ids].join(" "),
   /** The desk moving its own money (treasury) to cold storage (rules v2). */
   sweep: () => [PROTOCOL, "sweep"].join(" "),
+  /** The desk taking the LTC in the frozen curves and pools to LitVM, where
+   *  the migration re-creates them (rules v2, after the freeze). */
+  bridge: () => [PROTOCOL, "bridge"].join(" "),
 };
 
 const TICKER = /^[A-Z0-9]{2,8}$/;
@@ -563,6 +570,20 @@ function apply(s: State, p: Params, e: TxEvent): string | null {
       let out = 0n;
       for (const o of e.outputs) if (!o.toDesk && o.address !== null) out += o.lit;
       s.treasuryLit -= out > s.treasuryLit ? s.treasuryLit : out;
+      return null;
+    }
+    // Rules v2, once the ledger is frozen: the desk takes the LTC in the
+    // curves and pools to LitVM, where the migration re-creates them with
+    // that very LTC. What left the desk with this memo is owed there now, not
+    // here — never more than the curves and pools hold, and never before the
+    // freeze, while they still trade.
+    if (cmd === "bridge" && rulesV2(p, e.height)) {
+      if (p.freezeHeight === null || e.height <= p.freezeHeight) return "bridge before the freeze";
+      let out = 0n;
+      for (const o of e.outputs) if (!o.toDesk && o.address !== null) out += o.lit;
+      const curves = inCurvesLit(s);
+      const room = curves > s.bridgedLit ? curves - s.bridgedLit : 0n;
+      s.bridgedLit += out > room ? room : out;
       return null;
     }
     return "desk transaction without a payout memo";
@@ -753,10 +774,18 @@ export function claimableLit(s: State, holder: string): bigint {
   return total;
 }
 
-/** LTC the desk must hold to honour every coin, claim and unpaid payout. */
-export function liabilitiesLit(s: State): bigint {
+/** LTC the curves and pools hold: what the migration takes to LitVM. */
+export function inCurvesLit(s: State): bigint {
   let total = 0n;
   for (const c of s.coins.values()) total += c.graduated ? c.poolLit : c.realLit;
+  return total;
+}
+
+/** LTC the desk must hold to honour every coin, claim and unpaid payout —
+ *  less what it already took to LitVM for the frozen curves (`bridge`). */
+export function liabilitiesLit(s: State): bigint {
+  const curves = inCurvesLit(s);
+  let total = curves > s.bridgedLit ? curves - s.bridgedLit : 0n;
   const holders = new Set<string>(s.credit.keys());
   for (const m of s.balances.values()) for (const h of m.keys()) holders.add(h);
   for (const m of s.pending.values()) for (const h of m.keys()) holders.add(h);
@@ -836,6 +865,8 @@ function canonical(s: State): string {
       payouts: s.payouts,
       // where migrated coins go is ownership too; absent until someone registers, so older roots stand
       ...(s.evm.size ? { evm: Object.fromEntries(sortedEntries(s.evm)) } : {}),
+      // what the desk took to LitVM is no longer owed here; absent until it does, so older roots stand
+      ...(s.bridgedLit ? { bridgedLit: s.bridgedLit } : {}),
     },
     big
   );
@@ -877,6 +908,7 @@ export function snapshot(s: State, now = Math.floor(Date.now() / 1000)) {
         freezeHeight: s.freezeHeight,
         txsRead: s.txsRead,
         treasuryLit: s.treasuryLit,
+        bridgedLit: s.bridgedLit,
         liabilitiesLit: liabilitiesLit(s),
         coins: sortedEntries(s.coins).map(([, c]) => ({ ...c, holders: s.balances.get(c.ticker)?.size ?? 0, volume: volumes.get(c.ticker) ?? none })),
         balances: nested(s.balances),
