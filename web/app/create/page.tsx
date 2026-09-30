@@ -2,6 +2,7 @@
 
 import { CreateTokenForm } from "@/components/CreateTokenForm";
 import { NotDeployedNotice } from "@/components/NotDeployedNotice";
+import { MigrationNotice } from "@/components/MigrationNotice";
 
 export default function CreatePage() {
   return (
@@ -16,6 +17,7 @@ export default function CreatePage() {
           graduation — a permanently locked liquidity pool.
         </p>
       </section>
+      <MigrationNotice compact />
       <CreateTokenForm />
     </div>
   );

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatEther, parseEther, parseEventLogs } from "viem";
 import Link from "next/link";
-import { useAccount, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
+import { useAccount, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { launchpadAbi } from "@/lib/abi";
 import { useLaunchpadAddress, useExplorer, useAppChain, ZERO_ADDRESS } from "@/lib/hooks";
 import {
@@ -12,6 +12,7 @@ import {
   PRE_IPO_DISCLAIMER,
   rwaLogo,
   type QuoteAssetInfo,
+  MIGRATION_TARGET,
 } from "@/lib/config";
 import { TokenLogo } from "@/components/TokenLogo";
 import { processLogoFile, dataUriBytes } from "@/lib/image";
@@ -44,6 +45,17 @@ export function CreateTokenForm() {
   const explorer = useExplorer();
   const chain = useAppChain();
   const { isConnected } = useAccount();
+
+  // a v8 pad closes to new coins the moment a migration freeze is announced
+  // (trading goes on until the block); older pads have no freezeBlock and read as open
+  const { data: freezeBlock } = useReadContract({
+    address: pad,
+    abi: launchpadAbi,
+    functionName: "freezeBlock",
+    query: { enabled: deployed, refetchInterval: 30_000 },
+  });
+  const closed = !!freezeBlock && freezeBlock > 0n;
+  const target = MIGRATION_TARGET[chain.id] ?? "its new chain";
 
   const [name, setName] = useState("");
   const [symbol, setSymbol] = useState("");
@@ -99,6 +111,7 @@ export function CreateTokenForm() {
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (closed) return;
     writeContract({
       address: pad,
       abi: launchpadAbi,
@@ -287,11 +300,13 @@ export function CreateTokenForm() {
 
         <button
           type="submit"
-          disabled={!deployed || !isConnected || isPending || isConfirming}
+          disabled={!deployed || closed || !isConnected || isPending || isConfirming}
           className="btn-primary w-full py-3"
         >
           {!deployed
             ? "Not deployed on this chain"
+            : closed
+              ? `Closed: moving to ${target}`
             : !isConnected
               ? "Connect wallet to launch"
               : isPending
@@ -300,6 +315,12 @@ export function CreateTokenForm() {
                   ? "Confirming…"
                   : "Launch token"}
         </button>
+        {closed && (
+          <p className="text-xs text-zinc-500">
+            The migration to {target} is announced: this launchpad takes no new coins until every coin
+            is live there. Trading goes on until the freeze block; launch yours on {target} once it opens.
+          </p>
+        )}
 
         {isSuccess && hash && (
           <div className="card p-4 space-y-3">
