@@ -94,7 +94,7 @@ export function FeePanel({
               writeContract({ address: pad, abi: launchpadAbi, functionName: "buybackAndBurn", chainId: chain.id, args: [token] });
             }}
             className="btn-primary px-4 py-1.5 text-xs"
-            title={cannotBurn ?? "Buys the coin back with the pot and burns it. Anyone may."}
+            title={cannotBurn ?? "Buys the coin back with a slice of the pot and burns it: a hundredth of the curve, or half a percent of the pool, once a block. Anyone may."}
           >
             {isPending ? "Sign…" : isConfirming ? "Burning…" : "Burn now"}
           </button>
@@ -116,7 +116,7 @@ export function FeePanel({
           </div>
         </div>
       )}
-      {isSuccess && <p className="text-xs text-zinc-400">Burned. The pot is empty until the next trades.</p>}
+      {isSuccess && <p className="text-xs text-zinc-400">Burned a slice. What is left in the pot goes the next block.</p>}
       {error && (
         <p className="text-xs text-zinc-400 break-all">⚠ {(error as { shortMessage?: string }).shortMessage ?? error.message}</p>
       )}

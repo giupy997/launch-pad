@@ -37,4 +37,7 @@ interface IDexMigratorUnlock {
 ///         which burns them.
 interface IDexMigratorBuyback {
     function buyback(address token, uint256 quoteIn) external payable returns (uint256 tokenOut);
+    /// The most quote one buyback may spend on the token's pool right now: a
+    /// slice small enough that a trade wrapped around it earns nothing.
+    function buybackCap(address token) external view returns (uint256);
 }

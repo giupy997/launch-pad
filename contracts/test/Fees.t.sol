@@ -189,6 +189,7 @@ contract FeesTest is Test {
         assertEq(
             IERC20(token).balanceOf(bob) + IERC20(token).balanceOf(carol), then.sold - pad.burned(token), "holders own sold less burned"
         );
+        vm.roll(block.number + 1);
         vm.expectRevert(Launchpad.ZeroAmount.selector);
         pad.buybackAndBurn(token); // nothing left in the pot
     }
@@ -203,9 +204,16 @@ contract FeesTest is Test {
         assertGt(burnPot, 0);
         assertGt(liqPot, 0);
 
-        uint256 burned = pad.buybackAndBurn(token);
+        // a slice a block: three presses finish the curve
+        uint256 burned;
+        uint256 presses;
+        while (!_curve(token).graduated) {
+            vm.roll(block.number + 1);
+            burned += pad.buybackAndBurn(token);
+            presses++;
+        }
+        assertEq(presses, 3, "a hundredth of the reserve at a time");
         Launchpad.Curve memory c = _curve(token);
-        assertTrue(c.graduated, "the buyback sold the curve out");
         assertEq(c.sold, pad.CURVE_SUPPLY());
         assertGt(burned, 0);
         assertGt(pad.burnPot(token), 0, "what the curve did not need stays in the pot");
@@ -215,17 +223,37 @@ contract FeesTest is Test {
         assertEq(rToken, pad.DEX_RESERVE());
         assertEq(rQuote, (c.vEth - 30e8) + liqPot, "the pool holds the raise and the liquidity pot");
 
-        // graduated: the leftover pot buys on the pool, and burns
+        // graduated: the leftover pot buys on the pool, a two-hundredth of its quote side at a time, and burns
         uint256 supply = IERC20(token).totalSupply();
         uint256 leftover = pad.burnPot(token);
+        uint256 cap = migrator.buybackCap(token);
+        assertEq(cap, rQuote / 200);
+        assertLt(cap, leftover);
+        vm.roll(block.number + 1);
         uint256 burned2 = pad.buybackAndBurn(token);
         assertGt(burned2, 0);
-        assertEq(pad.burnPot(token), 0);
+        assertEq(pad.burnPot(token), leftover - cap, "the rest waits for the next block");
         assertEq(IERC20(token).totalSupply(), supply - burned2);
         assertEq(pad.burned(token), burned + burned2);
         (uint256 rToken2, uint256 rQuote2) = _reserves(token);
-        assertEq(rQuote2, rQuote + leftover, "the pool took the pot");
+        assertEq(rQuote2, rQuote + cap, "the pool took the slice");
         assertEq(rToken2, rToken - burned2, "and gave the coins, burned");
+    }
+
+    function test_buybackIsASliceABlock() public {
+        address token = _create(Launchpad.FeeConfig(1000, 1000, 0, 0, 10_000, 0)); // the pot fills fast
+        _buy(bob, token, 50e8);
+        Launchpad.Curve memory c = _curve(token);
+        uint256 pot = pad.burnPot(token);
+        assertGt(pot, c.vEth / 100, "more in the pot than one slice");
+        pad.buybackAndBurn(token);
+        assertEq(_curve(token).realEth, c.realEth + c.vEth / 100, "one hundredth of the virtual reserve, no more");
+        assertEq(pad.burnPot(token), pot - c.vEth / 100);
+        vm.expectRevert(Launchpad.BurnCooldown.selector);
+        pad.buybackAndBurn(token); // not twice in a block
+        vm.roll(block.number + 1);
+        pad.buybackAndBurn(token); // the next block, the next slice
+        assertLt(pad.burnPot(token), pot - c.vEth / 100);
     }
 
     function test_buybackNeedsAPoolOnceGraduated() public {
@@ -311,5 +339,34 @@ contract FeesTest is Test {
         assertEq(_curve(token).realEth, reserve + 0.96 ether);
         // and its pot is there to spend
         assertGt(pad.buybackAndBurn(token), 0);
+    }
+
+    function test_aPooledLedgerCoinNobodyHoldsGraduatesAtBirth() public {
+        // everyone sold into the pool there, or the coins were burned: nothing to deliver, so the pool is seeded at once
+        pad.setMigrationRoot(bytes32(uint256(1)), 1);
+        uint256 burnedThere = 10_000_000e18;
+        Launchpad.LedgerCoin memory coin = Launchpad.LedgerCoin({
+            name: "Empty Coin",
+            symbol: "EMPT",
+            meta: meta,
+            creator: alice,
+            fees: custom,
+            virtualQuote: 1.25 ether,
+            sold: burnedThere,
+            burned: burnedThere,
+            poolToken: pad.TOTAL_SUPPLY() - burnedThere,
+            burnPot: 0.1 ether,
+            liquidityPot: 0
+        });
+        vm.deal(address(this), 5.1 ether);
+        address token = pad.migrateToken{value: 5.1 ether}(coin, new address[](0), new uint256[](0));
+        assertTrue(_curve(token).graduated, "graduated at birth");
+        assertEq(pad.pendingCoins(), 0);
+        assertGt(migrator.liquidity(token), 0, "its pool is seeded");
+        (uint256 rToken, uint256 rQuote) = _reserves(token);
+        assertEq(rToken, pad.TOTAL_SUPPLY() - burnedThere);
+        assertEq(rQuote, 5 ether, "the pool's quote side, the pot aside");
+        assertEq(IERC20(token).totalSupply(), pad.TOTAL_SUPPLY() - burnedThere);
+        assertGt(pad.buybackAndBurn(token), 0, "and its pot is spent on that pool");
     }
 }

@@ -9,7 +9,7 @@ export const SPLIT_KEYS: (keyof SplitPct)[] = ["creator", "holders", "burn", "li
 export const SPLIT_LABELS: Record<keyof SplitPct, { title: string; hint: string }> = {
   creator: { title: "Creator funds", hint: "Accrues to you, or to the wallet you set later; claim any time" },
   holders: { title: "Dividends", hint: "Cashback for holders, pro-rata to what they hold; claim any time" },
-  burn: { title: "Buyback and burn", hint: "Buys the coin back on its curve, or its pool, and burns it; anyone may press the button" },
+  burn: { title: "Buyback and burn", hint: "Buys the coin back on its curve, or its pool, a slice a block, and burns it; anyone may press the button" },
   liquidity: { title: "Liquidity", hint: "Joins the pool's quote side the moment the coin graduates" },
 };
 

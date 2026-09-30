@@ -69,9 +69,14 @@ contract RehearseSource is Script {
         vm.stopBroadcast();
 
         vm.startBroadcast(Keys.CAROL);
-        e.gradCoin = e.pad.createToken("Grad Coin", "GRAD", 0, meta, address(e.quote), true);
-        e.quote.approve(address(e.pad), 200e8);
-        e.pad.buyWithQuote(e.gradCoin, 200e8, 0); // graduates: the curve raises ~96 cbLTC
+        // taxed too, its pot mostly holders and burn: a buyback mid-curve, then the graduating buy leaves a burn pot behind
+        e.gradCoin = e.pad.createTokenWithFees(
+            "Grad Coin", "GRAD", 0, meta, address(e.quote), Launchpad.FeeConfig(200, 200, 1000, 5000, 3000, 1000)
+        );
+        e.quote.approve(address(e.pad), 300e8);
+        e.pad.buyWithQuote(e.gradCoin, 20e8, 0);
+        e.pad.buybackAndBurn(e.gradCoin); // burned coins in a coin that then graduates
+        e.pad.buyWithQuote(e.gradCoin, 200e8, 0); // graduates: the curve raises ~96 cbLTC; the liquidity pot joins the pool
         vm.stopBroadcast();
 
         _poolBuy();

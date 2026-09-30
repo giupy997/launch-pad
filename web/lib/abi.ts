@@ -1318,6 +1318,25 @@ export const launchpadAbi = [
   },
   {
     "type": "function",
+    "name": "nextBurnBlock",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "onTokenTransfer",
     "inputs": [
       {
@@ -2324,6 +2343,11 @@ export const launchpadAbi = [
   {
     "type": "error",
     "name": "BadMigration",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "BurnCooldown",
     "inputs": []
   },
   {

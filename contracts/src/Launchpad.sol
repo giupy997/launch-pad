@@ -107,9 +107,10 @@ contract Launchpad is Ownable, ReentrancyGuard {
         string description;
     }
 
-    /// A coin as a frozen contract-less Notus ledger (Notus on Litecoin)
-    /// recorded it, for migrateToken. Ledger amounts have 8 decimals: scale
-    /// them by 1e10 into wei and 1e18-unit tokens.
+    /// A coin as a frozen launchpad elsewhere recorded it, for migrateToken:
+    /// the Notus ledger on Litecoin, or a Launchpad on another chain (see
+    /// MIGRATION.md). Amounts arrive in wei and 1e18-unit tokens; a source
+    /// with fewer decimals is scaled by the snapshot tool.
     struct LedgerCoin {
         string name;
         string symbol;
@@ -197,6 +198,8 @@ contract Launchpad is Ownable, ReentrancyGuard {
     /// Coins bought back and burned so far: they left the curve (part of
     /// `sold`) and exist no more, so holders own `sold` less this.
     mapping(address token => uint256) public burned;
+    /// The first block a coin's next buyback may happen in: one a block, a slice at a time.
+    mapping(address token => uint256) public nextBurnBlock;
     address[] public allTokens;
 
     // ---------------------------------------------------------------- events
@@ -250,6 +253,8 @@ contract Launchpad is Ownable, ReentrancyGuard {
     error FeeTooHigh();
     /// a tax above MAX_TAX_BPS, or shares that do not add up to 10,000.
     error BadFeeConfig();
+    /// one buyback a block per coin.
+    error BurnCooldown();
     error MigratorNotSet();
     error EthTransferFailed();
     error QuoteAssetNotEnabled();
@@ -637,8 +642,10 @@ contract Launchpad is Ownable, ReentrancyGuard {
         if (coin.sold != coin.burned) pendingCoins++;
         emit TokenCreated(token, coin.creator, coin.name, coin.symbol, coin.fees.holdersBps != 0);
         emit MetadataUpdated(token);
-        emit TokenMigrated(token, coin.creator, coin.virtualQuote, msg.value, coin.sold);
+        emit TokenMigrated(token, coin.creator, coin.virtualQuote, _ledgerReserve(coin), coin.sold);
         if (coin.sold != coin.burned) _migrateBalances(token, holders, balances);
+        // a pooled coin nobody holds any more (all sold into its pool, or burned) has no delivery to wait for
+        else if (coin.poolToken != 0) _graduate(token, curves[token]);
     }
 
     /// An open migration, and one token per ledger ticker.
@@ -783,25 +790,33 @@ contract Launchpad is Ownable, ReentrancyGuard {
 
     /// @notice Spend a coin's burn pot: buy the coin back — on its curve, or on
     ///         its pool once graduated — and burn what comes out, so the supply
-    ///         shrinks for everyone who holds it. Anyone may call it at any
-    ///         time; the pot is fees already paid, best spent small and often.
+    ///         shrinks for everyone who holds it. Anyone may call it, once a
+    ///         block per coin, and each call spends a slice at most — a
+    ///         hundredth of the curve's virtual reserve, or what the pool's
+    ///         adapter allows (a two-hundredth of its quote side) — so a trade
+    ///         wrapped around the buy earns less than its fees cost, and the
+    ///         pot goes out small and often rather than in one move anyone
+    ///         could front-run.
     function buybackAndBurn(address token) external nonReentrant returns (uint256 tokensBurned) {
         Curve storage c = curves[token];
         if (c.vEth == 0) revert UnknownToken();
         if (migrationPending[token] != 0) revert MigrationPending();
         if (frozen()) revert Frozen();
+        if (block.number < nextBurnBlock[token]) revert BurnCooldown();
+        nextBurnBlock[token] = block.number + 1;
         uint256 pot = burnPot[token];
         if (pot == 0) revert ZeroAmount();
         uint256 used = pot;
         if (!c.graduated) {
-            // a buy on the curve, with no fee: what the pot buys, up to what is left on it
+            // a buy on the curve, with no fee: a slice of the pot, up to what is left on the curve
+            if (used > c.vEth / 100) used = c.vEth / 100;
             uint256 k = c.vEth * c.vToken;
-            tokensBurned = c.vToken - k / (c.vEth + pot);
+            tokensBurned = c.vToken - k / (c.vEth + used);
             uint256 remaining = CURVE_SUPPLY - c.sold;
             if (tokensBurned >= remaining) {
                 tokensBurned = remaining;
-                used = k / (c.vToken - remaining) - c.vEth + 1;
-                if (used > pot) used = pot;
+                uint256 need = k / (c.vToken - remaining) - c.vEth + 1;
+                if (need < used) used = need;
             }
             if (tokensBurned == 0) revert ZeroAmount();
             burnPot[token] = pot - used;
@@ -812,12 +827,15 @@ contract Launchpad is Ownable, ReentrancyGuard {
         } else {
             IDexMigrator via = graduatedVia[token];
             if (address(via) == address(0)) revert MigratorNotSet(); // graduated with no pool yet: nothing to buy from
-            burnPot[token] = 0;
+            uint256 cap = IDexMigratorBuyback(address(via)).buybackCap(token);
+            if (used > cap) used = cap;
+            if (used == 0) revert ZeroAmount();
+            burnPot[token] = pot - used;
             if (c.quoteAsset == address(0)) {
-                tokensBurned = IDexMigratorBuyback(address(via)).buyback{value: pot}(token, pot);
+                tokensBurned = IDexMigratorBuyback(address(via)).buyback{value: used}(token, used);
             } else {
-                IERC20(c.quoteAsset).safeTransfer(address(via), pot);
-                tokensBurned = IDexMigratorBuyback(address(via)).buyback(token, pot);
+                IERC20(c.quoteAsset).safeTransfer(address(via), used);
+                tokensBurned = IDexMigratorBuyback(address(via)).buyback(token, used);
             }
         }
         burned[token] += tokensBurned;

@@ -109,8 +109,10 @@ and at `/litecoin`, out of the menu.
   pot goes whole to the creator or to the holders (`feesToHolders`)
 - Buyback-and-burn: the burn pot buys the coin on its curve (a fee-free buy
   that raises the price and the reserve) or, once graduated, on its pool
-  through the migrator, and burns what it gets; `burned` counts it, holders
-  own `sold` less `burned`. The liquidity pot joins the pool's quote side at
+  through the migrator, and burns what it gets — a slice at a time (a
+  hundredth of the curve's virtual reserve, half a percent of the pool's
+  quote side), once a block per coin, so a trade wrapped around it earns
+  less than its fees; `burned` counts it, holders own `sold` less `burned`. The liquidity pot joins the pool's quote side at
   graduation (a deeper, slightly higher opening). Unspent pots leave with
   the reserve at `migrateOut` and arrive as pots on the other chain
 - Graduation: once the 800M are sold out → curve trading closes and the

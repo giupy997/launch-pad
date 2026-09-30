@@ -181,6 +181,14 @@ contract UniV2Migrator is IDexMigrator, IDexMigratorUnlock, IDexMigratorBuyback,
         emit BoughtBack(token, pair, quoteIn, tokenOut);
     }
 
+    /// @inheritdoc IDexMigratorBuyback
+    function buybackCap(address token) external view returns (uint256) {
+        address quote = pairAsset[token];
+        if (quote == address(0)) return 0;
+        (, uint256 rQuote) = _reserves(token, factory.getPair(token, quote));
+        return rQuote / 200; // half a percent of the pool's quote side: less than Uniswap's fee both ways would cost a sandwich
+    }
+
     /// @notice The locked pool of a graduated token.
     function pairOf(address token) external view returns (address) {
         return factory.getPair(token, pairAsset[token]);

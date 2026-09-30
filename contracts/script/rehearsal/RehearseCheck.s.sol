@@ -70,9 +70,10 @@ contract RehearseCheck is Script {
         address pair = migrator.pairOf(token);
         (uint112 r0, uint112 r1,) = MockV2Pair(pair).getReserves();
         (uint256 rToken, uint256 rQuote) = MockV2Pair(pair).token0() == token ? (r0, r1) : (r1, r0);
-        // the pool price, within a tenth of a percent of the frozen one
+        // the pool price, within a tenth of a percent of the frozen one (a parked coin's liquidity pot
+        // joins its pool at delivery, so it counts on the quote side)
         uint256 lhs = rQuote * c.poolToken;
-        uint256 rhs = c.realQuote * rToken;
+        uint256 rhs = (c.realQuote + c.liquidityPot) * rToken;
         uint256 tol = rhs / 1000;
         require(lhs + tol >= rhs && lhs <= rhs + tol, string.concat(c.symbol, ": the pool price differs"));
         console.log(string.concat("PASS ", c.symbol, ": graduated coin, holders and pool price as frozen;"), c.holders.length, "holders, pool quote (wei)", rQuote);
