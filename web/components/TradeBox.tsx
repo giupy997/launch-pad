@@ -98,10 +98,10 @@ export function TradeBox({
   const zapAddr = ZAP_ROUTER[chain.id];
   const quoterAddr = UNISWAP_QUOTER[chain.id];
   const wethAddr = WETH9[chain.id];
-  const usdgAddr = USDG[chain.id];
-  const zapFees = (QUOTE_ASSETS[chain.id] ?? []).find(
-    (a) => a.address?.toLowerCase() === curve.quoteAsset.toLowerCase()
-  )?.zapFees;
+  const zapInfo = (QUOTE_ASSETS[chain.id] ?? []).find((a) => a.address?.toLowerCase() === curve.quoteAsset.toLowerCase());
+  const zapFees = zapInfo?.zapFees;
+  // the middle token of a two-hop route: the asset's own, else the chain's USDG
+  const zapVia = zapInfo?.zapVia ?? USDG[chain.id];
   const canZapPool = !isEthQuote && !!zapAddr && !!quoterAddr && !!wethAddr && !!zapFees;
 
   // Synthetic pre-market quote with its own curve still open: ETH routes
@@ -124,10 +124,10 @@ export function TradeBox({
 
   const zapPath =
     canZapPool && wethAddr && q.address
-      ? zapFees!.length === 2 && usdgAddr
+      ? zapFees!.length === 2 && zapVia
         ? encodePacked(
             ["address", "uint24", "address", "uint24", "address"],
-            [wethAddr, zapFees![0], usdgAddr, zapFees![1], q.address]
+            [wethAddr, zapFees![0], zapVia, zapFees![1], q.address]
           )
         : encodePacked(["address", "uint24", "address"], [wethAddr, zapFees![0], q.address])
       : undefined;

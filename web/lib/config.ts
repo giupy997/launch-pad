@@ -99,6 +99,8 @@ export type QuoteAssetInfo = {
    *  Measured from live pool liquidity. Omitted = no ETH pool route; for
    *  premarket assets ETH still zaps through their own curve instead. */
   zapFees?: number[];
+  /** The middle token of a two-hop zap route (WETH → via → asset); the chain's USDG when omitted. */
+  zapVia?: `0x${string}`;
 };
 
 export const PRE_IPO_DISCLAIMER =
