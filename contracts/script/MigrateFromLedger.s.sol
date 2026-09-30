@@ -351,6 +351,7 @@ contract MigrateFromLedger is Script {
         }
         string memory outKey = "out";
         vm.serializeString(outKey, "network", vm.parseJsonString(vm.readFile(file), ".network"));
+        vm.serializeUint(outKey, "chainId", block.chainid);
         vm.serializeUint(outKey, "freezeHeight", pad.migrationFreezeHeight());
         vm.serializeBytes32(outKey, "stateRoot", pad.migrationRoot());
         vm.serializeAddress(outKey, "launchpad", address(pad));

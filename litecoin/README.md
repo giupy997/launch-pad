@@ -124,6 +124,14 @@ coin on this ledger can move over with its holders and its price:
   own), creator and holders as EVM addresses, balances — scaled from 8 to
   18 decimals — plus the LTC to bridge (the sum of the curves' and pools'
   real reserves) and what remains to settle on Litecoin.
+- **The bridge.** `node litecoin/sweep.ts --bridge <the file> --to <your address>`
+  (desk stopped) sends exactly that LTC out of the desk, whole, with the
+  `bridge` memo: under rules v2, once the freeze is past, the ledger takes
+  what left off what the desk owes here — the migration owes it on LitVM
+  now — never more than the curves and pools hold, so the desk's balance
+  still covers every claim and payout, and every verifier sees the money
+  move. Take it to LitVM through the bridge, to the account that executes
+  the migration: each coin is funded with its own reserve from there.
 - **The contracts.** `Launchpad.migrateToken` (owner only, one token per
   ticker, only while the migration is open) re-creates the coin with that
   state: `msg.value` is the bridged reserve — for a curve coin it must be
@@ -141,7 +149,8 @@ coin on this ledger can move over with its holders and its price:
 NOTUS_LTC_FREEZE=<height> node litecoin/indexer.ts     # freeze, publish the frozen snapshot
 node litecoin/payout.ts                                # settle what is due on Litecoin
 node litecoin/migration-snapshot.ts [--vault 0x...]    # the migration file
-# bridge the LTC it says to LitVM, then, from contracts/:
+node litecoin/sweep.ts --bridge litecoin/migration/main-<height>.json --to <your address> --yes   # desk stopped: the curves' LTC leaves with the `bridge` memo
+# take it to LitVM through the bridge, then, from contracts/:
 forge script script/DeployLitVM.s.sol --rpc-url litvm_testnet --private-key "$PRIVATE_KEY" --broadcast
 # a pad the broadcaster owns (a rehearsal): everything in one go
 LAUNCHPAD=0x... MIGRATION_FILE=../litecoin/migration/test-<height>.json \
@@ -159,6 +168,10 @@ done, scheduled or delivered.
 
 `forge test --match-contract Migration` runs the contract tests, including
 the demo ledger's file end to end (`test/fixtures/migration-demo.json`).
+
+The mainnet run, step by step with every command in order, is
+[`MIGRATION.md`](MIGRATION.md); it was rehearsed on the testnets (Litecoin
+testnet4 → Liteforge, through the timelock) on 2026-09-30.
 
 ## Cold storage
 
@@ -183,7 +196,9 @@ sudo systemctl start notus-desk-main
 
 `--max <LTC>` caps one sweep. The key file needs to be readable by whoever
 runs it (systemd hands it to the service alone; run the sweep as root, or
-copy the service's environment).
+copy the service's environment). The same tool, with `--bridge <migration
+file>`, is how the frozen curves' LTC leaves for LitVM at the migration
+(see *The road to LitVM* above).
 
 ## What is custodial
 

@@ -123,7 +123,9 @@ so any change is visible on chain before it takes effect. The proposer may
 schedule and cancel; anyone may execute an operation once it is ready. The
 migration script speaks the timelock's language (`MODE=schedule`, then
 `MODE=execute`). On Liteforge the timelock above owns the pad; until one is
-deployed on a chain, that chain's pad is owned by the deployer key.
+deployed on a chain, that chain's pad is owned by the deployer key. The
+migration of the Litecoin ledger to LitVM mainnet, step by step:
+[`litecoin/MIGRATION.md`](litecoin/MIGRATION.md).
 
 ### Pair assets (Robinhood Chain)
 
