@@ -7,11 +7,13 @@ import { CHAIN_LABEL, VISIBLE_CHAINS } from "@/lib/config";
 import { useAppChain } from "@/lib/hooks";
 
 // The contract-less networks (Litecoin, Zcash) are not EVM chains: each has
-// its own section of the site, which the switcher lists as one more network.
-// Both are out of the menu: the Litecoin ledger is winding down (its pages
-// stay at /litecoin for claims), Zcash was a testnet. One line brings one
-// back, e.g. { id: -2, path: "/litecoin", name: "Litecoin", label: "Litecoin", testnet: false }.
-const SECTIONS: { id: number; path: string; name: string; label: string; testnet: boolean }[] = [];
+// its own section of the site, which the switcher can list as one more
+// network. Notus on Litecoin has closed: its section stays known here so its
+// remaining pages (/litecoin/wallet, /litecoin/ledger) show "Litecoin" in the
+// chip, but it is not listed. Zcash was a testnet.
+const SECTIONS: { id: number; path: string; name: string; label: string; testnet: boolean; listed: boolean }[] = [
+  { id: -2, path: "/litecoin", name: "Litecoin", label: "Litecoin", testnet: false, listed: false },
+];
 
 const CHAIN_LOGOS: Record<number, string> = {
   8453: "/chains/cbltc.svg", // Base goes by its quote asset
@@ -74,7 +76,7 @@ export function ChainSwitcher() {
 
       {open && (
         <div className="absolute right-0 mt-2 w-60 glass rounded-2xl p-1.5 z-20 shadow-2xl shadow-black/70 fade-up">
-          {SECTIONS.map((sec) => {
+          {SECTIONS.filter((sec) => sec.listed).map((sec) => {
             const active = section?.path === sec.path;
             return (
               <button

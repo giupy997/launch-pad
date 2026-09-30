@@ -4,6 +4,7 @@ import { useNow } from "@/lib/useNow";
 
 import { LTC_NETWORK, addressLink, fmtLtc, shortAddr, txLink, useLitecoinState } from "@/lib/litecoin/client";
 import { Copyable } from "@/components/litecoin/Copyable";
+import { ClosedNotice } from "@/components/litecoin/ClosedNotice";
 import { CLONE_LINE } from "@/lib/site";
 
 export default function LitecoinLedger() {
@@ -16,6 +17,7 @@ export default function LitecoinLedger() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-8">
+      <ClosedNotice />
       <div>
         <h1 className="display text-4xl text-white">Ledger</h1>
         <p className="mt-2 text-sm text-zinc-500">

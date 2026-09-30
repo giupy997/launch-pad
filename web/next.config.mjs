@@ -56,6 +56,17 @@ const CSP = [
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Notus on Litecoin has closed: its explore, deploy and coin pages go home.
+  // The wallet and ledger pages stay, for LTC left in a browser wallet or a
+  // claim to collect (see components/litecoin/ClosedNotice.tsx).
+  async redirects() {
+    return [
+      { source: "/litecoin", destination: "/", permanent: false },
+      { source: "/litecoin/create", destination: "/", permanent: false },
+      { source: "/litecoin/fund", destination: "/bridge", permanent: false },
+      { source: "/litecoin/c/:ticker", destination: "/", permanent: false },
+    ];
+  },
   poweredByHeader: false,
   // The usual hardening headers; the site frames nothing and needs no
   // camera, microphone, location or payment API.

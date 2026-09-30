@@ -8,8 +8,7 @@ import { LTC_NETWORK, fmtCoins, fmtLtc, parseLtc, txLink, useLitecoinState, useL
 import { FundPanel, NeedsLtcWallet } from "@/components/litecoin/Wallet";
 import { SendPanel } from "@/components/litecoin/SendPanel";
 import { Copyable } from "@/components/litecoin/Copyable";
-import { FrozenNotice } from "@/components/litecoin/FrozenNotice";
-import { EvmDestination } from "@/components/litecoin/EvmDestination";
+import { ClosedNotice } from "@/components/litecoin/ClosedNotice";
 
 export default function LitecoinWallet() {
   const { data: state } = useLitecoinState();
@@ -48,13 +47,9 @@ export default function LitecoinWallet() {
   return (
     <div className="max-w-2xl mx-auto space-y-8">
       <h1 className="display text-4xl text-white">Wallet</h1>
+      <ClosedNotice />
 
       <FundPanel address={address} />
-      <p className="text-xs text-zinc-500 -mt-4">
-        Holding ETH, BNB or stablecoins instead of LTC?{" "}
-        <Link href="/litecoin/fund" className="underline text-zinc-300">Fund this wallet with a swap</Link>.
-      </p>
-      <FrozenNotice state={state} compact />
 
       <section className="card p-5 space-y-3">
         <div className="flex items-baseline justify-between">
@@ -79,8 +74,6 @@ export default function LitecoinWallet() {
           )
         )}
       </section>
-
-      <EvmDestination state={state} />
 
       <section className="card p-5 space-y-3">
         <Label>Withdraw — send LTC from this wallet anywhere</Label>

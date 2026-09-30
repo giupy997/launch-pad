@@ -12,12 +12,19 @@ const items = (chainId: number) => [
   { href: "/profile", label: "Profile", icon: "◉" },
 ];
 
-const sectionItems = (root: string) => [
-  { href: root, label: "Explore", icon: "◎" },
-  { href: `${root}/create`, label: "Deploy", icon: "＋" },
-  { href: `${root}/wallet`, label: "Wallet", icon: "◉" },
-  { href: `${root}/ledger`, label: "Ledger", icon: "≡" },
-];
+const sectionItems = (root: string) =>
+  root === "/litecoin"
+    ? [
+        // closed: only the wallet (withdraw, claim) and the ledger stay
+        { href: `${root}/wallet`, label: "Wallet", icon: "◉" },
+        { href: `${root}/ledger`, label: "Ledger", icon: "≡" },
+      ]
+    : [
+        { href: root, label: "Explore", icon: "◎" },
+        { href: `${root}/create`, label: "Deploy", icon: "＋" },
+        { href: `${root}/wallet`, label: "Wallet", icon: "◉" },
+        { href: `${root}/ledger`, label: "Ledger", icon: "≡" },
+      ];
 const SECTIONS = ["/zcash", "/litecoin"];
 
 /** Mobile-only bottom navigation (the top nav is hidden below md). */
@@ -26,7 +33,7 @@ export function BottomNav() {
   const chain = useAppChain();
   const section = SECTIONS.find((p) => pathname.startsWith(p));
   const list = section ? sectionItems(section) : items(chain.id);
-  const root = section ?? "/";
+  const root = section && list.some((it) => it.href === section) ? section : section ? "" : "/";
   return (
     <nav className="fixed bottom-0 inset-x-0 z-20 md:hidden glass border-x-0 border-b-0 pb-[env(safe-area-inset-bottom)]">
       <div className="flex justify-around">

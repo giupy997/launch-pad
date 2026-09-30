@@ -21,9 +21,8 @@ const SECTIONS: Record<string, { href: string; label: string }[]> = {
     { href: "/zcash/wallet", label: "Wallet" },
     { href: "/zcash/ledger", label: "Ledger" },
   ],
+  // closed: only the wallet (withdraw, claim) and the ledger stay
   "/litecoin": [
-    { href: "/litecoin", label: "Explore" },
-    { href: "/litecoin/create", label: "Deploy" },
     { href: "/litecoin/wallet", label: "Wallet" },
     { href: "/litecoin/ledger", label: "Ledger" },
   ],
@@ -34,7 +33,7 @@ export function Nav() {
   const chain = useAppChain();
   const section = Object.keys(SECTIONS).find((p) => pathname.startsWith(p));
   const list = section ? SECTIONS[section] : items(chain.id);
-  const root = section ?? "/";
+  const root = section && SECTIONS[section].some((it) => it.href === section) ? section : section ? "" : "/";
   return (
     <nav className="hidden md:flex items-center gap-0.5 rounded-full border border-white/10 bg-white/[0.03] p-1 font-mono text-[11px] tracking-[0.18em] uppercase">
       {list.map((it) => {
