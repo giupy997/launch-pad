@@ -23,12 +23,17 @@ and at `/litecoin`, out of the menu.
     fallback if the DEX leg fails); on-chain token metadata (1:1 logo URI,
     website, X, Telegram, livestream URL) editable by the creator; curves
     quoted in ETH or in any whitelisted ERC-20 (stocks, ETFs, stablecoin,
-    pre-IPO); 1% trade fee, of which 20% is treasury and the other 80% goes
-    — by the creator's irrevocable choice at launch (`feesToHolders`) —
-    either entirely to the creator (`claimCreatorFees`, redirectable with
-    `setFeeRecipient`) or entirely to holders as pro-rata cashback
-    (`claimCashback`); `createPreMarket` mints a synthetic pre-IPO pair
-    asset, transferable from day one and whitelisted on creation
+    pre-IPO); a 1% platform fee on every curve trade, 20% of it to the
+    treasury, plus the coin's own tax — up to 10% on buys and on sells,
+    fixed at launch (`createTokenWithFees`, `FeeConfig`) — and the coin's
+    pot (the platform fee's 80% and the whole tax) split as its creator
+    fixed it between the creator (`claimCreatorFees`, redirectable with
+    `setFeeRecipient`), its holders as pro-rata cashback (`claimCashback`),
+    a burn pot that buys the coin back on its curve or its pool and burns it
+    (`buybackAndBurn`, anyone may call it) and a liquidity pot that joins
+    the pool at graduation; the freeze and `migrateOut` for a move to
+    another chain (see `MIGRATION.md`); `createPreMarket` mints a synthetic
+    pre-IPO pair asset, transferable from day one and whitelisted on creation
   - `src/LaunchToken.sol` — ERC-20 created by the launchpad; transfers locked
     until graduation, except for pre-markets, which are transferable from
     day one so they can serve as pair assets right away
@@ -41,7 +46,8 @@ and at `/litecoin`, out of the menu.
   - `script/create-pre-markets.sh` — creates the Notus Pre-Markets and
     whitelists SPCX
   - `src/NotusV4Hook.sol` — graduation adapter and Uniswap v4 hook in one
-    contract (Robinhood Chain): seeds a full-range v4 pool in native ETH (or
+    contract, for the v7.4 pad on Robinhood Chain (the current Launchpad no
+    longer takes pool fees: its fees end with the curve): seeds a full-range v4 pool in native ETH (or
     the quote asset) with the DEX reserve, locks the position forever, and
     charges the launchpad's 1% fee on every swap in the pool — in the quote
     asset, for exact-input and exact-output trades alike — depositing it with
@@ -95,14 +101,24 @@ and at `/litecoin`, out of the menu.
 
 - Total supply: 1B per token; 800M sold on the curve, 200M reserved for DEX
 - Virtual reserves: 1.25 ETH / 1.05B tokens → the curve raises ~4 ETH
-- Fee: 1% on buys and sells (max 5%, owner-configurable), split 20%
-  treasury / 80% to the creator or to holders per the launch-time choice
+- Platform fee: 1% on buys and sells (max 5%, owner-configurable), 20% of
+  it to the treasury; a coin's own tax on top, up to 10% each way, fixed at
+  launch; the coin's pot (the platform fee's 80% and the whole tax) split
+  as its creator fixed it: creator / holders (cashback) / buyback-and-burn /
+  liquidity. A coin created with the plain `createToken` has no tax and its
+  pot goes whole to the creator or to the holders (`feesToHolders`)
+- Buyback-and-burn: the burn pot buys the coin on its curve (a fee-free buy
+  that raises the price and the reserve) or, once graduated, on its pool
+  through the migrator, and burns what it gets; `burned` counts it, holders
+  own `sold` less `burned`. The liquidity pot joins the pool's quote side at
+  graduation (a deeper, slightly higher opening). Unspent pots leave with
+  the reserve at `migrateOut` and arrive as pots on the other chain
 - Graduation: once the 800M are sold out → curve trading closes and the
-  200M reserve + raised quote move automatically into a locked Uniswap v4
-  pool, where the same 1% fee keeps being charged and split
+  200M reserve + raised quote (+ the liquidity pot) move automatically into
+  a locked pool on the chain's DEX; fees end with the curve
 - Holder cashback is spread over the eligible supply (every wallet, not the
-  launchpad or the v4 PoolManager), with debts rounded up so the sum of all
-  claims can never exceed what the contract holds
+  launchpad), with debts rounded up so the sum of all claims can never
+  exceed what the contract holds
 
 ## Deployments
 
@@ -188,8 +204,8 @@ costs real ETH, and the contracts are unaudited — trade accordingly.
 
 ```bash
 cd contracts
-forge test                       # incl. a cashback-solvency fuzz and the ledger-migration suite
-# v4 hook against the live Robinhood v4 stack: RUN_FORK=true forge test --match-contract NotusV4Hook
+forge test                       # incl. the fee model, the freeze, a cashback-solvency fuzz and the ledger-migration suite
+script/rehearse-local.sh         # the migration to another chain, end to end on anvil
 # fork tests against live contracts: RUN_FORK_LIVE=true forge test --match-contract Live
 ```
 

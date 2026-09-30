@@ -45,7 +45,7 @@ contract MigrationTest is Test {
     bytes32 constant ROOT = bytes32(uint256(0x28bf69752873a3620128cb7ad5a7b2996f96650d0a165416fdc1980d5651721b));
 
     function setUp() public {
-        pad = new Launchpad(treasury, address(0));
+        pad = new Launchpad(treasury);
         pad.setMigrationRoot(ROOT, 3_600_085);
         vm.deal(address(this), 100 ether);
         vm.deal(dave, 100 ether);
@@ -69,10 +69,13 @@ contract MigrationTest is Test {
             symbol: symbol,
             meta: _meta(),
             creator: creator_,
-            feesToHolders: holdersMode,
+            fees: Launchpad.FeeConfig(0, 0, holdersMode ? 0 : 10_000, holdersMode ? 10_000 : 0, 0, 0),
             virtualQuote: vq,
             sold: sold_,
-            poolToken: 0
+            burned: 0,
+            poolToken: 0,
+            burnPot: 0,
+            liquidityPot: 0
         });
     }
 
@@ -100,7 +103,8 @@ contract MigrationTest is Test {
         assertEq(pad.migrationPending(token), 0);
         assertEq(pad.eligibleSupply(token), sold, "holders are cashback-eligible from the first block");
         assertEq(address(pad).balance, realQuote);
-        assertEq(pad.currentPrice(token), (vEth * 1e18) / vToken);
+        (uint256 cv, uint256 ct,,,,,) = pad.curves(token);
+        assertEq((cv * 1e18) / ct, (vEth * 1e18) / vToken);
         (string memory logo,,,,, string memory description) = pad.tokenMetadata(token);
         assertEq(logo, "ipfs://QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
         assertEq(description, "Migrated from Notus on Litecoin");
@@ -114,7 +118,6 @@ contract MigrationTest is Test {
         uint256 forCurve = ethIn - (ethIn * pad.feeBps()) / pad.FEE_DENOMINATOR();
         uint256 k = (virtualQuote + realQuote) * (pad.VIRTUAL_TOKEN() - sold);
         uint256 expected = (pad.VIRTUAL_TOKEN() - sold) - k / (virtualQuote + realQuote + forCurve);
-        assertEq(pad.quoteBuy(token, ethIn), expected);
 
         vm.prank(dave);
         pad.buy{value: ethIn}(token, expected);
@@ -123,7 +126,12 @@ contract MigrationTest is Test {
 
         // a migrated holder sells into the migrated reserve
         uint256 half = bals[0] / 2;
-        uint256 quotedOut = pad.quoteSell(token, half);
+        uint256 quotedOut;
+        {
+            (uint256 cv, uint256 ct,,,,,) = pad.curves(token);
+            uint256 out = cv - (cv * ct) / (ct + half);
+            quotedOut = out - (out * pad.feeBps()) / pad.FEE_DENOMINATOR();
+        }
         vm.startPrank(alice);
         IERC20(token).approve(address(pad), half);
         pad.sell(token, half, quotedOut);
@@ -377,7 +385,7 @@ contract MigrationTest is Test {
     }
 
     function test_migrationNeedsARootAndEndsWhenClosed() public {
-        Launchpad fresh = new Launchpad(treasury, address(0));
+        Launchpad fresh = new Launchpad(treasury);
         vm.expectRevert(Launchpad.MigrationNotOpen.selector);
         fresh.migrateToken{value: realQuote}(_coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold), holders, bals);
         vm.expectRevert(Launchpad.BadMigration.selector);

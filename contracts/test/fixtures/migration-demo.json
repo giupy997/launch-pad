@@ -20,20 +20,27 @@
    "symbol": "CHIKUN",
    "logo": "",
    "creator": "0x8fc5ea0D9ebb9E4D892000Eb63077A887789496d",
-   "feesToHolders": false,
    "virtualQuote": 200000000000000000,
    "realQuote": 0,
    "sold": 0,
    "poolToken": 0,
    "holders": [],
-   "balances": []
+   "balances": [],
+   "buyTaxBps": 0,
+   "sellTaxBps": 0,
+   "creatorBps": 10000,
+   "holdersBps": 0,
+   "burnBps": 0,
+   "liquidityBps": 0,
+   "burned": 0,
+   "burnPot": 0,
+   "liquidityPot": 0
   },
   {
    "name": "Lite Cat",
    "symbol": "LCAT",
    "logo": "https://i.imgur.com/1Q9Z1Zm.png",
    "creator": "0x2F36E1dB7ef4bf6394D65BD84C091774a9673471",
-   "feesToHolders": true,
    "virtualQuote": 200000000000000000,
    "realQuote": 384252650000000000,
    "sold": 666885882299625460000000000,
@@ -47,14 +54,22 @@
     189174443602806390000000000,
     258631223060513400000000000,
     219080215636305670000000000
-   ]
+   ],
+   "buyTaxBps": 0,
+   "sellTaxBps": 0,
+   "creatorBps": 0,
+   "holdersBps": 10000,
+   "burnBps": 0,
+   "liquidityBps": 0,
+   "burned": 0,
+   "burnPot": 0,
+   "liquidityPot": 0
   },
   {
    "name": "Mimble",
    "symbol": "MWEB",
    "logo": "",
    "creator": "0xAa96DFFd61B8C21b69b06F98710eF65c74eeD595",
-   "feesToHolders": true,
    "virtualQuote": 200000000000000000,
    "realQuote": 937000000000000000,
    "sold": 863393810032017080000000000,
@@ -68,7 +83,16 @@
     63393810032017080000000000,
     25359843864357170000000000,
     774640156135642830000000000
-   ]
+   ],
+   "buyTaxBps": 0,
+   "sellTaxBps": 0,
+   "creatorBps": 0,
+   "holdersBps": 10000,
+   "burnBps": 0,
+   "liquidityBps": 0,
+   "burned": 0,
+   "burnPot": 0,
+   "liquidityPot": 0
   }
  ]
 }

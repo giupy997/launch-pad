@@ -11,7 +11,7 @@ import {PoolIdLibrary} from "v4-core/src/types/PoolId.sol";
 import {Currency} from "v4-core/src/types/Currency.sol";
 import {Launchpad} from "../src/Launchpad.sol";
 import {NotusV4Hook} from "../src/NotusV4Hook.sol";
-import {V4Swapper} from "./NotusV4Hook.fork.t.sol";
+import {V4Swapper} from "./mocks/V4Swapper.sol";
 
 /// End-to-end graduation against the PRODUCTION contracts deployed on
 /// Robinhood Chain mainnet (fork simulation — no real funds spent): launch in
@@ -45,8 +45,6 @@ contract LiveGraduationForkTest is Test {
 
         // wiring on the real deployment
         assertEq(address(PAD.migrator()), address(HOOK), "hook is the migrator");
-        assertTrue(PAD.isPoolFeeHook(address(HOOK)), "hook may deposit pool fees");
-        assertEq(PAD.poolManager(), address(PM), "v4 pool reserves excluded from cashback");
         assertEq(HOOK.launchpad(), address(PAD), "hook points back");
 
         vm.prank(creator);

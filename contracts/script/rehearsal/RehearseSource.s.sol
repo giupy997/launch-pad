@@ -39,7 +39,7 @@ contract RehearseSource is Script {
         e.weth = new MockWETH9();
         MockV2Factory factory = new MockV2Factory();
         e.router = new MockV2Router(address(factory), address(e.weth));
-        e.pad = new Launchpad(deployer, address(0));
+        e.pad = new Launchpad(deployer);
         e.migrator = new UniV2Migrator(address(e.pad), address(e.router));
         e.pad.setMigrator(address(e.migrator));
         e.pad.setQuoteAsset(address(e.quote), 30e8);
@@ -54,7 +54,10 @@ contract RehearseSource is Script {
         Launchpad.TokenMetadata memory meta = Launchpad.TokenMetadata("ipfs://logo", "", "", "", "", "");
 
         vm.startBroadcast(Keys.ALICE);
-        e.curveCoin = e.pad.createToken("Curve Coin", "CURVE", 0, meta, address(e.quote), false);
+        // a coin with fees of its own: 3% tax each way, split creator / holders / burn / liquidity
+        e.curveCoin = e.pad.createTokenWithFees(
+            "Curve Coin", "CURVE", 0, meta, address(e.quote), Launchpad.FeeConfig(300, 300, 5000, 2000, 2000, 1000)
+        );
         e.quote.approve(address(e.pad), 5e8);
         e.pad.buyWithQuote(e.curveCoin, 5e8, 0);
         vm.stopBroadcast();
@@ -62,6 +65,7 @@ contract RehearseSource is Script {
         vm.startBroadcast(Keys.BOB);
         e.quote.approve(address(e.pad), 3e8);
         e.pad.buyWithQuote(e.curveCoin, 3e8, 0);
+        e.pad.buybackAndBurn(e.curveCoin); // its burn pot spent: `burned` travels with the coin, the liquidity pot too
         vm.stopBroadcast();
 
         vm.startBroadcast(Keys.CAROL);

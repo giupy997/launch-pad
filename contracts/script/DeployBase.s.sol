@@ -30,7 +30,7 @@ import {SlipstreamZapRouter} from "../src/SlipstreamZapRouter.sol";
 ///
 /// Verify on Blockscout (base.blockscout.com) from this very checkout, each
 /// with its constructor arguments (`cast abi-encode`): Launchpad
-/// (address treasury, address 0), LaunchTokenFactory (none; the pad deployed
+/// (address treasury), LaunchTokenFactory (none; the pad deployed
 /// it — its address is `pad.tokenFactory()`), UniV2Migrator (pad, router),
 /// SlipstreamZapRouter (pad, router, weth), TimelockController
 /// (uint256 delay, address[] proposers, address[] executors, address 0).
@@ -60,7 +60,7 @@ contract DeployBase is Script {
         executors[1] = address(0); // the open role: anyone may execute what is ready
 
         vm.startBroadcast();
-        Launchpad pad = new Launchpad(treasury, address(0));
+        Launchpad pad = new Launchpad(treasury);
         UniV2Migrator migrator = new UniV2Migrator(address(pad), UNIV2_ROUTER);
         pad.setMigrator(address(migrator));
         pad.setQuoteAsset(CBLTC, virtualReserve);

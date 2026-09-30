@@ -118,15 +118,20 @@ for (const token of tokens) {
     continue;
   }
   const meta = await read(launchpad, padAbi, "tokenMetadata", [token], block);
-  const feesToHolders = await read(launchpad, padAbi, "feesToHolders", [token], block);
+  const [buyTaxBps, sellTaxBps, creatorBps, holdersBps, burnBps, liquidityBps] = await read(launchpad, padAbi, "feeConfig", [token], block);
+  const burned = await read(launchpad, padAbi, "burned", [token], block);
+  const burnPot = (await read(launchpad, padAbi, "burnPot", [token], block)) * SCALE;
+  const liquidityPot = (await read(launchpad, padAbi, "liquidityPot", [token], block)) * SCALE;
   if ((await read(launchpad, padAbi, "migrationPending", [token], block)) !== 0n) throw new Error(`${symbol}: a migrated coin still delivering its holders cannot migrate again yet`);
 
   // holders: fold the transfers, then trust only balanceOf at the block
   const balances = new Map();
+  const ZERO = "0x0000000000000000000000000000000000000000";
   for (const log of await logsOf(token, TRANSFER)) {
     const { from, to, value } = log.args;
-    if (from !== "0x0000000000000000000000000000000000000000") balances.set(from, (balances.get(from) ?? 0n) - value);
-    balances.set(to, (balances.get(to) ?? 0n) + value);
+    // the mint at birth comes from nowhere; a burn (a buyback's coins) goes nowhere
+    if (from !== ZERO) balances.set(from, (balances.get(from) ?? 0n) - value);
+    if (to !== ZERO) balances.set(to, (balances.get(to) ?? 0n) + value);
   }
   let pair = null;
   let poolToken = 0n;
@@ -196,24 +201,33 @@ for (const token of tokens) {
     warnings.push(`${symbol}: ${unowned.join(" and ")} parked in the vault ${vault} for a claim by hand`);
   }
   const owned = amounts.reduce((t, b) => t + b, 0n);
-  // a graduated coin: holders (the vault included) own the supply less our share of the pool
-  const expected = graduated ? TOTAL_SUPPLY - poolToken : sold;
+  // holders (the vault included) own what left the curve less what was burned; for a graduated
+  // coin that is the supply less our share of the pool and less the burn
+  const expected = (graduated ? TOTAL_SUPPLY - poolToken : sold) - burned;
   if (owned !== expected) {
     throw new Error(`${symbol}: holders own ${owned} but ${graduated ? "supply minus the pool" : "the curve's sold"} is ${expected} (the pad holds ${padBal}): the snapshot does not add up`);
   }
   if (holders.includes(getAddress(treasury))) warnings.push(`${symbol}: the treasury holds some (rounding leftovers of the pool seeding): it is listed as a holder`);
-  bridgeWei += realQuote;
+  bridgeWei += realQuote + burnPot + liquidityPot;
   sourceTokens[symbol] = token;
   coins.push({
     name,
     symbol,
     logo: meta.logoURI ?? meta[0],
     creator: getAddress(creator),
-    feesToHolders,
+    buyTaxBps: BigInt(buyTaxBps),
+    sellTaxBps: BigInt(sellTaxBps),
+    creatorBps: BigInt(creatorBps),
+    holdersBps: BigInt(holdersBps),
+    burnBps: BigInt(burnBps),
+    liquidityBps: BigInt(liquidityBps),
     virtualQuote: (vEth - raised) * SCALE,
     realQuote,
-    sold: expected,
+    sold: expected + burned, // what left the curve: holders' coins and the burned ones
+    burned,
     poolToken,
+    burnPot,
+    liquidityPot,
     holders,
     balances: amounts,
   });

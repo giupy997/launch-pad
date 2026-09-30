@@ -19,9 +19,12 @@ transaction anyone reads).
 
 ## What moves, and how
 
-- **A coin on its curve**: its cbLTC reserve leaves whole; on LitVM the curve
-  opens with the same virtual and real reserve in zkLTC (8 → 18 decimals,
-  1 LTC = 1 LTC), so the price is identical and buying continues.
+- **A coin on its curve**: its cbLTC reserve leaves whole, its unspent pots
+  (buyback, liquidity) with it; on LitVM the curve opens with the same
+  virtual and real reserve in zkLTC (8 → 18 decimals, 1 LTC = 1 LTC), the
+  same fee configuration, the same burn (what was bought back and burned on
+  Base is burned again at birth) and the same pots, so the price is
+  identical and buying continues.
 - **A graduated coin**: the migrator unlocks the pool it seeded (its LP, and
   only its), the cbLTC side leaves, the token side is burned; on LitVM the
   coin graduates again on delivery and its pool is seeded at the same price
@@ -44,7 +47,7 @@ transaction anyone reads).
 ## 0. Before: what must exist
 
 LitVM mainnet with a public RPC, a Blockscout, its bridge for LTC, and a
-Uniswap v2 router for the pools (Lester Labs on Liteforge). A Coinbase account
+Uniswap v2 router for the pools (the testnet has several). A Coinbase account
 to turn cbLTC into LTC (sending cbLTC to it credits LTC 1:1). The deployer key
 (`contracts/.env`) with zkLTC for gas — bridge some first. The Base pad's
 timelock proposer key: the same deployer.

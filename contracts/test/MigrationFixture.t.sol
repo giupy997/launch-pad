@@ -16,7 +16,7 @@ contract MigrationFixtureTest is Test {
         MigrateFromLedger.Coin[] memory coins = script.load(json);
         assertEq(coins.length, 3, "the demo ledger has three coins");
 
-        Launchpad pad = new Launchpad(makeAddr("treasury"), address(0));
+        Launchpad pad = new Launchpad(makeAddr("treasury"));
         pad.transferOwnership(address(script));
         uint256 total;
         for (uint256 i = 0; i < coins.length; i++) {
@@ -56,7 +56,9 @@ contract MigrationFixtureTest is Test {
         assertEq(realEth, coin.realQuote);
         assertEq(creator, coin.creator);
         assertEq(pad.migrationPending(token), 0);
-        assertEq(pad.feesToHolders(token), coin.feesToHolders);
+        assertEq(pad.feesToHolders(token), coin.holdersBps != 0);
+        assertEq(pad.burned(token), coin.burned);
+        assertEq(pad.burnPot(token) + pad.liquidityPot(token), coin.burnPot + coin.liquidityPot);
         isPooled = coin.poolToken != 0;
         if (isPooled) {
             // graduated on the ledger: its holders own the supply less the pool
@@ -76,6 +78,6 @@ contract MigrationFixtureTest is Test {
             assertEq(IERC20(token).balanceOf(coin.holders[j]), coin.balances[j]);
             delivered += coin.balances[j];
         }
-        assertEq(delivered, coin.sold, "what the holders own is exactly what was delivered");
+        assertEq(delivered, coin.sold - coin.burned, "what the holders own is exactly what was delivered");
     }
 }

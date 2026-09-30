@@ -30,9 +30,10 @@ export default function AboutPage() {
           bonding curve: the price rises with every buy and falls with every sell, by a formula anyone can check.
         </li>
         <li>
-          You pay in cbLTC, or in ETH: the buy swaps ETH for cbLTC on Aerodrome and buys, in the same transaction. Fees are 1%
-          per trade: 80% goes to the coin&apos;s creator or to its holders as cashback, the creator&apos;s choice at launch,
-          20% to the treasury.
+          You pay in cbLTC, or in ETH: the buy swaps ETH for cbLTC on Aerodrome and buys, in the same transaction. The platform
+          fee is 1% per trade, 0.2% of it to the treasury; a coin may add a tax of its own, up to 10% on buys and on sells. The
+          rest is the coin&apos;s pot, split as its creator fixed at launch between the creator, its holders as cashback, buying
+          the coin back to burn it, and the liquidity of its pool.
         </li>
         <li>
           At 800M coins sold the coin graduates: the rest of the supply and the cbLTC raised seed a Uniswap v2 pool whose

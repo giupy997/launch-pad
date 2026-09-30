@@ -13,7 +13,7 @@ contract RehearseTarget is Script {
         string memory j = vm.readFile(Keys.SOURCE);
         address router = vm.parseJsonAddress(j, ".router");
         vm.startBroadcast(Keys.DEPLOYER);
-        Launchpad pad = new Launchpad(vm.addr(Keys.DEPLOYER), address(0));
+        Launchpad pad = new Launchpad(vm.addr(Keys.DEPLOYER));
         UniV2Migrator migrator = new UniV2Migrator(address(pad), router);
         pad.setMigrator(address(migrator));
         vm.stopBroadcast();

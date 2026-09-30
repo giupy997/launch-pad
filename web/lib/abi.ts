@@ -6,11 +6,6 @@ export const launchpadAbi = [
         "name": "treasury_",
         "type": "address",
         "internalType": "address"
-      },
-      {
-        "name": "poolManager_",
-        "type": "address",
-        "internalType": "address"
       }
     ],
     "stateMutability": "nonpayable"
@@ -44,6 +39,19 @@ export const launchpadAbi = [
   {
     "type": "function",
     "name": "FEE_DENOMINATOR",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MAX_TAX_BPS",
     "inputs": [],
     "outputs": [
       {
@@ -146,19 +154,6 @@ export const launchpadAbi = [
   },
   {
     "type": "function",
-    "name": "authorizePoolFeeHook",
-    "inputs": [
-      {
-        "name": "hook",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
     "name": "autoMigrate",
     "inputs": [
       {
@@ -169,6 +164,44 @@ export const launchpadAbi = [
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "burnPot",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "burned",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -237,6 +270,25 @@ export const launchpadAbi = [
       }
     ],
     "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "buybackAndBurn",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "tokensBurned",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
     "stateMutability": "nonpayable"
   },
   {
@@ -471,6 +523,114 @@ export const launchpadAbi = [
   },
   {
     "type": "function",
+    "name": "createTokenWithFees",
+    "inputs": [
+      {
+        "name": "name",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "symbol",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "minTokensOut",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "meta",
+        "type": "tuple",
+        "internalType": "struct Launchpad.TokenMetadata",
+        "components": [
+          {
+            "name": "logoURI",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "website",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "twitter",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "telegram",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "livestream",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "description",
+            "type": "string",
+            "internalType": "string"
+          }
+        ]
+      },
+      {
+        "name": "quoteAsset",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "fees",
+        "type": "tuple",
+        "internalType": "struct Launchpad.FeeConfig",
+        "components": [
+          {
+            "name": "buyTaxBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "sellTaxBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "creatorBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "holdersBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "burnBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "liquidityBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "payable"
+  },
+  {
+    "type": "function",
     "name": "creatorFeeShareBps",
     "inputs": [],
     "outputs": [
@@ -493,25 +653,6 @@ export const launchpadAbi = [
       },
       {
         "name": "asset",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "currentPrice",
-    "inputs": [
-      {
-        "name": "token",
         "type": "address",
         "internalType": "address"
       }
@@ -576,24 +717,6 @@ export const launchpadAbi = [
   },
   {
     "type": "function",
-    "name": "distributePoolFee",
-    "inputs": [
-      {
-        "name": "token",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "amount",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "payable"
-  },
-  {
-    "type": "function",
     "name": "eligibleSupply",
     "inputs": [
       {
@@ -620,6 +743,50 @@ export const launchpadAbi = [
         "name": "",
         "type": "uint256",
         "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "feeConfig",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "buyTaxBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "sellTaxBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "creatorBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "holdersBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "burnBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "liquidityBps",
+        "type": "uint16",
+        "internalType": "uint16"
       }
     ],
     "stateMutability": "view"
@@ -746,10 +913,10 @@ export const launchpadAbi = [
   },
   {
     "type": "function",
-    "name": "isPoolFeeHook",
+    "name": "liquidityPot",
     "inputs": [
       {
-        "name": "hook",
+        "name": "token",
         "type": "address",
         "internalType": "address"
       }
@@ -757,8 +924,8 @@ export const launchpadAbi = [
     "outputs": [
       {
         "name": "",
-        "type": "bool",
-        "internalType": "bool"
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "stateMutability": "view"
@@ -890,9 +1057,41 @@ export const launchpadAbi = [
             "internalType": "address"
           },
           {
-            "name": "feesToHolders",
-            "type": "bool",
-            "internalType": "bool"
+            "name": "fees",
+            "type": "tuple",
+            "internalType": "struct Launchpad.FeeConfig",
+            "components": [
+              {
+                "name": "buyTaxBps",
+                "type": "uint16",
+                "internalType": "uint16"
+              },
+              {
+                "name": "sellTaxBps",
+                "type": "uint16",
+                "internalType": "uint16"
+              },
+              {
+                "name": "creatorBps",
+                "type": "uint16",
+                "internalType": "uint16"
+              },
+              {
+                "name": "holdersBps",
+                "type": "uint16",
+                "internalType": "uint16"
+              },
+              {
+                "name": "burnBps",
+                "type": "uint16",
+                "internalType": "uint16"
+              },
+              {
+                "name": "liquidityBps",
+                "type": "uint16",
+                "internalType": "uint16"
+              }
+            ]
           },
           {
             "name": "virtualQuote",
@@ -905,7 +1104,22 @@ export const launchpadAbi = [
             "internalType": "uint256"
           },
           {
+            "name": "burned",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
             "name": "poolToken",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "burnPot",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "liquidityPot",
             "type": "uint256",
             "internalType": "uint256"
           }
@@ -1166,67 +1380,6 @@ export const launchpadAbi = [
     "type": "function",
     "name": "pendingCoins",
     "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "poolManager",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "quoteBuy",
-    "inputs": [
-      {
-        "name": "token",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "ethIn",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "quoteSell",
-    "inputs": [
-      {
-        "name": "token",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "tokensIn",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
     "outputs": [
       {
         "name": "",
@@ -1625,6 +1778,31 @@ export const launchpadAbi = [
   },
   {
     "type": "event",
+    "name": "BoughtBack",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "quoteIn",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "tokensBurned",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "CashbackClaimed",
     "inputs": [
       {
@@ -1733,6 +1911,55 @@ export const launchpadAbi = [
   },
   {
     "type": "event",
+    "name": "FeesConfigured",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "buyTaxBps",
+        "type": "uint16",
+        "indexed": false,
+        "internalType": "uint16"
+      },
+      {
+        "name": "sellTaxBps",
+        "type": "uint16",
+        "indexed": false,
+        "internalType": "uint16"
+      },
+      {
+        "name": "creatorBps",
+        "type": "uint16",
+        "indexed": false,
+        "internalType": "uint16"
+      },
+      {
+        "name": "holdersBps",
+        "type": "uint16",
+        "indexed": false,
+        "internalType": "uint16"
+      },
+      {
+        "name": "burnBps",
+        "type": "uint16",
+        "indexed": false,
+        "internalType": "uint16"
+      },
+      {
+        "name": "liquidityBps",
+        "type": "uint16",
+        "indexed": false,
+        "internalType": "uint16"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "FreezeAnnounced",
     "inputs": [
       {
@@ -1778,36 +2005,6 @@ export const launchpadAbi = [
         "type": "address",
         "indexed": true,
         "internalType": "address"
-      },
-      {
-        "name": "logoURI",
-        "type": "string",
-        "indexed": false,
-        "internalType": "string"
-      },
-      {
-        "name": "website",
-        "type": "string",
-        "indexed": false,
-        "internalType": "string"
-      },
-      {
-        "name": "twitter",
-        "type": "string",
-        "indexed": false,
-        "internalType": "string"
-      },
-      {
-        "name": "telegram",
-        "type": "string",
-        "indexed": false,
-        "internalType": "string"
-      },
-      {
-        "name": "livestream",
-        "type": "string",
-        "indexed": false,
-        "internalType": "string"
       }
     ],
     "anonymous": false
@@ -1943,38 +2140,6 @@ export const launchpadAbi = [
       },
       {
         "name": "newOwner",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "PoolFeeDistributed",
-    "inputs": [
-      {
-        "name": "token",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "amount",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "PoolFeeHookAuthorized",
-    "inputs": [
-      {
-        "name": "hook",
         "type": "address",
         "indexed": true,
         "internalType": "address"
@@ -2148,6 +2313,11 @@ export const launchpadAbi = [
   },
   {
     "type": "error",
+    "name": "BadFeeConfig",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "BadFreeze",
     "inputs": []
   },
@@ -2199,11 +2369,6 @@ export const launchpadAbi = [
   {
     "type": "error",
     "name": "NotFrozen",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "NotPoolFeeHook",
     "inputs": []
   },
   {

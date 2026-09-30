@@ -102,7 +102,7 @@ contract ZapRouterSwapTest is Test {
     address token;
 
     function setUp() public {
-        pad = new Launchpad(treasury, address(0));
+        pad = new Launchpad(treasury);
         pad.setMigrator(address(new NoopMigrator()));
         weth = new MockWETH();
         quote = new MockQuote();

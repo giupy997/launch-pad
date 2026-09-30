@@ -29,3 +29,12 @@ interface IDexMigrator {
 interface IDexMigratorUnlock {
     function unlock(address token, address to) external returns (uint256 quoteOut, uint256 tokenOut, address pool);
 }
+
+/// @title IDexMigratorBuyback
+/// @notice Buying a graduated token back on the pool the adapter seeded, with
+///         quote the launchpad hands it first (as msg.value for a native pool,
+///         as a transfer otherwise): the tokens bought go to the launchpad,
+///         which burns them.
+interface IDexMigratorBuyback {
+    function buyback(address token, uint256 quoteIn) external payable returns (uint256 tokenOut);
+}

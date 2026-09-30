@@ -28,6 +28,8 @@ import { LiveStream } from "@/components/LiveStream";
 import { CreatorPanel } from "@/components/CreatorPanel";
 import { CashbackCard } from "@/components/CashbackCard";
 import { MigrationNotice } from "@/components/MigrationNotice";
+import { FeePanel } from "@/components/FeePanel";
+import { parseFeeConfig, NO_TAX } from "@/lib/curve";
 import { useAccount } from "wagmi";
 
 export default function TokenPage({ params }: { params: Promise<{ address: string }> }) {
@@ -45,6 +47,8 @@ export default function TokenPage({ params }: { params: Promise<{ address: strin
       { address: token, abi: launchTokenAbi, functionName: "name" },
       { address: token, abi: launchTokenAbi, functionName: "symbol" },
       { address: pad, abi: launchpadAbi, functionName: "feesToHolders", args: [token] },
+      { address: pad, abi: launchpadAbi, functionName: "feeConfig", args: [token] },
+      { address: pad, abi: launchpadAbi, functionName: "feeBps" },
     ],
     query: { ...IMMUTABLE },
   });
@@ -52,6 +56,9 @@ export default function TokenPage({ params }: { params: Promise<{ address: strin
     contracts: [
       { address: pad, abi: launchpadAbi, functionName: "curves", args: [token] },
       { address: pad, abi: launchpadAbi, functionName: "tokenMetadata", args: [token] },
+      { address: pad, abi: launchpadAbi, functionName: "burnPot", args: [token] },
+      { address: pad, abi: launchpadAbi, functionName: "liquidityPot", args: [token] },
+      { address: pad, abi: launchpadAbi, functionName: "burned", args: [token] },
     ],
     query: { refetchInterval: 5_000 },
   });
@@ -79,9 +86,14 @@ export default function TokenPage({ params }: { params: Promise<{ address: strin
       </div>
     );
 
-  const [nameR, symbolR, feeModeR] = statics;
-  const [curveR, metaR] = dyn;
+  const [nameR, symbolR, feeModeR, feesR, feeBpsR] = statics;
+  const [curveR, metaR, burnPotR, liqPotR, burnedR] = dyn;
   const feesToHolders = feeModeR?.status === "success" ? (feeModeR.result as boolean) : false;
+  // pads before v9 know no fee configuration: no panel, the old fee line
+  const hasFees = feesR?.status === "success";
+  const fees = hasFees ? parseFeeConfig(feesR.result) : NO_TAX;
+  const platformFeeBps = feeBpsR?.status === "success" ? (feeBpsR.result as bigint) : 100n;
+  const big = (r: { status: string; result?: unknown } | undefined) => (r?.status === "success" ? (r.result as bigint) : 0n);
   if (curveR.status !== "success" || (curveR.result as readonly unknown[])[0] === 0n) {
     return <p className="text-zinc-500">Token not found on this launchpad.</p>;
   }
@@ -129,7 +141,7 @@ export default function TokenPage({ params }: { params: Promise<{ address: strin
               )}
               {feesToHolders && (
                 <span
-                  title="100% of the creator fee pot goes to holders as cashback"
+                  title={`${fees.holdersBps / 100}% of the fee pot goes to holders as cashback`}
                   className="ml-3 font-mono text-xs tracking-widest uppercase border border-white rounded-full px-2 py-0.5 align-middle"
                 >
                   ✦ Rewards
@@ -204,7 +216,21 @@ export default function TokenPage({ params }: { params: Promise<{ address: strin
       </div>
 
       <div className="order-1 lg:order-2 space-y-6">
-        <TradeBox token={token} symbol={symbol} curve={curve} feesToHolders={feesToHolders} />
+        <TradeBox token={token} symbol={symbol} curve={curve} fees={fees} platformFeeBps={platformFeeBps} />
+        {hasFees && (
+          <FeePanel
+            token={token}
+            symbol={symbol}
+            fees={fees}
+            platformFeeBps={platformFeeBps}
+            burnPot={big(burnPotR)}
+            liquidityPot={big(liqPotR)}
+            burned={big(burnedR)}
+            quoteSymbol={q.symbol}
+            quoteDecimals={q.decimals}
+            graduated={curve.graduated}
+          />
+        )}
         {feesToHolders && (
           <CashbackCard token={token} quoteSymbol={q.symbol} quoteDecimals={q.decimals} />
         )}

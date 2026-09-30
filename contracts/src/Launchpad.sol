@@ -8,7 +8,7 @@ import {SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/Safe
 import {Math} from "openzeppelin-contracts/contracts/utils/math/Math.sol";
 import {LaunchToken} from "./LaunchToken.sol";
 import {LaunchTokenFactory} from "./LaunchTokenFactory.sol";
-import {IDexMigrator, IDexMigratorUnlock} from "./interfaces/IDexMigrator.sol";
+import {IDexMigrator, IDexMigratorUnlock, IDexMigratorBuyback} from "./interfaces/IDexMigrator.sol";
 
 /// @title Launchpad
 /// @notice pump.fun-style launchpad: anyone creates a token, the full supply is
@@ -36,14 +36,18 @@ contract Launchpad is Ownable, ReentrancyGuard {
     uint256 public constant VIRTUAL_TOKEN = 1_050_000_000e18;
 
     uint256 public constant FEE_DENOMINATOR = 10_000;
-    uint256 public feeBps = 100; // 1% on buys and sells
-    /// Fee split: creatorFeeShareBps + holderCashbackBps form one pot that
-    /// goes ENTIRELY to the creator or ENTIRELY to the holders, per the
-    /// token's launch-time `feesToHolders` choice; the remainder goes to the
-    /// treasury. Creator fees and cashback are pull-based (claim functions),
-    /// so no external address can ever block trades.
+    /// The platform fee on every curve trade, buys and sells alike.
+    uint256 public feeBps = 100; // 1%
+    /// Of the platform fee, creatorFeeShareBps + holderCashbackBps form the
+    /// coin's pot; the remainder goes to the treasury. The pot — and the
+    /// coin's own tax on top of the platform fee, whole — is split as the
+    /// creator set at launch (FeeConfig): creator, holders as cashback,
+    /// buyback-and-burn, liquidity. Creator fees and cashback are pull-based
+    /// (claim functions), so no external address can ever block trades.
     uint256 public creatorFeeShareBps = 5_000;
     uint256 public holderCashbackBps = 3_000;
+    /// The most a coin's own tax can be, on either side.
+    uint256 public constant MAX_TAX_BPS = 1_000; // 10%
     address public treasury;
     IDexMigrator public migrator;
     /// Deploys the coins' tokens: their creation code lives there, not here.
@@ -78,13 +82,6 @@ contract Launchpad is Ownable, ReentrancyGuard {
     /// spread over exactly this supply, which keeps the accumulator solvent
     /// after graduation, when part of the supply sits inside the pool.
     mapping(address token => uint256) public eligibleSupply;
-    /// Fixed at deploy (address(0) on chains without Uniswap v4): an address
-    /// that became ineligible while holding tokens would desync the counter.
-    address public immutable poolManager;
-
-    /// Hooks allowed to deposit post-graduation pool fees. Add-only: a pool is
-    /// bound to its hook forever, so revoking one would brick that pool.
-    mapping(address hook => bool) public isPoolFeeHook;
 
     // ---------------------------------------------------------------- state
 
@@ -118,10 +115,13 @@ contract Launchpad is Ownable, ReentrancyGuard {
         string symbol;
         TokenMetadata meta;
         address creator;
-        bool feesToHolders;
-        uint256 virtualQuote; // the ledger's virtual quote reserve
-        uint256 sold; //         tokens its holders own, delivered by migrateToken/migrateBalances
-        uint256 poolToken; //    a coin that graduated there: the token side of its locked pool (0 = still on the curve)
+        FeeConfig fees;
+        uint256 virtualQuote; //  the ledger's virtual quote reserve
+        uint256 sold; //          tokens that left its curve: what holders own (delivered by migrateToken/migrateBalances) plus `burned`
+        uint256 burned; //        bought back and burned there: burned here too at birth
+        uint256 poolToken; //     a coin that graduated there: the token side of its locked pool (0 = still on the curve)
+        uint256 burnPot; //       its pots, unspent there, part of msg.value alongside the reserve
+        uint256 liquidityPot;
     }
 
     mapping(address token => Curve) public curves;
@@ -174,15 +174,47 @@ contract Launchpad is Ownable, ReentrancyGuard {
     /// Launch-time fee destination, immutable so buyers can rely on it:
     /// true = the whole creator+holders pot is holder cashback, false = it
     /// all accrues to the creator.
-    mapping(address token => bool) public feesToHolders;
+    /// How a coin taxes and splits its fees, fixed at launch: its own tax on
+    /// buys and on sells (basis points of the trade, at most MAX_TAX_BPS),
+    /// and the shares of its pot — the platform fee's pot plus the whole tax
+    /// — that go to the creator, to holders as cashback, to buying the coin
+    /// back and burning it, and to its pool's liquidity (basis points, 10,000
+    /// in all).
+    struct FeeConfig {
+        uint16 buyTaxBps;
+        uint16 sellTaxBps;
+        uint16 creatorBps;
+        uint16 holdersBps;
+        uint16 burnBps;
+        uint16 liquidityBps;
+    }
+
+    mapping(address token => FeeConfig) public feeConfig;
+    /// Quote set aside to buy the coin back and burn it (buybackAndBurn).
+    mapping(address token => uint256) public burnPot;
+    /// Quote set aside for the coin's pool, joining its quote side at graduation.
+    mapping(address token => uint256) public liquidityPot;
+    /// Coins bought back and burned so far: they left the curve (part of
+    /// `sold`) and exist no more, so holders own `sold` less this.
+    mapping(address token => uint256) public burned;
     address[] public allTokens;
 
     // ---------------------------------------------------------------- events
 
     event TokenCreated(address indexed token, address indexed creator, string name, string symbol, bool feesToHolders);
-    event MetadataUpdated(
-        address indexed token, string logoURI, string website, string twitter, string telegram, string livestream
+    event FeesConfigured(
+        address indexed token,
+        uint16 buyTaxBps,
+        uint16 sellTaxBps,
+        uint16 creatorBps,
+        uint16 holdersBps,
+        uint16 burnBps,
+        uint16 liquidityBps
     );
+    /// The burn pot bought the coin back — on the curve or on the pool — and burned it.
+    event BoughtBack(address indexed token, uint256 quoteIn, uint256 tokensBurned);
+    /// The coin's metadata changed: read tokenMetadata(token).
+    event MetadataUpdated(address indexed token);
     event AutoMigrationFailed(address indexed token);
     event FeeRecipientUpdated(address indexed token, address indexed recipient);
     event Bought(address indexed token, address indexed buyer, uint256 ethIn, uint256 tokensOut, uint256 fee);
@@ -197,8 +229,6 @@ contract Launchpad is Ownable, ReentrancyGuard {
     event TreasuryUpdated(address treasury);
     event MigratorUpdated(address migrator);
     event QuoteAssetUpdated(address indexed asset, uint256 virtualReserve);
-    event PoolFeeHookAuthorized(address indexed hook);
-    event PoolFeeDistributed(address indexed token, uint256 amount);
     event TokenMigrated(
         address indexed token, address indexed creator, uint256 virtualQuote, uint256 realQuote, uint256 sold
     );
@@ -218,11 +248,12 @@ contract Launchpad is Ownable, ReentrancyGuard {
     error ZeroAmount();
     error Slippage();
     error FeeTooHigh();
+    /// a tax above MAX_TAX_BPS, or shares that do not add up to 10,000.
+    error BadFeeConfig();
     error MigratorNotSet();
     error EthTransferFailed();
     error QuoteAssetNotEnabled();
     error WrongPayment();
-    error NotPoolFeeHook();
     error MigrationPending();
     error BadMigration();
     /// migrateToken outside an open migration (no root set, or closed).
@@ -244,9 +275,8 @@ contract Launchpad is Ownable, ReentrancyGuard {
     /// a coin's reserve already left.
     error AlreadyMigratedOut();
 
-    constructor(address treasury_, address poolManager_) Ownable(msg.sender) {
+    constructor(address treasury_) Ownable(msg.sender) {
         treasury = treasury_;
-        poolManager = poolManager_;
         tokenFactory = new LaunchTokenFactory();
         // the native coin is a quote asset like any other, on from the start;
         // a pad quoted in an ERC-20 alone switches it off (setQuoteAsset(0, 0))
@@ -257,10 +287,9 @@ contract Launchpad is Ownable, ReentrancyGuard {
     // ---------------------------------------------------------------- create
 
     /// @notice Deploy a new token and open its curve. Sending ETH performs an
-    ///         initial buy for the creator in the same transaction.
-    ///         `feesToHolders_` fixes the fee destination forever: true sends
-    ///         the whole creator+holders pot to holders as cashback, false
-    ///         keeps it all for the creator.
+    ///         initial buy for the creator in the same transaction. No tax of
+    ///         its own; `feesToHolders_` sends the whole pot to holders as
+    ///         cashback (true) or to the creator (false), forever.
     function createToken(
         string calldata name,
         string calldata symbol,
@@ -269,13 +298,61 @@ contract Launchpad is Ownable, ReentrancyGuard {
         address quoteAsset,
         bool feesToHolders_
     ) external payable nonReentrant returns (address token) {
-        token = _create(name, symbol, meta, quoteAsset, feesToHolders_, false);
+        return _createToken(name, symbol, minTokensOut, meta, quoteAsset, _defaultFees(feesToHolders_));
+    }
+
+    /// @notice Deploy a new token with its own fee configuration (see
+    ///         FeeConfig): its tax on buys and sells, at most MAX_TAX_BPS
+    ///         each, and how its pot is split, fixed forever. Sending ETH
+    ///         performs an initial buy for the creator in the same transaction.
+    function createTokenWithFees(
+        string calldata name,
+        string calldata symbol,
+        uint256 minTokensOut,
+        TokenMetadata calldata meta,
+        address quoteAsset,
+        FeeConfig calldata fees
+    ) external payable nonReentrant returns (address token) {
+        return _createToken(name, symbol, minTokensOut, meta, quoteAsset, fees);
+    }
+
+    function _createToken(
+        string calldata name,
+        string calldata symbol,
+        uint256 minTokensOut,
+        TokenMetadata calldata meta,
+        address quoteAsset,
+        FeeConfig memory fees
+    ) internal returns (address token) {
+        token = _create(name, symbol, meta, quoteAsset, fees, false);
 
         if (quoteAsset == address(0)) {
             if (msg.value > 0) _buy(token, msg.sender, msg.value, minTokensOut);
         } else if (msg.value > 0) {
             revert WrongPayment();
         }
+    }
+
+    /// The launch-time choice before taxes: the whole pot to holders, or to the creator.
+    function _defaultFees(bool toHolders) internal pure returns (FeeConfig memory) {
+        return FeeConfig(0, 0, toHolders ? 0 : 10_000, toHolders ? 10_000 : 0, 0, 0);
+    }
+
+    /// Validate and record a coin's fee configuration.
+    function _setFees(address token, FeeConfig memory fees) internal {
+        if (
+            fees.buyTaxBps > MAX_TAX_BPS || fees.sellTaxBps > MAX_TAX_BPS
+                || uint256(fees.creatorBps) + fees.holdersBps + fees.burnBps + fees.liquidityBps != FEE_DENOMINATOR
+        ) revert BadFeeConfig();
+        feeConfig[token] = fees;
+        emit FeesConfigured(
+            token, fees.buyTaxBps, fees.sellTaxBps, fees.creatorBps, fees.holdersBps, fees.burnBps, fees.liquidityBps
+        );
+    }
+
+    /// @notice Whether holders earn cashback on this coin (a holders share above zero).
+    function feesToHolders(address token) external view returns (bool) {
+        return feeConfig[token].holdersBps != 0;
     }
 
     /// @notice Deploy a Notus Pre-Market (owner only): a synthetic pre-IPO
@@ -290,7 +367,7 @@ contract Launchpad is Ownable, ReentrancyGuard {
         TokenMetadata calldata meta,
         uint256 quoteVirtualReserve_
     ) external onlyOwner nonReentrant returns (address token) {
-        token = _create(name, symbol, meta, address(0), true, true);
+        token = _create(name, symbol, meta, address(0), _defaultFees(true), true);
         quoteVirtualReserve[token] = quoteVirtualReserve_;
         emit QuoteAssetUpdated(token, quoteVirtualReserve_);
     }
@@ -300,7 +377,7 @@ contract Launchpad is Ownable, ReentrancyGuard {
         string calldata symbol,
         TokenMetadata calldata meta,
         address quoteAsset,
-        bool feesToHolders_,
+        FeeConfig memory fees,
         bool transferable_
     ) internal returns (address token) {
         // announced or landed, a freeze closes the pad to new coins: the list
@@ -319,10 +396,10 @@ contract Launchpad is Ownable, ReentrancyGuard {
             quoteAsset: quoteAsset
         });
         tokenMetadata[token] = meta;
-        if (feesToHolders_) feesToHolders[token] = true;
+        _setFees(token, fees);
         allTokens.push(token);
-        emit TokenCreated(token, msg.sender, name, symbol, feesToHolders_);
-        emit MetadataUpdated(token, meta.logoURI, meta.website, meta.twitter, meta.telegram, meta.livestream);
+        emit TokenCreated(token, msg.sender, name, symbol, fees.holdersBps != 0);
+        emit MetadataUpdated(token);
     }
 
     /// @notice Buy on an ERC-20 quoted curve, paying from msg.sender.
@@ -365,7 +442,7 @@ contract Launchpad is Ownable, ReentrancyGuard {
         if (c.vEth == 0) revert UnknownToken();
         if (msg.sender != c.creator) revert NotCreator();
         tokenMetadata[token] = meta;
-        emit MetadataUpdated(token, meta.logoURI, meta.website, meta.twitter, meta.telegram, meta.livestream);
+        emit MetadataUpdated(token);
     }
 
     // ---------------------------------------------------------------- trade
@@ -383,11 +460,11 @@ contract Launchpad is Ownable, ReentrancyGuard {
         if (migrationPending[token] != 0) revert MigrationPending();
         if (frozen()) revert Frozen();
 
-        uint256 fee = (ethIn * feeBps) / FEE_DENOMINATOR;
+        uint256 f = feeBps + feeConfig[token].buyTaxBps; // the platform fee and the coin's own tax
+        uint256 fee = (ethIn * f) / FEE_DENOMINATOR;
         uint256 ethForCurve = ethIn - fee;
 
-        uint256 k = c.vEth * c.vToken;
-        uint256 tokensOut = c.vToken - k / (c.vEth + ethForCurve);
+        uint256 tokensOut = c.vToken - (c.vEth * c.vToken) / (c.vEth + ethForCurve);
 
         // Cap the final buy to what's left on the curve and refund the surplus.
         uint256 remaining = CURVE_SUPPLY - c.sold;
@@ -395,21 +472,18 @@ contract Launchpad is Ownable, ReentrancyGuard {
         if (tokensOut >= remaining) {
             tokensOut = remaining;
             // ETH needed to buy exactly `remaining`: x' = k / (y - out) - x
-            uint256 ethNeeded = k / (c.vToken - tokensOut) - c.vEth + 1; // round against user
-            if (ethNeeded < ethForCurve) {
-                refund = ethForCurve - ethNeeded;
-                ethForCurve = ethNeeded;
-            }
-            fee = (ethForCurve * feeBps) / (FEE_DENOMINATOR - feeBps); // fee on the used part
+            uint256 ethNeeded = (c.vEth * c.vToken) / (c.vToken - tokensOut) - c.vEth + 1; // round against user
+            if (ethNeeded < ethForCurve) ethForCurve = ethNeeded;
+            fee = (ethForCurve * f) / (FEE_DENOMINATOR - f); // fee on the used part
             // Rounding in the fee gross-up can exceed ethIn by a wei: that wei
             // comes off the fee, never out of the pad's other pots, and the
             // graduating buy never reverts here.
-            uint256 total = ethForCurve + fee;
-            if (total > ethIn) {
-                fee -= total - ethIn;
-                total = ethIn;
+            refund = ethForCurve + fee; // the total, for a moment
+            if (refund > ethIn) {
+                fee -= refund - ethIn;
+                refund = ethIn;
             }
-            refund = ethIn - total;
+            refund = ethIn - refund;
         }
         if (tokensOut == 0) revert ZeroAmount();
         if (tokensOut < minTokensOut) revert Slippage();
@@ -420,7 +494,7 @@ contract Launchpad is Ownable, ReentrancyGuard {
         c.sold += tokensOut;
 
         IERC20(token).safeTransfer(buyer, tokensOut);
-        _splitFee(token, c.creator, c.quoteAsset, fee);
+        _splitFee(token, c.creator, c.quoteAsset, fee, f);
         if (refund > 0) _payOut(c.quoteAsset, buyer, refund);
 
         emit Bought(token, buyer, ethIn - refund, tokensOut, fee);
@@ -463,7 +537,8 @@ contract Launchpad is Ownable, ReentrancyGuard {
         uint256 ethOut = c.vEth - k / (c.vToken + tokensIn);
         // Rounding can push ethOut a wei past what the curve actually holds.
         if (ethOut > c.realEth) ethOut = c.realEth;
-        uint256 fee = (ethOut * feeBps) / FEE_DENOMINATOR;
+        uint256 f = feeBps + feeConfig[token].sellTaxBps;
+        uint256 fee = (ethOut * f) / FEE_DENOMINATOR;
         uint256 ethToSeller = ethOut - fee;
         if (ethToSeller < minEthOut) revert Slippage();
 
@@ -473,40 +548,13 @@ contract Launchpad is Ownable, ReentrancyGuard {
         c.sold -= tokensIn;
 
         IERC20(token).safeTransferFrom(msg.sender, address(this), tokensIn);
-        _splitFee(token, c.creator, c.quoteAsset, fee);
+        _splitFee(token, c.creator, c.quoteAsset, fee, f);
         _payOut(c.quoteAsset, msg.sender, ethToSeller);
 
         emit Sold(token, msg.sender, tokensIn, ethToSeller, fee);
     }
 
     // ---------------------------------------------------------------- views
-
-    /// @notice Tokens received for `ethIn` (after fee), ignoring the final-buy cap.
-    function quoteBuy(address token, uint256 ethIn) external view returns (uint256) {
-        Curve storage c = curves[token];
-        if (c.vEth == 0) revert UnknownToken();
-        uint256 ethForCurve = ethIn - (ethIn * feeBps) / FEE_DENOMINATOR;
-        uint256 k = c.vEth * c.vToken;
-        uint256 out = c.vToken - k / (c.vEth + ethForCurve);
-        uint256 remaining = CURVE_SUPPLY - c.sold;
-        return out > remaining ? remaining : out;
-    }
-
-    /// @notice ETH received (after fee) for selling `tokensIn`.
-    function quoteSell(address token, uint256 tokensIn) external view returns (uint256) {
-        Curve storage c = curves[token];
-        if (c.vEth == 0) revert UnknownToken();
-        uint256 k = c.vEth * c.vToken;
-        uint256 ethOut = c.vEth - k / (c.vToken + tokensIn);
-        return ethOut - (ethOut * feeBps) / FEE_DENOMINATOR;
-    }
-
-    /// @notice Current spot price in wei per whole token (1e18 units).
-    function currentPrice(address token) external view returns (uint256) {
-        Curve storage c = curves[token];
-        if (c.vEth == 0) revert UnknownToken();
-        return (c.vEth * 1e18) / c.vToken;
-    }
 
     function tokenCount() external view returns (uint256) {
         return allTokens.length;
@@ -531,6 +579,9 @@ contract Launchpad is Ownable, ReentrancyGuard {
         if (ethAmount == 0) revert ZeroAmount(); // already migrated
         c.realEth = 0;
         graduatedVia[token] = migrator;
+        // the coin's liquidity pot joins the pool's quote side: that much deeper (and higher) an opening
+        ethAmount += liquidityPot[token];
+        liquidityPot[token] = 0;
 
         // a coin that graduated on a ledger brings its own pool's token side
         uint256 reserve = migratedPoolTokens[token];
@@ -573,17 +624,21 @@ contract Launchpad is Ownable, ReentrancyGuard {
         _claimTicker(coin.symbol, token);
         curves[token] = _ledgerCurve(coin);
         tokenMetadata[token] = coin.meta;
-        if (coin.feesToHolders) feesToHolders[token] = true;
+        _setFees(token, coin.fees);
+        if (coin.burned != 0) {
+            burned[token] = coin.burned;
+            LaunchToken(token).burn(coin.burned);
+        }
+        burnPot[token] = coin.burnPot;
+        liquidityPot[token] = coin.liquidityPot;
         if (coin.poolToken != 0) migratedPoolTokens[token] = coin.poolToken;
         allTokens.push(token);
-        migrationPending[token] = coin.sold;
-        if (coin.sold != 0) pendingCoins++;
-        emit TokenCreated(token, coin.creator, coin.name, coin.symbol, coin.feesToHolders);
-        emit MetadataUpdated(
-            token, coin.meta.logoURI, coin.meta.website, coin.meta.twitter, coin.meta.telegram, coin.meta.livestream
-        );
+        migrationPending[token] = coin.sold - coin.burned; // what its holders own, to deliver
+        if (coin.sold != coin.burned) pendingCoins++;
+        emit TokenCreated(token, coin.creator, coin.name, coin.symbol, coin.fees.holdersBps != 0);
+        emit MetadataUpdated(token);
         emit TokenMigrated(token, coin.creator, coin.virtualQuote, msg.value, coin.sold);
-        if (coin.sold != 0) _migrateBalances(token, holders, balances);
+        if (coin.sold != coin.burned) _migrateBalances(token, holders, balances);
     }
 
     /// An open migration, and one token per ledger ticker.
@@ -599,9 +654,10 @@ contract Launchpad is Ownable, ReentrancyGuard {
     /// = what its pool holds, the two adding up to the supply, and its pool
     /// always has a quote side.
     function _checkLedgerCoin(LedgerCoin calldata coin, uint256 holderCount) internal view {
-        if (coin.creator == address(0) || coin.virtualQuote == 0) revert BadMigration();
+        if (coin.creator == address(0) || coin.virtualQuote == 0 || coin.burned > coin.sold) revert BadMigration();
+        uint256 reserve = _ledgerReserve(coin); // msg.value less the pots
         if (coin.poolToken != 0) {
-            if (coin.sold + coin.poolToken != TOTAL_SUPPLY || msg.value == 0) revert BadMigration();
+            if (coin.sold + coin.poolToken != TOTAL_SUPPLY || reserve == 0) revert BadMigration();
         } else if (coin.sold > CURVE_SUPPLY) {
             revert BadMigration();
         } else if (coin.sold != 0) {
@@ -611,19 +667,27 @@ contract Launchpad is Ownable, ReentrancyGuard {
             // no more (the price would be wrong)
             uint256 expected = Math.mulDiv(coin.virtualQuote, coin.sold, VIRTUAL_TOKEN - coin.sold);
             uint256 tolerance = expected / 200 + 1e12; // 0.5% plus dust
-            if (msg.value + tolerance < expected || msg.value > expected + tolerance) revert WrongQuote();
+            if (reserve + tolerance < expected || reserve > expected + tolerance) revert WrongQuote();
         }
-        if (coin.sold == 0 && (msg.value != 0 || holderCount != 0)) revert BadMigration(); // an untraded coin
+        if (coin.sold == 0 && (reserve != 0 || holderCount != 0)) revert BadMigration(); // an untraded coin
+    }
+
+    /// The reserve a ledger coin arrives with: msg.value less its pots.
+    function _ledgerReserve(LedgerCoin calldata coin) internal view returns (uint256) {
+        uint256 pots = coin.burnPot + coin.liquidityPot;
+        if (msg.value < pots) revert BadMigration();
+        return msg.value - pots;
     }
 
     /// The curve as the ledger left it. A pooled coin's curve is complete:
     /// it graduates once its holders are served (see _migrateBalances).
     function _ledgerCurve(LedgerCoin calldata coin) internal view returns (Curve memory) {
         bool pooled = coin.poolToken != 0;
+        uint256 reserve = _ledgerReserve(coin);
         return Curve({
-            vEth: coin.virtualQuote + msg.value,
+            vEth: coin.virtualQuote + reserve,
             vToken: pooled ? VIRTUAL_TOKEN - CURVE_SUPPLY : VIRTUAL_TOKEN - coin.sold,
-            realEth: msg.value,
+            realEth: reserve,
             sold: pooled ? CURVE_SUPPLY : coin.sold,
             graduated: false,
             creator: coin.creator,
@@ -667,52 +731,99 @@ contract Launchpad is Ownable, ReentrancyGuard {
 
     /// @notice Splits a curve trade fee (see _accrueFee); the treasury share
     ///         is paid straight out.
-    function _splitFee(address token, address creator, address asset, uint256 fee) internal {
-        _payOut(asset, treasury, _accrueFee(token, creator, asset, fee));
+    function _splitFee(address token, address creator, address asset, uint256 fee, uint256 f) internal {
+        _payOut(asset, treasury, _accrueFee(token, creator, asset, fee, f));
     }
 
-    /// @notice Accrues a fee: the creator+holders pot goes either to the
-    ///         creator or to holder cashback (the token's launch-time choice),
-    ///         pull-withdrawal both ways. Returns the treasury share, which
-    ///         also absorbs the pot while there is no eligible supply.
-    function _accrueFee(address token, address creator, address asset, uint256 fee)
+    /// @notice Accrues a fee taken at the rate `f` (the platform fee and the
+    ///         coin's tax together): the treasury's share of the platform
+    ///         fee's part comes off first, the rest is the coin's pot, split
+    ///         as its FeeConfig says — to the creator (pull-withdrawal), to
+    ///         holders as cashback (pull-withdrawal; to the treasury while
+    ///         there is no eligible supply), to the burn pot, and to the
+    ///         liquidity pot. Fees accrue on the curve alone: once the coin
+    ///         graduates its pool's fees are the pool's. Returns the
+    ///         treasury share, rounding dust included.
+    function _accrueFee(address token, address creator, address asset, uint256 fee, uint256 f)
         internal
         returns (uint256 toTreasury)
     {
-        uint256 pot = (fee * (creatorFeeShareBps + holderCashbackBps)) / FEE_DENOMINATOR;
-        toTreasury = fee - pot;
-        if (pot == 0) return toTreasury;
-        if (feesToHolders[token]) {
-            uint256 eligible = eligibleSupply[token];
-            if (eligible < MIN_ELIGIBLE_SUPPLY) return fee;
-            accCashbackPerShare[token] += (pot * ACC_PRECISION) / eligible;
-        } else {
-            address recipient = feeRecipient[token];
-            if (recipient == address(0)) recipient = creator;
-            creatorFees[recipient][asset] += pot;
-        }
+        if (fee == 0) return 0;
+        uint256 pot = (fee * feeBps) / f; // the platform fee's part of it...
+        pot = fee - (pot - (pot * (creatorFeeShareBps + holderCashbackBps)) / FEE_DENOMINATOR); // ...less the treasury's share
+        toTreasury = fee - pot + _splitPot(token, creator, asset, pot);
     }
 
-    /// @notice Deposit a post-graduation DEX trading fee for `token`, paid in
-    ///         its quote asset (ETH as msg.value, ERC-20 pulled from the hook).
-    ///         Split exactly like curve fees, so a token launched in holders
-    ///         mode keeps paying its holders for as long as its pool trades.
-    ///         Every share — treasury included — accrues pull-based: a pool
-    ///         swap never pushes funds to an address that could revert it.
-    function distributePoolFee(address token, uint256 amount) external payable nonReentrant {
-        if (!isPoolFeeHook[msg.sender]) revert NotPoolFeeHook();
+    /// Splits a coin's pot as its FeeConfig says; returns what falls to the
+    /// treasury: rounding dust, and the holders' share while there is no
+    /// eligible supply.
+    function _splitPot(address token, address creator, address asset, uint256 pot)
+        internal
+        returns (uint256 toTreasury)
+    {
+        FeeConfig storage cfg = feeConfig[token];
+        uint256 toCreator = (pot * cfg.creatorBps) / FEE_DENOMINATOR;
+        uint256 toHolders = (pot * cfg.holdersBps) / FEE_DENOMINATOR;
+        uint256 toBurn = (pot * cfg.burnBps) / FEE_DENOMINATOR;
+        uint256 toLiquidity = (pot * cfg.liquidityBps) / FEE_DENOMINATOR;
+        toTreasury = pot - toCreator - toHolders - toBurn - toLiquidity; // rounding dust
+        if (toCreator != 0) {
+            address recipient = feeRecipient[token];
+            if (recipient == address(0)) recipient = creator;
+            creatorFees[recipient][asset] += toCreator;
+        }
+        if (toHolders != 0) {
+            uint256 eligible = eligibleSupply[token];
+            if (eligible < MIN_ELIGIBLE_SUPPLY) toTreasury += toHolders;
+            else accCashbackPerShare[token] += (toHolders * ACC_PRECISION) / eligible;
+        }
+        if (toLiquidity != 0) liquidityPot[token] += toLiquidity;
+        if (toBurn != 0) burnPot[token] += toBurn;
+    }
+
+    /// @notice Spend a coin's burn pot: buy the coin back — on its curve, or on
+    ///         its pool once graduated — and burn what comes out, so the supply
+    ///         shrinks for everyone who holds it. Anyone may call it at any
+    ///         time; the pot is fees already paid, best spent small and often.
+    function buybackAndBurn(address token) external nonReentrant returns (uint256 tokensBurned) {
         Curve storage c = curves[token];
         if (c.vEth == 0) revert UnknownToken();
-        if (!c.graduated) revert NotYetGraduated();
-        if (amount == 0) revert ZeroAmount();
-        if (c.quoteAsset == address(0)) {
-            if (msg.value != amount) revert WrongPayment();
+        if (migrationPending[token] != 0) revert MigrationPending();
+        if (frozen()) revert Frozen();
+        uint256 pot = burnPot[token];
+        if (pot == 0) revert ZeroAmount();
+        uint256 used = pot;
+        if (!c.graduated) {
+            // a buy on the curve, with no fee: what the pot buys, up to what is left on it
+            uint256 k = c.vEth * c.vToken;
+            tokensBurned = c.vToken - k / (c.vEth + pot);
+            uint256 remaining = CURVE_SUPPLY - c.sold;
+            if (tokensBurned >= remaining) {
+                tokensBurned = remaining;
+                used = k / (c.vToken - remaining) - c.vEth + 1;
+                if (used > pot) used = pot;
+            }
+            if (tokensBurned == 0) revert ZeroAmount();
+            burnPot[token] = pot - used;
+            c.vEth += used;
+            c.vToken -= tokensBurned;
+            c.realEth += used;
+            c.sold += tokensBurned;
         } else {
-            if (msg.value != 0) revert WrongPayment();
-            IERC20(c.quoteAsset).safeTransferFrom(msg.sender, address(this), amount);
+            IDexMigrator via = graduatedVia[token];
+            if (address(via) == address(0)) revert MigratorNotSet(); // graduated with no pool yet: nothing to buy from
+            burnPot[token] = 0;
+            if (c.quoteAsset == address(0)) {
+                tokensBurned = IDexMigratorBuyback(address(via)).buyback{value: pot}(token, pot);
+            } else {
+                IERC20(c.quoteAsset).safeTransfer(address(via), pot);
+                tokensBurned = IDexMigratorBuyback(address(via)).buyback(token, pot);
+            }
         }
-        creatorFees[treasury][c.quoteAsset] += _accrueFee(token, c.creator, c.quoteAsset, amount);
-        emit PoolFeeDistributed(token, amount);
+        burned[token] += tokensBurned;
+        LaunchToken(token).burn(tokensBurned);
+        emit BoughtBack(token, used, tokensBurned);
+        if (!c.graduated && c.sold == CURVE_SUPPLY) _graduate(token, c);
     }
 
     /// @notice Transfer hook called by LaunchTokens right after every balance
@@ -749,7 +860,7 @@ contract Launchpad is Ownable, ReentrancyGuard {
     }
 
     function _isEligible(address account) internal view returns (bool) {
-        return account != address(0) && account != address(this) && account != poolManager;
+        return account != address(0) && account != address(this);
     }
 
     /// Entitlements round down and debts round up: with both floored, every
@@ -826,13 +937,6 @@ contract Launchpad is Ownable, ReentrancyGuard {
             quoteVirtualReserve[assets[i]] = virtualReserves[i];
             emit QuoteAssetUpdated(assets[i], virtualReserves[i]);
         }
-    }
-
-    /// @notice Allow a Uniswap v4 hook to deposit post-graduation pool fees.
-    ///         There is deliberately no way to revoke it (see isPoolFeeHook).
-    function authorizePoolFeeHook(address hook) external onlyOwner {
-        isPoolFeeHook[hook] = true;
-        emit PoolFeeHookAuthorized(hook);
     }
 
     function setMigrator(address newMigrator) external onlyOwner {
@@ -931,11 +1035,15 @@ contract Launchpad is Ownable, ReentrancyGuard {
         if (c.vEth == 0) revert UnknownToken();
         if (migratedOut[token]) revert AlreadyMigratedOut();
         migratedOut[token] = true;
+        // its pots, unspent, go with it
+        uint256 pots = burnPot[token] + liquidityPot[token];
+        burnPot[token] = 0;
+        liquidityPot[token] = 0;
 
         IDexMigrator via = graduatedVia[token];
         if (!c.graduated || address(via) == address(0)) {
             // on its curve — or graduated with its reserve still parked here
-            quoteOut = c.realEth;
+            quoteOut = c.realEth + pots;
             c.realEth = 0;
             _payOut(c.quoteAsset, to, quoteOut);
         } else {
@@ -945,6 +1053,8 @@ contract Launchpad is Ownable, ReentrancyGuard {
             if (tokensBurned > 0) LaunchToken(token).burn(tokensBurned);
             unlocking = address(0);
             migratedPair[token] = pool;
+            _payOut(c.quoteAsset, to, pots);
+            quoteOut += pots;
         }
         emit MigratedOut(token, to, quoteOut, tokensBurned);
     }

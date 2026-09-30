@@ -20,6 +20,7 @@ import {
   useNativeSymbol,
 } from "@/lib/hooks";
 import { fmtUnits, fmtTokens } from "@/lib/format";
+import { quoteBuy, quoteSell, parseFeeConfig, NO_TAX, feeLabel, splitParts, type FeeConfig } from "@/lib/curve";
 import { SlippageControl, useSlippageBps } from "@/components/SlippageControl";
 import { QUOTE_ASSETS, ZAP_ROUTER, UNISWAP_QUOTER, WETH9, USDG } from "@/lib/config";
 
@@ -71,12 +72,16 @@ export function TradeBox({
   token,
   symbol,
   curve,
-  feesToHolders = false,
+  fees = NO_TAX,
+  platformFeeBps = 100n,
 }: {
   token: `0x${string}`;
   symbol: string;
   curve: CurveInfo;
-  feesToHolders?: boolean;
+  /** the coin's own tax and split (none on pads before v9) */
+  fees?: FeeConfig;
+  /** the pad's platform fee, basis points */
+  platformFeeBps?: bigint;
 }) {
   const padMaybe = useLaunchpadAddress();
   const deployed = !!padMaybe;
@@ -115,6 +120,14 @@ export function TradeBox({
     chainId: chain.id,
     query: { enabled: q.synthetic && !!q.address, refetchInterval: 15_000 },
   });
+  const { data: preFeesRaw } = useReadContract({
+    address: pad,
+    abi: launchpadAbi,
+    functionName: "feeConfig",
+    args: q.address ? [q.address] : undefined,
+    chainId: chain.id,
+    query: { enabled: q.synthetic && !!q.address, staleTime: Infinity },
+  });
   const canZapCurve =
     q.synthetic && !!zapAddr && !!preCurveRaw && !parseCurve(preCurveRaw).graduated;
 
@@ -144,19 +157,13 @@ export function TradeBox({
     query: { enabled: zapMode && !curveZapMode && !!zapPath && parsed > 0n, refetchInterval: 10_000 },
   });
 
-  // ETH -> pre-market estimate straight from its own curve (curve route)
-  const { data: preQuoteOut } = useReadContract({
-    address: pad,
-    abi: launchpadAbi,
-    functionName: "quoteBuy",
-    args: q.address ? [q.address, parsed] : undefined,
-    chainId: chain.id,
-    query: { enabled: curveZapMode && parsed > 0n, refetchInterval: 5_000 },
-  });
+  // ETH -> pre-market estimate straight from its own curve (curve route): the pad's arithmetic, run here
+  const preQuoteOut: bigint | undefined =
+    curveZapMode && preCurveRaw && parsed > 0n
+      ? quoteBuy(parseCurve(preCurveRaw), parsed, platformFeeBps, preFeesRaw ? parseFeeConfig(preFeesRaw) : NO_TAX)
+      : undefined;
 
-  const zapQuoteOut = curveZapMode
-    ? (preQuoteOut as bigint | undefined)
-    : (quoterSim?.result?.[0] as bigint | undefined);
+  const zapQuoteOut = curveZapMode ? preQuoteOut : (quoterSim?.result?.[0] as bigint | undefined);
 
   const { data: balance } = useReadContract({
     address: token,
@@ -191,22 +198,12 @@ export function TradeBox({
     query: { enabled: !!user && !!q.address, refetchInterval: 5_000 },
   });
 
+  // what the curve pays or gives, computed here from its reserves and the coin's fees
   const buyAmountForQuote = zapMode ? (zapQuoteOut ?? 0n) : parsed;
-  const { data: buyQuote } = useReadContract({
-    address: pad,
-    abi: launchpadAbi,
-    functionName: "quoteBuy",
-    args: [token, buyAmountForQuote],
-    query: { enabled: mode === "buy" && buyAmountForQuote > 0n, refetchInterval: 5_000 },
-  });
-
-  const { data: sellQuote } = useReadContract({
-    address: pad,
-    abi: launchpadAbi,
-    functionName: "quoteSell",
-    args: [token, parsed],
-    query: { enabled: mode === "sell" && parsed > 0n, refetchInterval: 5_000 },
-  });
+  const buyQuote: bigint | undefined =
+    mode === "buy" && buyAmountForQuote > 0n ? quoteBuy(curve, buyAmountForQuote, platformFeeBps, fees) : undefined;
+  const sellQuote: bigint | undefined =
+    mode === "sell" && parsed > 0n ? quoteSell(curve, parsed, platformFeeBps, fees) : undefined;
 
   const { writeContract, data: hash, isPending, error, reset } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
@@ -304,13 +301,11 @@ export function TradeBox({
     return (
       <div className="card p-5 h-fit">
         <p className="text-sm text-zinc-300">
-          🎓 Curve completed: trading here is closed. This token now trades in
-          its Uniswap v4 pool, paired with {q.symbol}, with liquidity locked
-          forever.
+          🎓 Curve completed: trading here is closed. This token now trades in its pool on the DEX, paired with{" "}
+          {q.symbol}, with liquidity locked forever.
         </p>
         <p className="mt-2 text-xs text-zinc-500">
-          The 1% fee still applies to every swap in the pool —{" "}
-          {feesToHolders ? "holders keep earning cashback" : "the creator keeps earning"}.
+          The launchpad&apos;s fees ended with the curve; the pool keeps its own swap fee for its liquidity.
         </p>
       </div>
     );
@@ -416,7 +411,11 @@ export function TradeBox({
 
       <SlippageControl bps={slippageBps} onChange={setSlippageBps} />
       <p className="text-xs text-zinc-600">
-        1% fee · {feesToHolders ? "80% holder cashback" : "80% creator"} · 20% treasury
+        {mode === "buy" ? "Buy" : "Sell"} fee {feeLabel(platformFeeBps, mode === "buy" ? fees.buyTaxBps : fees.sellTaxBps)} ·{" "}
+        {splitParts(fees)
+          .map((p) => `${p.bps / 100}% ${p.label}`)
+          .join(" · ")}{" "}
+        · {Number(platformFeeBps) / 500}% treasury
       </p>
 
       {isSuccess && hash && (

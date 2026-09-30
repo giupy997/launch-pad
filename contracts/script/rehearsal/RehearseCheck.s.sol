@@ -24,6 +24,7 @@ contract RehearseCheck is Script {
             require(token != address(0), string.concat(coins[i].symbol, ": not migrated"));
             require(pad.migrationPending(token) == 0, string.concat(coins[i].symbol, ": holders still pending"));
             _checkHolders(coins[i], token);
+            _checkFees(pad, coins[i], token);
             if (coins[i].poolToken == 0) _checkCurve(pad, coins[i], token);
             else _checkPool(pad, migrator, coins[i], token);
         }
@@ -37,7 +38,20 @@ contract RehearseCheck is Script {
             require(bal == c.balances[h], string.concat(c.symbol, ": a holder's balance differs"));
             owned += bal;
         }
-        require(owned == c.sold, string.concat(c.symbol, ": holders do not add up to sold"));
+        require(owned == c.sold - c.burned, string.concat(c.symbol, ": holders do not add up to sold less burned"));
+    }
+
+    /// The coin's fee configuration, its burn and its pots, as frozen.
+    function _checkFees(Launchpad pad, MigrateFromLedger.Coin memory c, address token) internal view {
+        (uint16 buyTax, uint16 sellTax, uint16 creatorBps, uint16 holdersBps, uint16 burnBps, uint16 liquidityBps) = pad.feeConfig(token);
+        require(
+            buyTax == c.buyTaxBps && sellTax == c.sellTaxBps && creatorBps == c.creatorBps && holdersBps == c.holdersBps
+                && burnBps == c.burnBps && liquidityBps == c.liquidityBps,
+            string.concat(c.symbol, ": the fee configuration differs")
+        );
+        require(pad.burned(token) == c.burned, string.concat(c.symbol, ": the burn differs"));
+        require(pad.burnPot(token) == c.burnPot, string.concat(c.symbol, ": the burn pot differs"));
+        require(pad.liquidityPot(token) == c.liquidityPot, string.concat(c.symbol, ": the liquidity pot differs"));
     }
 
     function _checkCurve(Launchpad pad, MigrateFromLedger.Coin memory c, address token) internal view {

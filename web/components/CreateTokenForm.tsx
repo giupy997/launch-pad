@@ -17,6 +17,8 @@ import {
 import { TokenLogo } from "@/components/TokenLogo";
 import { processLogoFile, dataUriBytes } from "@/lib/image";
 import { fmtTokens } from "@/lib/format";
+import { FeeSplitEditor, splitTotal, type SplitPct } from "@/components/FeeSplitEditor";
+import { feeLabel } from "@/lib/curve";
 
 const inputCls =
   "w-full rounded-lg input px-3 py-2 text-sm focus:border-white outline-none placeholder:text-zinc-600";
@@ -25,9 +27,9 @@ const inputCls =
 const V_ETH = 1.25e18;
 const V_TOK = 1.05e27;
 
-function estimateTokens(ethIn: number): number {
+function estimateTokens(ethIn: number, feeBps: number): number {
   if (ethIn <= 0) return 0;
-  const e = ethIn * 1e18 * 0.99; // 1% fee
+  const e = ethIn * 1e18 * (1 - feeBps / 10_000); // the platform fee and the coin's tax off first
   return (V_TOK - (V_ETH * V_TOK) / (V_ETH + e)) / 1e18;
 }
 
@@ -68,6 +70,38 @@ export function CreateTokenForm() {
   const [logoError, setLogoError] = useState("");
   const [quoteIdx, setQuoteIdx] = useState(0);
   const [feesToHolders, setFeesToHolders] = useState(false);
+  // a coin's own fees (pads from v9 on): its tax each way, and the split of its pot
+  const [buyTax, setBuyTax] = useState(0);
+  const [sellTax, setSellTax] = useState(0);
+  const [split, setSplit] = useState<SplitPct>({ creator: 100, holders: 0, burn: 0, liquidity: 0 });
+  // a pad that knows fee configurations answers MAX_TAX_BPS; older ones take the launch-time choice alone
+  const { data: maxTaxRaw } = useReadContract({
+    address: pad,
+    abi: launchpadAbi,
+    functionName: "MAX_TAX_BPS",
+    query: { enabled: deployed, staleTime: Infinity, retry: false },
+  });
+  const customFees = maxTaxRaw !== undefined;
+  const maxTaxPct = customFees ? Number(maxTaxRaw as bigint) / 100 : 10;
+  const buyTaxBps = customFees ? Math.round(buyTax * 100) : 0;
+  const sellTaxBps = customFees ? Math.round(sellTax * 100) : 0;
+  const holdersOn = customFees ? split.holders > 0 : feesToHolders;
+  const splitOk = !customFees || splitTotal(split) === 100;
+  const splitText = customFees
+    ? (
+        [
+          [split.creator, "you"],
+          [split.holders, "holders"],
+          [split.burn, "buyback & burn"],
+          [split.liquidity, "liquidity"],
+        ] as const
+      )
+        .filter(([pct]) => pct > 0)
+        .map(([pct, who]) => `${pct}% ${who}`)
+        .join(" · ")
+    : feesToHolders
+      ? "100% holders"
+      : "100% you";
   const [logoProcessing, setLogoProcessing] = useState(false);
 
   const { writeContract, data: hash, isPending, error, reset } = useWriteContract();
@@ -111,33 +145,53 @@ export function CreateTokenForm() {
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (closed) return;
-    writeContract({
-      address: pad,
-      abi: launchpadAbi,
-      functionName: "createToken",
-      chainId: chain.id,
-      args: [
-        name.trim(),
-        symbol.trim().toUpperCase(),
-        0n,
-        {
-          logoURI: logoURI.trim(),
-          website: website.trim(),
-          twitter: prefixed(twitter, "x.com"),
-          telegram: prefixed(telegram, "t.me"),
-          livestream: "",
-          description: description.trim(),
-        },
-        quote.address ?? ZERO_ADDRESS,
-        feesToHolders,
-      ],
-      value: isEthQuote && initialBuy ? parseEther(initialBuy) : 0n,
-    });
+    if (closed || !splitOk) return;
+    const meta = {
+      logoURI: logoURI.trim(),
+      website: website.trim(),
+      twitter: prefixed(twitter, "x.com"),
+      telegram: prefixed(telegram, "t.me"),
+      livestream: "",
+      description: description.trim(),
+    };
+    const value = isEthQuote && initialBuy ? parseEther(initialBuy) : 0n;
+    if (customFees) {
+      writeContract({
+        address: pad,
+        abi: launchpadAbi,
+        functionName: "createTokenWithFees",
+        chainId: chain.id,
+        args: [
+          name.trim(),
+          symbol.trim().toUpperCase(),
+          0n,
+          meta,
+          quote.address ?? ZERO_ADDRESS,
+          {
+            buyTaxBps,
+            sellTaxBps,
+            creatorBps: split.creator * 100,
+            holdersBps: split.holders * 100,
+            burnBps: split.burn * 100,
+            liquidityBps: split.liquidity * 100,
+          },
+        ],
+        value,
+      });
+    } else {
+      writeContract({
+        address: pad,
+        abi: launchpadAbi,
+        functionName: "createToken",
+        chainId: chain.id,
+        args: [name.trim(), symbol.trim().toUpperCase(), 0n, meta, quote.address ?? ZERO_ADDRESS, feesToHolders],
+        value,
+      });
+    }
   }
 
   const devBuyNum = parseFloat(initialBuy) || 0;
-  const estTokens = estimateTokens(devBuyNum);
+  const estTokens = estimateTokens(devBuyNum, 100 + buyTaxBps);
   const ticker = symbol.trim().toUpperCase();
 
   return (
@@ -239,22 +293,38 @@ export function CreateTokenForm() {
 
         <div>
           <Label>
-            Trading fees <span className="normal-case text-zinc-600">1% per trade, on the curve and in the pool after graduation · 20% platform · you pick where the other 80% goes, locked forever</span>
+            Trading fees{" "}
+            <span className="normal-case text-zinc-600">
+              {customFees
+                ? `1% platform fee on every curve trade (0.2% to the treasury) · add your own tax up to ${maxTaxPct}% each way · you split the pot, fixed forever`
+                : "1% per trade on the curve · 20% platform · you pick where the other 80% goes, locked forever"}
+            </span>
           </Label>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <FeeModeCard
-              title="Keep the fees"
-              detail="80% of every trade fee accrues to you, before and after graduation"
-              selected={!feesToHolders}
-              onClick={() => setFeesToHolders(false)}
+          {customFees ? (
+            <FeeSplitEditor
+              buyTax={buyTax}
+              sellTax={sellTax}
+              maxTax={maxTaxPct}
+              split={split}
+              onTax={(side, pct) => (side === "buy" ? setBuyTax(pct) : setSellTax(pct))}
+              onSplit={setSplit}
             />
-            <FeeModeCard
-              title="Reward holders"
-              detail="80% of every trade fee is cashback for your holders, for as long as it trades"
-              selected={feesToHolders}
-              onClick={() => setFeesToHolders(true)}
-            />
-          </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <FeeModeCard
+                title="Keep the fees"
+                detail="80% of every trade fee accrues to you"
+                selected={!feesToHolders}
+                onClick={() => setFeesToHolders(false)}
+              />
+              <FeeModeCard
+                title="Reward holders"
+                detail="80% of every trade fee is cashback for your holders, for as long as the curve trades"
+                selected={feesToHolders}
+                onClick={() => setFeesToHolders(true)}
+              />
+            </div>
+          )}
         </div>
 
         <div>
@@ -292,21 +362,22 @@ export function CreateTokenForm() {
           )}
         </div>
 
-        <div className="rounded-lg border border-white/10 px-4 py-3 font-mono text-[11px] tracking-wide text-zinc-400">
-          1% TRADING FEE →{" "}
-          <span className="text-white">{feesToHolders ? "80% HOLDERS" : "80% YOU"}</span> · 20%
-          TREASURY
+        <div className="rounded-lg border border-white/10 px-4 py-3 font-mono text-[11px] tracking-wide text-zinc-400 uppercase">
+          Buy {feeLabel(100n, buyTaxBps)} · Sell {feeLabel(100n, sellTaxBps)} → <span className="text-white">{splitText}</span> · 0.2%
+          treasury
         </div>
 
         <button
           type="submit"
-          disabled={!deployed || closed || !isConnected || isPending || isConfirming}
+          disabled={!deployed || closed || !splitOk || !isConnected || isPending || isConfirming}
           className="btn-primary w-full py-3"
         >
           {!deployed
             ? "Not deployed on this chain"
             : closed
               ? `Closed: moving to ${target}`
+            : !splitOk
+              ? `Split must total 100% (${splitTotal(split)}% now)`
             : !isConnected
               ? "Connect wallet to launch"
               : isPending
@@ -400,16 +471,9 @@ export function CreateTokenForm() {
           </p>
 
           <div className="divide-y divide-white/[0.06] font-mono text-xs">
-            <Row k="Trading fees" v="1% buy · 1% sell" />
-            <Row
-              k="Fee split"
-              v={feesToHolders ? "80% holders · 20% treasury" : "80% you · 20% treasury"}
-              strong
-            />
-            <Row
-              k="Holders earn"
-              v={feesToHolders ? `Cashback in ${quote.symbol}` : "—"}
-            />
+            <Row k="Trading fees" v={`${feeLabel(100n, buyTaxBps)} buy · ${feeLabel(100n, sellTaxBps)} sell`} />
+            <Row k="Fee split" v={`${splitText} · 0.2% treasury`} strong />
+            <Row k="Holders earn" v={holdersOn ? `Cashback in ${quote.symbol}` : "—"} />
             <Row k="Supply" v="1B fixed" />
             <Row
               k="Pair"
@@ -436,7 +500,7 @@ export function CreateTokenForm() {
           <p className="text-[11px] text-zinc-600">
             {chain.id === robinhood.id
               ? `One transaction deploys your coin and its bonding curve. At graduation, liquidity moves to a Uniswap v4 pool, locked forever, and every swap there keeps paying the 1% fee — ${feesToHolders ? "to your holders" : "to you"}, as chosen above.`
-              : "One transaction deploys your coin and its bonding curve. At graduation, liquidity moves to the DEX automatically and is locked forever."}
+              : "One transaction deploys your coin and its bonding curve, its fees fixed for good. At graduation, liquidity moves to the DEX automatically and is locked forever."}
           </p>
         </div>
         </div>

@@ -34,7 +34,7 @@ contract DeployLitVM is Script {
         address router = vm.envOr("UNIV2_ROUTER", address(0));
 
         vm.startBroadcast();
-        Launchpad pad = new Launchpad(treasury, address(0));
+        Launchpad pad = new Launchpad(treasury);
         if (router != address(0)) {
             UniV2Migrator migrator = new UniV2Migrator(address(pad), router);
             pad.setMigrator(address(migrator));

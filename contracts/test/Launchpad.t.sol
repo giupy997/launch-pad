@@ -52,7 +52,7 @@ contract LaunchpadTest is Test {
     address bob = makeAddr("bob");
 
     function setUp() public {
-        pad = new Launchpad(treasury, address(0));
+        pad = new Launchpad(treasury);
         migrator = new MockMigrator();
         pad.setMigrator(address(migrator));
         vm.deal(alice, 100 ether);
@@ -121,11 +121,25 @@ contract LaunchpadTest is Test {
         pad.updateMetadata(token, _meta());
     }
 
+    /// What the pad would quote: the curve's arithmetic on its reserves, the platform fee off first.
+    function _quoteBuy(address token, uint256 ethIn) internal view returns (uint256) {
+        (uint256 vEth, uint256 vToken,, uint256 sold,,,) = pad.curves(token);
+        uint256 forCurve = ethIn - (ethIn * pad.feeBps()) / pad.FEE_DENOMINATOR();
+        uint256 out = vToken - (vEth * vToken) / (vEth + forCurve);
+        uint256 remaining = pad.CURVE_SUPPLY() - sold;
+        return out > remaining ? remaining : out;
+    }
+
+    function _price(address token) internal view returns (uint256) {
+        (uint256 vEth, uint256 vToken,,,,,) = pad.curves(token);
+        return (vEth * 1e18) / vToken;
+    }
+
     // ------------------------------------------------------------- buying
 
     function test_buyTransfersTokensAndFee() public {
         address token = _create();
-        uint256 quoted = pad.quoteBuy(token, 1 ether);
+        uint256 quoted = _quoteBuy(token, 1 ether);
 
         vm.prank(bob);
         pad.buy{value: 1 ether}(token, quoted);
@@ -300,16 +314,16 @@ contract LaunchpadTest is Test {
 
     function test_priceIncreasesWithBuys() public {
         address token = _create();
-        uint256 p0 = pad.currentPrice(token);
+        uint256 p0 = _price(token);
         vm.prank(bob);
         pad.buy{value: 1 ether}(token, 0);
-        uint256 p1 = pad.currentPrice(token);
+        uint256 p1 = _price(token);
         assertGt(p1, p0);
     }
 
     function test_buySlippageReverts() public {
         address token = _create();
-        uint256 quoted = pad.quoteBuy(token, 1 ether);
+        uint256 quoted = _quoteBuy(token, 1 ether);
         vm.prank(bob);
         vm.expectRevert(Launchpad.Slippage.selector);
         pad.buy{value: 1 ether}(token, quoted + 1);

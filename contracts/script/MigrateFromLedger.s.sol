@@ -34,13 +34,21 @@ contract MigrateFromLedger is Script {
     /// that is how vm.parseJson lays a JSON object out.
     struct Coin {
         uint256[] balances;
+        uint256 burnBps;
+        uint256 burnPot;
+        uint256 burned;
+        uint256 buyTaxBps;
         address creator;
-        bool feesToHolders;
+        uint256 creatorBps;
         address[] holders;
+        uint256 holdersBps;
+        uint256 liquidityBps;
+        uint256 liquidityPot;
         string logo;
         string name;
         uint256 poolToken;
         uint256 realQuote;
+        uint256 sellTaxBps;
         uint256 sold;
         string symbol;
         uint256 virtualQuote;
@@ -132,7 +140,7 @@ contract MigrateFromLedger is Script {
         if (token == address(0)) {
             uint256 first = c.holders.length < BATCH ? c.holders.length : BATCH;
             (address[] memory h, uint256[] memory b) = _slice(c, 0, first);
-            token = pad.migrateToken{value: c.realQuote}(_ledgerCoin(c), h, b);
+            token = pad.migrateToken{value: _value(c)}(_ledgerCoin(c), h, b);
             from = first;
         } else {
             console.log(c.symbol, "already migrated, delivering what is left");
@@ -279,7 +287,7 @@ contract MigrateFromLedger is Script {
         if (token == address(0)) {
             uint256 first = c.holders.length < BATCH ? c.holders.length : BATCH;
             (address[] memory h, uint256[] memory b) = _slice(c, 0, first);
-            calls[n++] = Call(c.realQuote, abi.encodeCall(pad.migrateToken, (_ledgerCoin(c), h, b)));
+            calls[n++] = Call(_value(c), abi.encodeCall(pad.migrateToken, (_ledgerCoin(c), h, b)));
             return n;
         }
         if (pad.migrationPending(token) == 0) return n;
@@ -299,6 +307,11 @@ contract MigrateFromLedger is Script {
         }
     }
 
+    /// What a coin arrives with: its reserve (the curve's, or its pool's quote side) and its unspent pots.
+    function _value(Coin memory c) internal pure returns (uint256) {
+        return c.realQuote + c.burnPot + c.liquidityPot;
+    }
+
     function _ledgerCoin(Coin memory c) internal pure returns (Launchpad.LedgerCoin memory) {
         Launchpad.TokenMetadata memory meta;
         meta.logoURI = c.logo;
@@ -308,10 +321,20 @@ contract MigrateFromLedger is Script {
             symbol: c.symbol,
             meta: meta,
             creator: c.creator,
-            feesToHolders: c.feesToHolders,
+            fees: Launchpad.FeeConfig(
+                uint16(c.buyTaxBps),
+                uint16(c.sellTaxBps),
+                uint16(c.creatorBps),
+                uint16(c.holdersBps),
+                uint16(c.burnBps),
+                uint16(c.liquidityBps)
+            ),
             virtualQuote: c.virtualQuote,
             sold: c.sold,
-            poolToken: c.poolToken
+            burned: c.burned,
+            poolToken: c.poolToken,
+            burnPot: c.burnPot,
+            liquidityPot: c.liquidityPot
         });
     }
 

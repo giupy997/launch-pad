@@ -5,7 +5,7 @@ import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "openzeppelin-contracts/contracts/utils/ReentrancyGuard.sol";
 import {Math} from "openzeppelin-contracts/contracts/utils/math/Math.sol";
-import {IDexMigrator, IDexMigratorUnlock} from "./interfaces/IDexMigrator.sol";
+import {IDexMigrator, IDexMigratorUnlock, IDexMigratorBuyback} from "./interfaces/IDexMigrator.sol";
 
 interface IUniswapV2Router02 {
     function factory() external view returns (address);
@@ -54,7 +54,7 @@ interface ILaunchpadTreasury {
 ///         its ratio. The reserve always ends up in the pool at (about) the
 ///         price the curve closed at, never swept aside because the pool
 ///         disagreed.
-contract UniV2Migrator is IDexMigrator, IDexMigratorUnlock, ReentrancyGuard {
+contract UniV2Migrator is IDexMigrator, IDexMigratorUnlock, IDexMigratorBuyback, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     address public immutable launchpad;
@@ -74,10 +74,14 @@ contract UniV2Migrator is IDexMigrator, IDexMigratorUnlock, ReentrancyGuard {
     event PoolRebalanced(address indexed token, address pair, uint256 tokenIn, uint256 quoteIn);
     /// The pool came back out for a migration: what our liquidity was worth.
     event PoolUnlocked(address indexed token, address pair, uint256 tokenAmount, uint256 quoteAmount, uint256 liquidity);
+    /// The launchpad bought the token back on its pool, to burn it.
+    event BoughtBack(address indexed token, address pair, uint256 quoteIn, uint256 tokenOut);
 
     error OnlyLaunchpad();
     error NothingToSeed();
     error NothingToUnlock();
+    error NothingToBuy();
+    error WrongPayment();
 
     constructor(address launchpad_, address router_) {
         launchpad = launchpad_;
@@ -154,6 +158,27 @@ contract UniV2Migrator is IDexMigrator, IDexMigratorUnlock, ReentrancyGuard {
         // never a call into `to` while the coin's transfers are open
         IERC20(quote).safeTransfer(to, quoteOut);
         emit PoolUnlocked(token, pair, tokenOut, quoteOut, lp);
+    }
+
+    /// @inheritdoc IDexMigratorBuyback
+    function buyback(address token, uint256 quoteIn) external payable nonReentrant returns (uint256 tokenOut) {
+        if (msg.sender != launchpad) revert OnlyLaunchpad();
+        address quote = pairAsset[token];
+        if (quote == address(0) || quoteIn == 0) revert NothingToBuy();
+        if (msg.value != 0) {
+            if (quote != weth || msg.value != quoteIn) revert WrongPayment();
+            IWETH(weth).deposit{value: msg.value}();
+        }
+        address pair = factory.getPair(token, quote);
+        (uint256 rToken, uint256 rQuote) = _reserves(token, pair);
+        // Uniswap's own arithmetic for a swap in, the 0.3% fee included
+        tokenOut = (quoteIn * 997 * rToken) / (rQuote * 1000 + quoteIn * 997);
+        if (tokenOut == 0) revert NothingToBuy();
+        IERC20(quote).safeTransfer(pair, quoteIn);
+        (uint256 out0, uint256 out1) =
+            IUniswapV2Pair(pair).token0() == token ? (tokenOut, uint256(0)) : (uint256(0), tokenOut);
+        IUniswapV2Pair(pair).swap(out0, out1, launchpad, "");
+        emit BoughtBack(token, pair, quoteIn, tokenOut);
     }
 
     /// @notice The locked pool of a graduated token.

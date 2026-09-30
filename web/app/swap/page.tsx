@@ -19,6 +19,7 @@ import {
   ZERO_ADDRESS,
 } from "@/lib/hooks";
 import { fmtEth, fmtTokens } from "@/lib/format";
+import { quoteBuy, quoteSell, parseFeeConfig, NO_TAX } from "@/lib/curve";
 import { NotDeployedNotice } from "@/components/NotDeployedNotice";
 import { SlippageControl, useSlippageBps } from "@/components/SlippageControl";
 import { TokenPicker } from "@/components/TokenPicker";
@@ -76,26 +77,41 @@ export default function SwapPage() {
     query: { enabled: !!user && from !== ETH, refetchInterval: 5_000 },
   });
 
-  // leg 1 quote: from -> ETH (if from is a token)
-  const { data: sellQuote } = useReadContract({
+  // the pad's fee, and each coin's own: the quotes are the curve's arithmetic, run here
+  const { data: feeBpsRaw } = useReadContract({
     address: pad,
     abi: launchpadAbi,
-    functionName: "quoteSell",
-    args: from !== ETH ? [from, parsed] : undefined,
-    query: { enabled: from !== ETH && parsed > 0n, refetchInterval: 5_000 },
+    functionName: "feeBps",
+    query: { enabled: deployed, staleTime: 60_000 },
   });
+  const platformFeeBps = (feeBpsRaw as bigint | undefined) ?? 100n;
+  const { data: fromFeesRaw } = useReadContract({
+    address: pad,
+    abi: launchpadAbi,
+    functionName: "feeConfig",
+    args: from !== ETH ? [from] : undefined,
+    query: { enabled: from !== ETH, staleTime: Infinity },
+  });
+  const { data: toFeesRaw } = useReadContract({
+    address: pad,
+    abi: launchpadAbi,
+    functionName: "feeConfig",
+    args: to !== ETH ? [to] : undefined,
+    query: { enabled: to !== ETH, staleTime: Infinity },
+  });
+
+  // leg 1 quote: from -> ETH (if from is a token)
+  const sellQuote: bigint | undefined =
+    fromToken && parsed > 0n
+      ? quoteSell(fromToken.curve, parsed, platformFeeBps, fromFeesRaw ? parseFeeConfig(fromFeesRaw) : NO_TAX)
+      : undefined;
 
   // ETH input for the buy leg
-  const ethIn = from === ETH ? parsed : ((sellQuote as bigint | undefined) ?? 0n);
+  const ethIn = from === ETH ? parsed : (sellQuote ?? 0n);
 
   // leg 2 quote: ETH -> to (if to is a token)
-  const { data: buyQuote } = useReadContract({
-    address: pad,
-    abi: launchpadAbi,
-    functionName: "quoteBuy",
-    args: to !== ETH ? [to, ethIn] : undefined,
-    query: { enabled: to !== ETH && ethIn > 0n, refetchInterval: 5_000 },
-  });
+  const buyQuote: bigint | undefined =
+    toToken && ethIn > 0n ? quoteBuy(toToken.curve, ethIn, platformFeeBps, toFeesRaw ? parseFeeConfig(toFeesRaw) : NO_TAX) : undefined;
 
   const { writeContract, data: hash, isPending, error, reset } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });

@@ -30,7 +30,7 @@ contract FreezeTest is Test {
     Launchpad.TokenMetadata meta = Launchpad.TokenMetadata("", "", "", "", "", "");
 
     function setUp() public {
-        pad = new Launchpad(treasury, address(0));
+        pad = new Launchpad(treasury);
         quote = new MockCbLTC();
         pad.setQuoteAsset(address(quote), 30e8); // 30 cbLTC virtual, as on Base
         pad.setQuoteAsset(address(0), 0); // and cbLTC alone, as on Base
@@ -67,6 +67,23 @@ contract FreezeTest is Test {
         pad.announceFreeze(block.number + 5);
         vm.roll(block.number + 5);
         assertTrue(pad.frozen());
+    }
+
+    /// A coin as a ledger left it: alice's, its pot to her, on a 1.25 ETH curve, nothing burned, no pots.
+    function _ledgerCoin(string memory name, string memory symbol, uint256 sold) internal view returns (Launchpad.LedgerCoin memory) {
+        return Launchpad.LedgerCoin({
+            name: name,
+            symbol: symbol,
+            meta: meta,
+            creator: alice,
+            fees: Launchpad.FeeConfig(0, 0, 10_000, 0, 0, 0),
+            virtualQuote: 1.25 ether,
+            sold: sold,
+            burned: 0,
+            poolToken: 0,
+            burnPot: 0,
+            liquidityPot: 0
+        });
     }
 
     function _reserves(address pair, address token) internal view returns (uint256 rToken, uint256 rQuote) {
@@ -263,7 +280,7 @@ contract FreezeTest is Test {
         pad.setMigrationRoot(bytes32(uint256(1)), 1);
         uint256 sold = 100e18;
         uint256 quoteIn = Math.mulDiv(1.25 ether, sold, pad.VIRTUAL_TOKEN() - sold);
-        Launchpad.LedgerCoin memory coin = Launchpad.LedgerCoin("Ledger Coin", "LEDG", meta, alice, false, 1.25 ether, sold, 0);
+        Launchpad.LedgerCoin memory coin = _ledgerCoin("Ledger Coin", "LEDG", sold);
         address[] memory holders = new address[](1);
         uint256[] memory balances = new uint256[](1);
         holders[0] = bob;
@@ -279,7 +296,7 @@ contract FreezeTest is Test {
         pad.migrateBalances(token, holders, balances);
         assertEq(pad.pendingCoins(), 0);
         pad.announceFreeze(block.number + 5);
-        Launchpad.LedgerCoin memory another = Launchpad.LedgerCoin("Another", "ANOT", meta, alice, false, 1.25 ether, 0, 0);
+        Launchpad.LedgerCoin memory another = _ledgerCoin("Another", "ANOT", 0);
         vm.expectRevert(Launchpad.CreationClosed.selector);
         pad.migrateToken(another, new address[](0), new uint256[](0));
         vm.roll(block.number + 5);

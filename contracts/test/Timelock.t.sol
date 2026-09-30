@@ -17,7 +17,7 @@ contract TimelockTest is Test {
     uint256 constant DELAY = 2 days;
 
     function setUp() public {
-        pad = new Launchpad(makeAddr("treasury"), address(0));
+        pad = new Launchpad(makeAddr("treasury"));
         script = new MigrateFromLedger();
         // the test proposes fee changes, the script proposes the migration; anyone executes
         address[] memory proposers = new address[](2);
@@ -115,6 +115,7 @@ contract TimelockTest is Test {
         coins = new MigrateFromLedger.Coin[](1);
         coins[0].balances = balances;
         coins[0].creator = makeAddr("creator");
+        coins[0].creatorBps = 10_000; // its pot to the creator, no tax of its own
         coins[0].holders = holders;
         coins[0].name = "Crowd";
         coins[0].sold = sold;

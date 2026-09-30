@@ -22,7 +22,7 @@ contract UniV2MigratorTest is Test {
     address griefer = makeAddr("griefer");
 
     function setUp() public {
-        pad = new Launchpad(treasury, address(0));
+        pad = new Launchpad(treasury);
         weth = new MockWETH9();
         factory = new MockV2Factory();
         migrator = new UniV2Migrator(address(pad), address(new MockV2Router(address(factory), address(weth))));
