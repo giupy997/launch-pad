@@ -59,7 +59,9 @@ const s = JSON.parse(readFileSync(STATE, "utf8")) as Snapshot;
 const dryRun = args.includes("--allow-unfrozen");
 if (!dryRun) {
   if (s.freezeHeight === null) throw new Error("the ledger is not frozen (NOTUS_LTC_FREEZE unset): balances can still change. Freeze first, or pass --allow-unfrozen for a dry run");
-  if (s.height < s.freezeHeight) throw new Error(`the freeze at block ${s.freezeHeight} is not reached: the ledger is at ${s.height} and can still change`);
+  // the chain, not the ledger, says whether the freeze is reached: a quiet
+  // ledger's height is the last block that carried an instruction
+  if ((s.chainTip ?? s.height) < s.freezeHeight) throw new Error(`the freeze at block ${s.freezeHeight} is not reached: the chain is at ${s.chainTip ?? s.height} and the ledger can still change`);
   const tip = s.chainTip ?? s.height;
   if (tip - s.freezeHeight < FREEZE_MARGIN) throw new Error(`the freeze at block ${s.freezeHeight} is only ${tip - s.freezeHeight} block(s) deep (tip ${tip}): wait for ${FREEZE_MARGIN}, a reorg could still change it`);
 }
