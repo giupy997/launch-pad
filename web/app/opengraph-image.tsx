@@ -3,7 +3,7 @@ import { SITE_URL } from "@/lib/litecoin/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const alt = "Notus — launch your coin on Litecoin";
+export const alt = "Notus — launch your coin in cbLTC";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -32,17 +32,17 @@ export default async function Image() {
             <div style={{ display: "flex", flexDirection: "column", fontSize: 84, lineHeight: 1, letterSpacing: -3, fontWeight: 700 }}>
               <span>Launch your coin</span>
               <div style={{ display: "flex" }}>
-                <span style={{ whiteSpace: "pre" }}>{"on "}</span>
-                <span style={{ fontWeight: 400, color: "#b3b9c6" }}>Litecoin</span>
+                <span style={{ whiteSpace: "pre" }}>{"in "}</span>
+                <span style={{ fontWeight: 400, color: "#b3b9c6" }}>cbLTC</span>
                 <span>.</span>
               </div>
             </div>
             <div style={{ fontSize: 28, color: "#8b93a3", maxWidth: 600, lineHeight: 1.3 }}>
-              No smart contracts: an OP_RETURN ledger, a bonding curve, a locked pool. Coins migrate to LitVM automatically at mainnet.
+              Litecoin wrapped by Coinbase, a bonding curve, a locked pool. Every coin moves to LitVM mainnet the day it goes live: same holders, same price.
             </div>
           </div>
           <div style={{ display: "flex", gap: 24, fontSize: 22, color: "#6b7383", letterSpacing: 4 }}>
-            <span>LITECOIN</span>
+            <span>CBLTC</span>
             <span>·</span>
             <span>LITVM</span>
             <span>·</span>

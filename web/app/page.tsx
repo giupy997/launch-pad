@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useTokens, useAppChain, isQuoteAsset } from "@/lib/hooks";
-import { CHAIN_LABEL, QUOTE_ASSETS } from "@/lib/config";
+import { CHAIN_LABEL, MIGRATION_TARGET, QUOTE_ASSETS } from "@/lib/config";
 import { TokenCard } from "@/components/TokenCard";
 import { NotDeployedNotice } from "@/components/NotDeployedNotice";
 import { MigrationNotice } from "@/components/MigrationNotice";
@@ -18,6 +18,8 @@ export default function Explore() {
   // the chain as the menu names it: Base goes by cbLTC, the coins' currency, hence "in"
   const label = CHAIN_LABEL[chain.id];
   const where = label ?? chain.name.replace(" Sepolia", "").replace(" Chain", "").replace(" Liteforge", "");
+  // a v8 pad: its coins move to another chain when the day comes
+  const target = MIGRATION_TARGET[chain.id];
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<Sort>("newest");
 
@@ -61,8 +63,15 @@ export default function Explore() {
           </h1>
           <p className="fade-up-2 max-w-xl text-base sm:text-lg leading-relaxed text-zinc-400">
             A transparent bonding curve: the price rises with every buy, the coin graduates at 800M sold and its liquidity
-            moves into a locked DEX pool. Quoted in {quote}, settled by the contract, no admin key.
+            moves into a locked DEX pool. Quoted in {quote}, settled by the contract; the only key is a 24-hour timelock.
           </p>
+          {target && (
+            <p className="fade-up-2 max-w-xl text-sm leading-relaxed text-zinc-300">
+              <span className="text-white">Every coin launched here moves to {target}</span> the day it goes live: same holders, same
+              price, its pool included.{" "}
+              <Link href="/about#migration" className="underline hover:text-white">How</Link>.
+            </p>
+          )}
           {quote === "cbLTC" && (
             <p className="fade-up-2 max-w-xl text-sm leading-relaxed text-zinc-300">
               cbLTC is Litecoin wrapped by Coinbase: one LTC in custody for every token, proof of reserves published.
@@ -134,6 +143,40 @@ export default function Explore() {
           ))}
         </div>
       </section>
+
+      {target && (
+        /* the bust in the water: where the coins go next */
+        <section className="relative overflow-hidden rounded-3xl border border-white/10 card">
+          {/* phones stack it, the statue above the words; wider screens put them side by side */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 top-0 h-72 bg-[url('/art/statue-water.webp')] bg-cover bg-[center_30%] opacity-80 mix-blend-screen sm:hidden"
+            style={{ maskImage: "linear-gradient(to bottom, rgba(0,0,0,0.95) 45%, transparent 100%)", WebkitMaskImage: "linear-gradient(to bottom, rgba(0,0,0,0.95) 45%, transparent 100%)" }}
+          />
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-y-0 left-0 hidden w-[58%] bg-[url('/art/statue-water.webp')] bg-cover bg-[center_42%] opacity-75 mix-blend-screen sm:block"
+            style={{ maskImage: "linear-gradient(to right, rgba(0,0,0,0.95) 55%, transparent 100%)", WebkitMaskImage: "linear-gradient(to right, rgba(0,0,0,0.95) 55%, transparent 100%)" }}
+          />
+          <div className="relative max-w-xl space-y-5 px-6 pb-12 pt-56 sm:ml-[46%] sm:px-12 sm:py-20">
+            <div className="pill">Road to LitVM</div>
+            <h2 className="display text-3xl sm:text-5xl leading-[1.05] text-white text-balance">
+              Priced in {quote}.
+              <br />
+              Carried to LitVM.
+            </h2>
+            <p className="text-sm sm:text-base leading-relaxed text-zinc-400">
+              Every coin here, on its curve or graduated into its pool, is re-created on {target} the day it goes live: same holders,
+              same price, a real pool. A freeze announced a day ahead makes the snapshot final; the move itself takes a few hours.
+            </p>
+            <div className="flex flex-wrap gap-3 pt-1">
+              <Link href="/about#migration" className="btn-ghost px-5 py-2.5 text-sm">
+                How the migration works
+              </Link>
+            </div>
+          </div>
+        </section>
+      )}
     </div>
   );
 }

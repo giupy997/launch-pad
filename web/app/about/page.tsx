@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { SOURCE_URL } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "About",
   description:
-    "What Notus is, how coins work on the Litecoin ledger and on LitVM, how your keys are handled, what the risks are, and how to reach us.",
+    "What Notus is, how coins work in cbLTC on Base, how they move to LitVM mainnet, how your keys are handled, what the risks are, and how to reach us.",
 };
 
 const X_URL = "https://x.com/Notuspad";
@@ -17,61 +16,78 @@ export default function AboutPage() {
         <div className="pill">About</div>
         <h1 className="display text-4xl sm:text-5xl text-white">What Notus is</h1>
         <p className="text-base leading-relaxed text-zinc-400">
-          Notus is an independent, open-source token launchpad. It runs in two places: on Litecoin itself, where coins live in
-          an OP_RETURN ledger, and on LitVM, Litecoin&apos;s EVM layer, where they live in smart contracts. It is not affiliated
-          with, endorsed by or operated by Litecoin, the Litecoin Foundation, LitVM or Lester Labs: their names identify the
-          public networks and protocols this site connects to.
+          Notus is an independent, open-source token launchpad. Its coins are priced in cbLTC — Litecoin wrapped by Coinbase,
+          one LTC in custody for every token, with a public proof of reserves — and live in smart contracts on Base. The same
+          contracts run on LitVM&apos;s Liteforge testnet, Litecoin&apos;s EVM layer, where every coin moves when its mainnet
+          goes live. Notus is not affiliated with, endorsed by or operated by Coinbase, Base, Litecoin, the Litecoin Foundation,
+          LitVM or Lester Labs: their names identify the public networks and protocols this site connects to.
         </p>
       </header>
 
-      <Section title="How a coin works on Litecoin">
+      <Section title="How a coin works">
         <li>
-          Every action is an ordinary Litecoin transaction that you sign yourself. It pays the desk address and carries a short
-          OP_RETURN memo, such as <code className="font-mono text-zinc-200">NOTUS1 buy LESTER</code>.
+          Anyone creates a coin in one transaction. Its whole supply sits in the launchpad contract, which sells it along a
+          bonding curve: the price rises with every buy and falls with every sell, by a formula anyone can check.
         </li>
         <li>
-          The ledger is recomputed from the chain. Anyone can replay the same transactions with the open-source indexer and get
-          the same balances and the same state root: the <Link href="/litecoin/ledger" className="underline">ledger page</Link>{" "}
-          shows it and explains how.
+          You pay in cbLTC, or in ETH: the buy swaps ETH for cbLTC on Aerodrome and buys, in the same transaction. Fees are 1%
+          per trade: 80% goes to the coin&apos;s creator or to its holders as cashback, the creator&apos;s choice at launch,
+          20% to the treasury.
         </li>
         <li>
-          Buys move a coin along a bonding curve; sells are paid back in LTC by the desk, automatically, once the transaction has
-          two confirmations. Fees are 1% per trade: 80% goes to the coin&apos;s creator or to its holders, 20% to the desk.
+          At 800M coins sold the coin graduates: the rest of the supply and the cbLTC raised seed a Uniswap v2 pool whose
+          liquidity is locked. From then on it trades there, with no price ceiling.
         </li>
-        <li>At 800M coins sold, a coin graduates into a locked constant-product pool, with no price ceiling.</li>
         <li>
-          When LitVM mainnet goes live, every coin is recreated there from a snapshot of the ledger: same holders, same price,
-          its pool on a DEX.
+          The launchpad&apos;s only owner is a timelock: every change — fees, treasury, the migration below — is public on the
+          chain for 24 hours before it can take effect.
+        </li>
+      </Section>
+
+      <Section title="The move to LitVM" id="migration">
+        <li>
+          When LitVM mainnet is live, every coin here is re-created there with the same holders and the same price, its pool
+          included, quoted in zkLTC — LTC on LitVM — which is what cbLTC becomes, one to one.
+        </li>
+        <li>
+          The timelock announces a freeze block at least a day ahead; every page shows the countdown. Trading goes on until
+          that block. From it, the launchpad stands still: no buys, sells or transfers, so the snapshot is final.
+        </li>
+        <li>
+          The snapshot reads every balance and every curve at that block, from the chain, and anyone can recompute it. The
+          coins&apos; cbLTC leaves the contract to be turned into LTC and bridged to LitVM; there, the coins are created from
+          the snapshot and open for trading, a few hours after the freeze. Cashback and creator fees earned here stay claimable
+          here.
+        </li>
+        <li>
+          Nothing to do on your side: your coins appear at your address on LitVM, and each coin page here links to its new home.
         </li>
       </Section>
 
       <Section title="Your keys">
         <li>
-          On Litecoin, you either connect a Litecoin browser extension, Litescribe or Enkrypt, which signs what the site
-          builds and keeps its keys to itself, or let the site create a wallet in your browser. That key is generated locally and
-          stored only in that browser; it is never sent to us or to anyone else. You back it up from the wallet page and
-          can restore it on another device.
-        </li>
-        <li>
-          On LitVM, you connect the wallet you already have, through its browser extension or WalletConnect. Notus never sees
+          You connect the wallet you already have — its browser extension, or WalletConnect from your phone. Notus never sees
           its private key.
         </li>
         <li>
-          Notus never asks for the seed phrase, recovery words or private key of any other wallet, anywhere. A page or a
-          message that does is not us.
+          Notus never asks for the seed phrase, recovery words or private key of any wallet, anywhere. A page or a message that
+          does is not us.
         </li>
       </Section>
 
       <Section title="What to know before you trade">
         <li>Cryptoassets are highly volatile. Coins launched here can lose all of their value.</li>
         <li>
-          The LTC inside a coin&apos;s curve is held by the desk, a server Notus operates, until it pays out sells. The ledger is
-          public, so the desk&apos;s liabilities can be checked against its balance at any time, but it is an operational risk
-          you should know about.
+          cbLTC is Coinbase&apos;s token: Coinbase holds the LTC behind it and can pause or restrict the token, as its issuer.
+          That is a risk of every cbLTC balance, in or out of Notus.
         </li>
         <li>
-          Nothing on this site is financial advice. Notus does not sell coins, does not hold your Litecoin wallet and cannot
-          reverse a transaction.
+          During a migration the timelock takes each coin&apos;s cbLTC out of the contract to bridge it. It is the one moment the
+          operator holds the reserves, for hours, announced a day ahead and visible on the chain at every step.
+        </li>
+        <li>
+          The contracts are open source and tested, not audited. Nothing on this site is financial advice. Notus does not sell
+          coins and cannot reverse a transaction.
         </li>
       </Section>
 
@@ -85,13 +101,9 @@ export default function AboutPage() {
           ) : (
             "published at launch"
           )}
-          . The site, the indexer, the desk and the contracts are all in it.
+          . The site, the contracts, the migration tools and their tests are all in it.
         </li>
-        <li>
-          The ledger: <Link href="/litecoin/ledger" className="underline">/litecoin/ledger</Link>, with the desk address, the
-          current state root and the command that recomputes it.
-        </li>
-        <li>The LitVM contracts are verified on the Liteforge explorer; their addresses are in the repository and on the token pages.</li>
+        <li>The contracts are verified on Blockscout; their addresses are in the repository&apos;s README and on the coin pages.</li>
       </Section>
 
       <Section title="Contact and security" id="security">
