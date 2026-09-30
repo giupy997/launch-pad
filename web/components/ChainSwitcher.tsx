@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useSwitchChain } from "wagmi";
-import { VISIBLE_CHAINS } from "@/lib/config";
+import { CHAIN_LABEL, VISIBLE_CHAINS } from "@/lib/config";
 import { useAppChain } from "@/lib/hooks";
 
 // The contract-less networks (Litecoin, Zcash) are not EVM chains: each has
@@ -14,7 +14,7 @@ import { useAppChain } from "@/lib/hooks";
 const SECTIONS: { id: number; path: string; name: string; label: string; testnet: boolean }[] = [];
 
 const CHAIN_LOGOS: Record<number, string> = {
-  8453: "/chains/base.svg",
+  8453: "/chains/cbltc.svg", // Base goes by its quote asset
   91342: "/chains/giwa.png",
   4663: "/chains/robinhood.png",
   4441: "/chains/litvm.svg",
@@ -44,7 +44,7 @@ export function ChainSwitcher() {
   const pathname = usePathname();
   const router = useRouter();
   const section = SECTIONS.find((s) => pathname.startsWith(s.path));
-  const chain = section ? { id: section.id, name: section.label } : evmChain;
+  const chain = section ? { id: section.id, name: section.label } : { id: evmChain.id, name: CHAIN_LABEL[evmChain.id] ?? evmChain.name };
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -116,7 +116,7 @@ export function ChainSwitcher() {
               >
                 <ChainLogo id={c.id} size={22} />
                 <span className="flex-1">
-                  {c.name}
+                  {CHAIN_LABEL[c.id] ?? c.name}
                   {c.testnet && (
                     <span className="ml-2 font-mono text-[10px] tracking-widest uppercase text-zinc-500">
                       testnet

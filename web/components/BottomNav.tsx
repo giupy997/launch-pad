@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { base } from "@/lib/config";
+import { useAppChain } from "@/lib/hooks";
 
-const ITEMS = [
+const items = (chainId: number) => [
   { href: "/", label: "Explore", icon: "◎" },
   { href: "/create", label: "Create", icon: "＋" },
-  { href: "/bridge", label: "cbLTC", icon: "Ł" },
+  chainId === base.id ? { href: "/bridge", label: "cbLTC", icon: "Ł" } : { href: "/bridge", label: "Bridge", icon: "⇄" },
   { href: "/profile", label: "Profile", icon: "◉" },
 ];
 
@@ -21,13 +23,14 @@ const SECTIONS = ["/zcash", "/litecoin"];
 /** Mobile-only bottom navigation (the top nav is hidden below md). */
 export function BottomNav() {
   const pathname = usePathname();
+  const chain = useAppChain();
   const section = SECTIONS.find((p) => pathname.startsWith(p));
-  const items = section ? sectionItems(section) : ITEMS;
+  const list = section ? sectionItems(section) : items(chain.id);
   const root = section ?? "/";
   return (
     <nav className="fixed bottom-0 inset-x-0 z-20 md:hidden glass border-x-0 border-b-0 pb-[env(safe-area-inset-bottom)]">
       <div className="flex justify-around">
-        {items.map((it) => {
+        {list.map((it) => {
           const active =
             it.href === root
               ? pathname === root || pathname.startsWith(`${root}/c/`)

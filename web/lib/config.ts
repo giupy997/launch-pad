@@ -58,11 +58,16 @@ export { sepolia, mainnet, base };
 // Chains the app runs on (shown in the chain switcher).
 /** Every EVM chain the app is wired for (addresses, quote assets, deploy blocks). */
 export const APP_CHAINS = [base, giwaSepolia, robinhood, litvmTestnet] as const;
-/** The chain the site offers: Base, where every coin is quoted in cbLTC.
- *  Liteforge, GIWA and Robinhood stay wired above but out of the menu, one
- *  line to bring back. */
-export const VISIBLE_CHAINS = [base] as const;
+/** The chains the site offers: Base, where every coin is quoted in cbLTC,
+ *  and LitVM's Liteforge testnet. GIWA and Robinhood stay wired above but
+ *  out of the menu, one line to bring back. */
+export const VISIBLE_CHAINS = [base, litvmTestnet] as const;
 export const DEFAULT_CHAIN = base;
+
+/** What the menu calls a chain when not its own name: Base goes by its quote
+ *  asset, cbLTC, with cbLTC's logo — the coins live in cbLTC, and Base's own
+ *  brand stays out of the way. */
+export const CHAIN_LABEL: Record<number, string> = { [base.id]: "cbLTC" };
 
 // One address per chain: add future deployments here (multichain).
 export const LAUNCHPAD_ADDRESS: Record<number, `0x${string}` | undefined> = {

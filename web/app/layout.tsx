@@ -26,21 +26,21 @@ const geistMono = localFont({
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") || "https://notus-pad.fun";
 const DESCRIPTION =
-  "Launch and trade coins on Base, quoted in cbLTC — Litecoin wrapped by Coinbase. A transparent bonding curve, a locked pool at graduation, no admin key.";
+  "Launch and trade coins priced in cbLTC — Litecoin wrapped by Coinbase — and on LitVM, Litecoin's EVM layer. A transparent bonding curve, a locked pool at graduation, no admin key.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: { default: "Notus — launch your coin on Base", template: "%s · Notus" },
+  title: { default: "Notus — launch your coin in cbLTC", template: "%s · Notus" },
   description: DESCRIPTION,
   applicationName: "Notus",
   openGraph: {
     type: "website",
     siteName: "Notus",
-    title: "Notus — launch your coin on Base",
+    title: "Notus — launch your coin in cbLTC",
     description: DESCRIPTION,
     url: SITE_URL,
   },
-  twitter: { card: "summary_large_image", title: "Notus — launch your coin on Base", description: DESCRIPTION },
+  twitter: { card: "summary_large_image", title: "Notus — launch your coin in cbLTC", description: DESCRIPTION },
 };
 
 export const viewport: Viewport = { themeColor: "#07080b", colorScheme: "dark" };
@@ -85,7 +85,7 @@ export default async function RootLayout({
               <div className="space-y-2">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src="/art/wordmark.png" alt="Notus" draggable={false} className="h-6 w-auto select-none" />
-                <div className="label">Base · cbLTC</div>
+                <div className="label">cbLTC · LitVM</div>
                 <div className="font-mono text-xs text-zinc-500 flex flex-wrap gap-x-3 gap-y-1">
                   <Link className="underline hover:text-zinc-200" href="/about">
                     About

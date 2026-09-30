@@ -2,11 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { base } from "@/lib/config";
+import { useAppChain } from "@/lib/hooks";
 
-const ITEMS = [
+/** The main menu; /bridge is "Get cbLTC" where the coins are quoted in it (Base), a bridge elsewhere. */
+const items = (chainId: number) => [
   { href: "/", label: "Explore" },
   { href: "/create", label: "Create" },
-  { href: "/bridge", label: "Get cbLTC" },
+  { href: "/bridge", label: chainId === base.id ? "Get cbLTC" : "Bridge" },
   { href: "/profile", label: "Profile" },
 ];
 
@@ -28,12 +31,13 @@ const SECTIONS: Record<string, { href: string; label: string }[]> = {
 
 export function Nav() {
   const pathname = usePathname();
+  const chain = useAppChain();
   const section = Object.keys(SECTIONS).find((p) => pathname.startsWith(p));
-  const items = section ? SECTIONS[section] : ITEMS;
+  const list = section ? SECTIONS[section] : items(chain.id);
   const root = section ?? "/";
   return (
     <nav className="hidden md:flex items-center gap-0.5 rounded-full border border-white/10 bg-white/[0.03] p-1 font-mono text-[11px] tracking-[0.18em] uppercase">
-      {items.map((it) => {
+      {list.map((it) => {
         const active =
           it.href === root
             ? pathname === root || pathname.startsWith(`${root}/c/`)

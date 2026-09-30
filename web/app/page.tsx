@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useTokens, useAppChain, isQuoteAsset } from "@/lib/hooks";
-import { QUOTE_ASSETS } from "@/lib/config";
+import { CHAIN_LABEL, QUOTE_ASSETS } from "@/lib/config";
 import { TokenCard } from "@/components/TokenCard";
 import { NotDeployedNotice } from "@/components/NotDeployedNotice";
 
@@ -14,6 +14,9 @@ export default function Explore() {
   const chain = useAppChain();
   // what the coins are quoted in: the chain's first quote asset, else its gas coin
   const quote = QUOTE_ASSETS[chain.id]?.[0]?.symbol ?? chain.nativeCurrency.symbol;
+  // the chain as the menu names it: Base goes by cbLTC, the coins' currency, hence "in"
+  const label = CHAIN_LABEL[chain.id];
+  const where = label ?? chain.name.replace(" Sepolia", "").replace(" Chain", "").replace(" Liteforge", "");
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<Sort>("newest");
 
@@ -48,11 +51,11 @@ export default function Explore() {
         <div className="relative max-w-2xl space-y-6">
           <div className="pill fade-up">
             <span className="h-1.5 w-1.5 rounded-full bg-accent shadow-[0_0_10px_rgba(var(--accent),0.9)]" />
-            {chain.name}{chain.testnet ? " · testnet" : ""}
+            {label ?? chain.name}{chain.testnet ? " · testnet" : ""}
           </div>
           <h1 className="display fade-up text-4xl sm:text-6xl leading-[1.02] text-white glow-text text-balance">
             Launch your token <br className="hidden sm:block" />
-            on <span className="font-light text-zinc-300">{chain.name.replace(" Sepolia", "").replace(" Chain", "").replace(" Liteforge", "")}</span>.
+            {label ? "in" : "on"} <span className="font-light text-zinc-300">{where}</span>.
           </h1>
           <p className="fade-up-2 max-w-xl text-base sm:text-lg leading-relaxed text-zinc-400">
             A transparent bonding curve: the price rises with every buy, the coin graduates at 800M sold and its liquidity
