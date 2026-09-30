@@ -112,6 +112,18 @@ Sepolia, Robinhood Chain); those integrations stay in the repository.
 | Robinhood Chain (4663) | ZapRouter | [`0xfd0C942E3DB34672715B862A8e19838bC9EDa7B5`](https://robinhoodchain.blockscout.com/address/0xfd0C942E3DB34672715B862A8e19838bC9EDa7B5) — ETH zap buys |
 | LitVM Liteforge (4441) | Launchpad | [`0x4D3C63F873bc2aC79E529C8003321d60643a4025`](https://liteforge.explorer.caldera.xyz/address/0x4D3C63F873bc2aC79E529C8003321d60643a4025) — v7.7, quoted in zkLTC; `migrateToken` for the Litecoin ledger is bound to its snapshot (`setMigrationRoot` once, `closeMigration` for good, one token per ticker, every holder delivered once, a curve coin funded exactly as its state implies); graduation seeds a locked pool on Lester Labs' Uniswap v2 through `UniV2Migrator` [`0xE34b882BD48D3b13A92C5A7C99469485d1761776`](https://liteforge.explorer.caldera.xyz/address/0xE34b882BD48D3b13A92C5A7C99469485d1761776) (router `0xD56a…FA62`), which absorbs a pre-seeded pair instead of failing on it. The earlier pads `0x2cF3…9580` (v7.5) and `0xcdF1…6725` (v7.6) are retired |
 
+### Governance
+
+The Launchpad's owner is meant to be a `TimelockController` (OpenZeppelin),
+deployed with `contracts/script/DeployTimelock.s.sol`: every owner call —
+fee and its split, treasury, migrator, quote assets, the ledger migration —
+is scheduled first and can only run after the delay (48 hours on mainnet),
+so any change is visible on chain before it takes effect. The proposer may
+schedule and cancel; anyone may execute an operation once it is ready. The
+migration script speaks the timelock's language (`MODE=schedule`, then
+`MODE=execute`). Until the timelock is deployed on a chain, that chain's pad
+is owned by the deployer key.
+
 ### Pair assets (Robinhood Chain)
 
 64 quote assets: 55 tokenized stocks, 7 ETFs and commodities (SPY, QQQ,

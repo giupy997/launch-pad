@@ -143,10 +143,19 @@ node litecoin/payout.ts                                # settle what is due on L
 node litecoin/migration-snapshot.ts [--vault 0x...]    # the migration file
 # bridge the LTC it says to LitVM, then, from contracts/:
 forge script script/DeployLitVM.s.sol --rpc-url litvm_testnet --private-key "$PRIVATE_KEY" --broadcast
+# a pad the broadcaster owns (a rehearsal): everything in one go
 LAUNCHPAD=0x... MIGRATION_FILE=../litecoin/migration/test-<height>.json \
   forge script script/MigrateFromLedger.s.sol --rpc-url litvm_testnet --private-key "$PRIVATE_KEY" --broadcast
+# a pad a timelock owns (mainnet): schedule in the open, wait out the delay, execute
+LAUNCHPAD=0x... TIMELOCK=0x... MODE=schedule MIGRATION_FILE=... forge script script/MigrateFromLedger.s.sol --rpc-url litvm_testnet --private-key "$PRIVATE_KEY" --broadcast
+LAUNCHPAD=0x... TIMELOCK=0x... MODE=execute  MIGRATION_FILE=... forge script script/MigrateFromLedger.s.sol --rpc-url litvm_testnet --private-key "$PRIVATE_KEY" --broadcast
 cp litecoin/migration/test-<height>.json.migrated.json web/public/litecoin/migrated.json   # the site links each coin to its token
 ```
+
+With a timelock, a coin with more holders than one batch (150) takes a
+second schedule + execute round for the rest: its token address exists only
+after the first. Every round is safe to repeat; the script skips what is
+done, scheduled or delivered.
 
 `forge test --match-contract Migration` runs the contract tests, including
 the demo ledger's file end to end (`test/fixtures/migration-demo.json`).
