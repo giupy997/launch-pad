@@ -29,7 +29,7 @@ import { CreatorPanel } from "@/components/CreatorPanel";
 import { CashbackCard } from "@/components/CashbackCard";
 import { MigrationNotice } from "@/components/MigrationNotice";
 import { FeePanel } from "@/components/FeePanel";
-import { parseFeeConfig, NO_TAX } from "@/lib/curve";
+import { parseFeeConfig, NO_TAX, treasuryPct } from "@/lib/curve";
 import { useAccount } from "wagmi";
 
 export default function TokenPage({ params }: { params: Promise<{ address: string }> }) {
@@ -49,6 +49,8 @@ export default function TokenPage({ params }: { params: Promise<{ address: strin
       { address: pad, abi: launchpadAbi, functionName: "feesToHolders", args: [token] },
       { address: pad, abi: launchpadAbi, functionName: "feeConfig", args: [token] },
       { address: pad, abi: launchpadAbi, functionName: "feeBps" },
+      { address: pad, abi: launchpadAbi, functionName: "creatorFeeShareBps" },
+      { address: pad, abi: launchpadAbi, functionName: "holderCashbackBps" },
     ],
     query: { ...IMMUTABLE },
   });
@@ -86,14 +88,18 @@ export default function TokenPage({ params }: { params: Promise<{ address: strin
       </div>
     );
 
-  const [nameR, symbolR, feeModeR, feesR, feeBpsR] = statics;
+  const [nameR, symbolR, feeModeR, feesR, feeBpsR, creatorShareR, holderShareR] = statics;
   const [curveR, metaR, burnPotR, liqPotR, burnedR] = dyn;
   const feesToHolders = feeModeR?.status === "success" ? (feeModeR.result as boolean) : false;
-  // pads before v9 know no fee configuration: no panel, the old fee line
+  const big = (r: { status: string; result?: unknown } | undefined, fallback = 0n) =>
+    r?.status === "success" ? (r.result as bigint) : fallback;
+  // pads before v9 know no fee configuration: no panel, and the launch-time choice tells the split
   const hasFees = feesR?.status === "success";
-  const fees = hasFees ? parseFeeConfig(feesR.result) : NO_TAX;
-  const platformFeeBps = feeBpsR?.status === "success" ? (feeBpsR.result as bigint) : 100n;
-  const big = (r: { status: string; result?: unknown } | undefined) => (r?.status === "success" ? (r.result as bigint) : 0n);
+  const fees = hasFees
+    ? parseFeeConfig(feesR.result)
+    : { ...NO_TAX, creatorBps: feesToHolders ? 0 : 10_000, holdersBps: feesToHolders ? 10_000 : 0 };
+  const platformFeeBps = big(feeBpsR, 100n);
+  const treasury = treasuryPct(platformFeeBps, big(creatorShareR, 5_000n) + big(holderShareR, 3_000n));
   if (curveR.status !== "success" || (curveR.result as readonly unknown[])[0] === 0n) {
     return <p className="text-zinc-500">Token not found on this launchpad.</p>;
   }
@@ -216,13 +222,14 @@ export default function TokenPage({ params }: { params: Promise<{ address: strin
       </div>
 
       <div className="order-1 lg:order-2 space-y-6">
-        <TradeBox token={token} symbol={symbol} curve={curve} fees={fees} platformFeeBps={platformFeeBps} />
+        <TradeBox token={token} symbol={symbol} curve={curve} fees={fees} platformFeeBps={platformFeeBps} treasury={treasury} />
         {hasFees && (
           <FeePanel
             token={token}
             symbol={symbol}
             fees={fees}
             platformFeeBps={platformFeeBps}
+            treasury={treasury}
             burnPot={big(burnPotR)}
             liquidityPot={big(liqPotR)}
             burned={big(burnedR)}

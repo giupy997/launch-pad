@@ -74,6 +74,7 @@ export function TradeBox({
   curve,
   fees = NO_TAX,
   platformFeeBps = 100n,
+  treasury = "0.2%",
 }: {
   token: `0x${string}`;
   symbol: string;
@@ -82,6 +83,8 @@ export function TradeBox({
   fees?: FeeConfig;
   /** the pad's platform fee, basis points */
   platformFeeBps?: bigint;
+  /** the treasury's cut of a trade, as text */
+  treasury?: string;
 }) {
   const padMaybe = useLaunchpadAddress();
   const deployed = !!padMaybe;
@@ -415,7 +418,7 @@ export function TradeBox({
         {splitParts(fees)
           .map((p) => `${p.bps / 100}% ${p.label}`)
           .join(" · ")}{" "}
-        · {Number(platformFeeBps) / 500}% treasury
+        · {treasury} treasury
       </p>
 
       {isSuccess && hash && (

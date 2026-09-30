@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatEther, parseEther, parseEventLogs } from "viem";
 import Link from "next/link";
-import { useAccount, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
+import { useAccount, useReadContract, useReadContracts, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { launchpadAbi } from "@/lib/abi";
 import { useLaunchpadAddress, useExplorer, useAppChain, ZERO_ADDRESS } from "@/lib/hooks";
 import {
@@ -18,7 +18,7 @@ import { TokenLogo } from "@/components/TokenLogo";
 import { processLogoFile, dataUriBytes } from "@/lib/image";
 import { fmtTokens } from "@/lib/format";
 import { FeeSplitEditor, splitTotal, type SplitPct } from "@/components/FeeSplitEditor";
-import { feeLabel } from "@/lib/curve";
+import { feeLabel, treasuryPct } from "@/lib/curve";
 
 const inputCls =
   "w-full rounded-lg input px-3 py-2 text-sm focus:border-white outline-none placeholder:text-zinc-600";
@@ -74,15 +74,28 @@ export function CreateTokenForm() {
   const [buyTax, setBuyTax] = useState(0);
   const [sellTax, setSellTax] = useState(0);
   const [split, setSplit] = useState<SplitPct>({ creator: 100, holders: 0, burn: 0, liquidity: 0 });
-  // a pad that knows fee configurations answers MAX_TAX_BPS; older ones take the launch-time choice alone
-  const { data: maxTaxRaw } = useReadContract({
+  // a pad that knows fee configurations answers MAX_TAX_BPS; older ones take the launch-time choice alone.
+  // Until the answer is in, the fee section waits: a choice made on the wrong form would be lost
+  const { data: maxTaxRaw, isFetched: feeUiReady } = useReadContract({
     address: pad,
     abi: launchpadAbi,
     functionName: "MAX_TAX_BPS",
-    query: { enabled: deployed, staleTime: Infinity, retry: false },
+    query: { enabled: deployed, staleTime: Infinity, retry: 2 },
   });
   const customFees = maxTaxRaw !== undefined;
   const maxTaxPct = customFees ? Number(maxTaxRaw as bigint) / 100 : 10;
+  const { data: padFees } = useReadContracts({
+    contracts: [
+      { address: pad, abi: launchpadAbi, functionName: "feeBps" },
+      { address: pad, abi: launchpadAbi, functionName: "creatorFeeShareBps" },
+      { address: pad, abi: launchpadAbi, functionName: "holderCashbackBps" },
+    ],
+    query: { enabled: deployed, staleTime: 60_000 },
+  });
+  const padBig = (i: number, fallback: bigint) => (padFees?.[i]?.status === "success" ? (padFees[i].result as bigint) : fallback);
+  const platformFeeBps = padBig(0, 100n);
+  const treasury = treasuryPct(platformFeeBps, padBig(1, 5_000n) + padBig(2, 3_000n));
+  const platformPct = `${(Number(platformFeeBps) / 100).toString()}%`;
   const buyTaxBps = customFees ? Math.round(buyTax * 100) : 0;
   const sellTaxBps = customFees ? Math.round(sellTax * 100) : 0;
   const holdersOn = customFees ? split.holders > 0 : feesToHolders;
@@ -191,7 +204,7 @@ export function CreateTokenForm() {
   }
 
   const devBuyNum = parseFloat(initialBuy) || 0;
-  const estTokens = estimateTokens(devBuyNum, 100 + buyTaxBps);
+  const estTokens = estimateTokens(devBuyNum, Number(platformFeeBps) + buyTaxBps);
   const ticker = symbol.trim().toUpperCase();
 
   return (
@@ -296,11 +309,13 @@ export function CreateTokenForm() {
             Trading fees{" "}
             <span className="normal-case text-zinc-600">
               {customFees
-                ? `1% platform fee on every curve trade (0.2% to the treasury) · add your own tax up to ${maxTaxPct}% each way · you split the pot, fixed forever`
-                : "1% per trade on the curve · 20% platform · you pick where the other 80% goes, locked forever"}
+                ? `${platformPct} platform fee on every curve trade (${treasury} to the treasury) · add your own tax up to ${maxTaxPct}% each way · you split the pot, fixed forever`
+                : `${platformPct} per trade on the curve · ${treasury} to the treasury · you pick where the rest goes, locked forever`}
             </span>
           </Label>
-          {customFees ? (
+          {deployed && !feeUiReady ? (
+            <div className="rounded-xl border border-white/10 px-4 py-6 text-center text-xs text-zinc-500">Loading the fee options…</div>
+          ) : customFees ? (
             <FeeSplitEditor
               buyTax={buyTax}
               sellTax={sellTax}
@@ -363,13 +378,13 @@ export function CreateTokenForm() {
         </div>
 
         <div className="rounded-lg border border-white/10 px-4 py-3 font-mono text-[11px] tracking-wide text-zinc-400 uppercase">
-          Buy {feeLabel(100n, buyTaxBps)} · Sell {feeLabel(100n, sellTaxBps)} → <span className="text-white">{splitText}</span> · 0.2%
-          treasury
+          Buy {feeLabel(platformFeeBps, buyTaxBps)} · Sell {feeLabel(platformFeeBps, sellTaxBps)} →{" "}
+          <span className="text-white">{splitText}</span> · {treasury} treasury
         </div>
 
         <button
           type="submit"
-          disabled={!deployed || closed || !splitOk || !isConnected || isPending || isConfirming}
+          disabled={!deployed || closed || !feeUiReady || !splitOk || !isConnected || isPending || isConfirming}
           className="btn-primary w-full py-3"
         >
           {!deployed
@@ -471,8 +486,8 @@ export function CreateTokenForm() {
           </p>
 
           <div className="divide-y divide-white/[0.06] font-mono text-xs">
-            <Row k="Trading fees" v={`${feeLabel(100n, buyTaxBps)} buy · ${feeLabel(100n, sellTaxBps)} sell`} />
-            <Row k="Fee split" v={`${splitText} · 0.2% treasury`} strong />
+            <Row k="Trading fees" v={`${feeLabel(platformFeeBps, buyTaxBps)} buy · ${feeLabel(platformFeeBps, sellTaxBps)} sell`} />
+            <Row k="Fee split" v={`${splitText} · ${treasury} treasury`} strong />
             <Row k="Holders earn" v={holdersOn ? `Cashback in ${quote.symbol}` : "—"} />
             <Row k="Supply" v="1B fixed" />
             <Row

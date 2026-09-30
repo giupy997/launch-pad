@@ -282,7 +282,7 @@ export default function SwapPage() {
         <div className="flex justify-center">
           <SlippageControl bps={slippageBps} onChange={setSlippageBps} />
         </div>
-        <p className="text-xs text-zinc-600 text-center">1% curve fee per leg</p>
+        <p className="text-xs text-zinc-600 text-center">Each leg pays its curve&apos;s fee: the platform fee and the coin&apos;s own tax, if any</p>
 
         {isSuccess && hash && step === "idle" && (
           <p className="text-sm text-zinc-300 text-center">

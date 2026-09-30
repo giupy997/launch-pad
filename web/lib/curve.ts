@@ -44,6 +44,12 @@ export function quoteSell(curve: CurveInfo, tokensIn: bigint, platformFeeBps: bi
   return out - (out * f) / FEE_DENOMINATOR;
 }
 
+/** The treasury's cut of a trade, in percent, as text: the platform fee less the coin's pot share of it. */
+export function treasuryPct(platformFeeBps: bigint, potShareBps: bigint): string {
+  const pct = (Number(platformFeeBps) * (10_000 - Number(potShareBps))) / 1_000_000;
+  return `${pct.toFixed(3).replace(/\.?0+$/, "")}%`;
+}
+
 /** "1%" or "1% + 3% tax" for a side of the trade. */
 export function feeLabel(platformFeeBps: bigint, taxBps: number): string {
   const pct = (bps: number) => `${(bps / 100).toString().replace(/\.0+$/, "")}%`;

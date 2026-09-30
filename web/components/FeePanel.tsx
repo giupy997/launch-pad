@@ -1,6 +1,6 @@
 "use client";
 
-import { useAccount, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
+import { useAccount, useReadContracts, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { launchpadAbi } from "@/lib/abi";
 import { useLaunchpadAddress, useAppChain } from "@/lib/hooks";
 import { feeLabel, splitParts, type FeeConfig } from "@/lib/curve";
@@ -16,6 +16,7 @@ export function FeePanel({
   symbol,
   fees,
   platformFeeBps,
+  treasury,
   burnPot,
   liquidityPot,
   burned,
@@ -27,6 +28,7 @@ export function FeePanel({
   symbol: string;
   fees: FeeConfig;
   platformFeeBps: bigint;
+  treasury: string;
   burnPot: bigint;
   liquidityPot: bigint;
   burned: bigint;
@@ -41,6 +43,18 @@ export function FeePanel({
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
   const parts = splitParts(fees);
   const burnedPct = Number((burned * 10_000n) / TOTAL_SUPPLY) / 100;
+  // a burn needs somewhere to buy: the curve, or a pool the migrator seeded; and a coin fully delivered
+  const { data: state } = useReadContracts({
+    contracts: [
+      { address: pad, abi: launchpadAbi, functionName: "graduatedVia", args: [token] },
+      { address: pad, abi: launchpadAbi, functionName: "migrationPending", args: [token] },
+    ],
+    query: { enabled: !!pad, refetchInterval: 15_000 },
+  });
+  const via = state?.[0]?.status === "success" ? (state[0].result as `0x${string}`) : undefined;
+  const pending = state?.[1]?.status === "success" ? (state[1].result as bigint) : 0n;
+  const noPool = graduated && via !== undefined && /^0x0{40}$/.test(via);
+  const cannotBurn = noPool ? "Its pool is not seeded yet: nothing to buy from" : pending > 0n ? "Its holders are still being delivered" : null;
 
   return (
     <div className="card p-5 space-y-3">
@@ -59,7 +73,7 @@ export function FeePanel({
           </div>
         ))}
         <p className="text-[11px] text-zinc-600">
-          Of every trade, {Number(platformFeeBps) / 500}% goes to the treasury; the rest of the fee is split as above.
+          Of every trade, {treasury} goes to the treasury; the rest of the fee is split as above.
         </p>
       </div>
 
@@ -73,14 +87,14 @@ export function FeePanel({
           </div>
           <button
             type="button"
-            disabled={!pad || !isConnected || burnPot === 0n || isPending || isConfirming}
+            disabled={!pad || !isConnected || burnPot === 0n || !!cannotBurn || isPending || isConfirming}
             onClick={() => {
               reset();
               if (!pad) return;
               writeContract({ address: pad, abi: launchpadAbi, functionName: "buybackAndBurn", chainId: chain.id, args: [token] });
             }}
             className="btn-primary px-4 py-1.5 text-xs"
-            title="Buys the coin back with the pot and burns it. Anyone may."
+            title={cannotBurn ?? "Buys the coin back with the pot and burns it. Anyone may."}
           >
             {isPending ? "Sign…" : isConfirming ? "Burning…" : "Burn now"}
           </button>

@@ -77,7 +77,7 @@ export function CreatorFees() {
           {(error as { shortMessage?: string }).shortMessage ?? error.message}
         </p>
       )}
-      <p className="mt-1 text-[11px] text-zinc-600">80% of the 1% trade fee on your keep-mode tokens.</p>
+      <p className="mt-1 text-[11px] text-zinc-600">The creator&apos;s share of every curve trade&apos;s fee on your coins, as you set it at launch.</p>
     </div>
   );
 }

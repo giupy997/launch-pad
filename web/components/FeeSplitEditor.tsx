@@ -70,6 +70,7 @@ export function FeeSplitEditor({
               <div className="flex items-center gap-3">
                 <input
                   type="range"
+                  aria-label={side === "buy" ? "Buy tax, percent" : "Sell tax, percent"}
                   min={0}
                   max={maxTax}
                   step={0.5}
@@ -119,6 +120,7 @@ export function FeeSplitEditor({
                 <div className="flex items-center gap-3">
                   <input
                     type="range"
+                    aria-label={`${SPLIT_LABELS[key].title} share, percent`}
                     min={0}
                     max={max}
                     step={1}
@@ -145,7 +147,7 @@ export function FeeSplitEditor({
           })}
         </div>
         <div className="mx-auto">
-          <div className="relative w-40 h-40 rounded-full" style={{ background: ring }} aria-label={`${total}% of the split given`}>
+          <div className="relative w-40 h-40 rounded-full" style={{ background: ring }} role="img" aria-label={`${total}% of the split given`}>
             <div className="absolute inset-4 rounded-full bg-black flex flex-col items-center justify-center">
               <span className={`font-mono text-2xl font-bold ${total === 100 ? "text-white" : "text-zinc-400"}`}>{total}%</span>
               <span className="text-[10px] text-zinc-500">Total split</span>

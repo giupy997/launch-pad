@@ -70,7 +70,7 @@ export function CashbackCard({
         {isSuccess && <span className="text-xs text-zinc-400">claimed ✓</span>}
       </div>
       <p className="mt-1 text-[11px] text-zinc-600">
-        80% of every trade fee is shared pro-rata with holders — on the curve and in the Uniswap pool after graduation.
+        The holders&apos; share of every curve trade&apos;s fee, pro-rata to what each wallet holds, as the coin&apos;s creator set it.
       </p>
       {error && (
         <p className="mt-1 text-xs text-zinc-500 break-all">
