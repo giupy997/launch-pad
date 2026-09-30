@@ -8,11 +8,15 @@
 //
 //   node script/snapshot-evm.mjs --rpc https://mainnet.base.org --launchpad 0x... \
 //     --quote 0xcb17C9Db87B595717C857a08468793f5bAb6445F --from-block <pad deploy block> \
-//     [--network base] [--out ../litecoin/migration/base-<block>.json] [--chunk 5000] [--allow-unfrozen]
+//     [--network base] [--out ../litecoin/migration/base-<block>.json] [--chunk 5000] [--allow-unfrozen] [--vault 0x...]
 //
 // Refuses a launchpad that is not frozen (the balances could still change)
-// unless --allow-unfrozen, for a dry run at the latest block. Needs
-// `forge build` (reads the ABIs from out/) and web/'s node_modules (viem).
+// unless --allow-unfrozen, for a dry run at the latest block. A graduated
+// coin whose pool holds liquidity besides the migrator's leaves those
+// providers' coins in the pool on this chain: the receiving side needs
+// holders + pool == supply, so those coins go to --vault (an address of
+// yours, for a claim by hand) or the run refuses. Needs `forge build` (the
+// ABIs come from out/) and web/'s node_modules (viem).
 import fs from "node:fs";
 import path from "node:path";
 import { createPublicClient, http, keccak256, toHex, getAddress, parseAbiItem } from "../../web/node_modules/viem/_esm/index.js";
@@ -36,6 +40,7 @@ const fromBlock = BigInt(need("from-block"));
 const network = flag("network", "base");
 const chunkDefault = BigInt(flag("chunk", "5000"));
 const allowUnfrozen = args.includes("--allow-unfrozen");
+const vault = flag("vault") ? getAddress(flag("vault")) : null;
 
 const abi = (file, name) => JSON.parse(fs.readFileSync(path.join(root, "out", file, `${name}.json`), "utf8")).abi;
 const padAbi = abi("Launchpad.sol", "Launchpad");
@@ -121,18 +126,31 @@ for (const token of tokens) {
   }
   let pair = null;
   let poolToken = 0n;
+  let stranded = 0n; // coins in the pool that belong to other liquidity providers
   let realQuote = realEth * SCALE;
   if (graduated) {
     const via = await read(launchpad, padAbi, "graduatedVia", [token], block);
     if (via !== "0x0000000000000000000000000000000000000000") {
       pair = getAddress(await read(via, migratorAbi, "pairOf", [token], block));
-      // the pool's two sides as the pair holds them (a donation on top of the reserves counts too)
-      poolToken = await read(token, tokenAbi, "balanceOf", [pair], block);
-      const poolQuote = await read(quoteAsset, erc20Abi, "balanceOf", [pair], block);
-      realQuote = poolQuote * SCALE;
+      // the pool's two sides, but only OUR share of them — what unlock brings
+      // back: the pair pays LP out pro rata against its balances, and anyone
+      // else's liquidity (and their share of the coins) stays in the pool
+      const pairToken = await read(token, tokenAbi, "balanceOf", [pair], block);
+      const pairQuote = await read(quoteAsset, erc20Abi, "balanceOf", [pair], block);
       const lpTotal = await read(pair, pairAbi, "totalSupply", [], block);
       const lpOurs = await read(via, migratorAbi, "liquidity", [token], block);
-      if (lpTotal > lpOurs + 1000n) warnings.push(`${symbol}: the pool has liquidity besides ours (${lpTotal - lpOurs} LP of ${lpTotal}): its share moves with the pool`);
+      const lpOthers = lpTotal - lpOurs;
+      realQuote = ((pairQuote * lpOurs) / lpTotal) * SCALE;
+      if (lpOthers <= 1000n) {
+        // only Uniswap's minimum liquidity, burned at the first mint, is not ours: its
+        // dust of coins counts with the pool, so that holders + pool is the whole supply
+        poolToken = pairToken;
+      } else {
+        // liquidity somebody else added: their share of the coins stays in this pool
+        poolToken = (pairToken * lpOurs) / lpTotal;
+        stranded = pairToken - poolToken;
+        warnings.push(`${symbol}: the pool has liquidity besides ours (${lpOthers} of ${lpTotal} LP): that share stays in the pool on this chain`);
+      }
     } else {
       poolToken = DEX_RESERVE; // graduated with its reserve parked in the pad: the DEX reserve is still there
     }
@@ -148,7 +166,14 @@ for (const token of tokens) {
     holders.push(getAddress(a));
     amounts.push(bal);
   }
+  if (graduated && stranded > 0n) {
+    if (!vault) throw new Error(`${symbol}: ${stranded} coins sit in the pool with liquidity that is not ours; the receiving side needs holders + pool == supply. Pass --vault <address> to park them for their providers' claim, or migrate this coin by hand`);
+    holders.push(vault);
+    amounts.push(stranded);
+    warnings.push(`${symbol}: ${stranded} coins of the pool's other liquidity providers parked in the vault ${vault} for a claim by hand`);
+  }
   const owned = amounts.reduce((t, b) => t + b, 0n);
+  // a graduated coin: holders (the vault included) own the supply less our share of the pool
   const expected = graduated ? TOTAL_SUPPLY - poolToken : sold;
   if (owned !== expected) {
     const padBal = await read(token, tokenAbi, "balanceOf", [launchpad], block);
