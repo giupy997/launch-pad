@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { encodePacked, erc20Abi, parseUnits } from "viem";
+import { useEffect, useState } from "react";
+import { encodePacked, erc20Abi, maxUint256, parseUnits } from "viem";
 import {
   useAccount,
   useReadContract,
@@ -168,7 +168,7 @@ export function TradeBox({
 
   const zapQuoteOut = curveZapMode ? preQuoteOut : (quoterSim?.result?.[0] as bigint | undefined);
 
-  const { data: balance } = useReadContract({
+  const { data: balance, refetch: refetchBalance } = useReadContract({
     address: token,
     abi: launchTokenAbi,
     functionName: "balanceOf",
@@ -176,7 +176,7 @@ export function TradeBox({
     query: { enabled: !!user, refetchInterval: 5_000 },
   });
 
-  const { data: allowance } = useReadContract({
+  const { data: allowance, refetch: refetchAllowance } = useReadContract({
     address: token,
     abi: launchTokenAbi,
     functionName: "allowance",
@@ -185,7 +185,7 @@ export function TradeBox({
   });
 
   // ERC-20 quote curves: quote-asset allowance and balance for the buy side
-  const { data: quoteAllowance } = useReadContract({
+  const { data: quoteAllowance, refetch: refetchQuoteAllowance } = useReadContract({
     address: q.address ?? undefined,
     abi: erc20Abi,
     functionName: "allowance",
@@ -193,7 +193,7 @@ export function TradeBox({
     query: { enabled: !!user && !!q.address, refetchInterval: 5_000 },
   });
 
-  const { data: quoteBalance } = useReadContract({
+  const { data: quoteBalance, refetch: refetchQuoteBalance } = useReadContract({
     address: q.address ?? undefined,
     abi: erc20Abi,
     functionName: "balanceOf",
@@ -211,6 +211,25 @@ export function TradeBox({
   const { writeContract, data: hash, isPending, error, reset } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
 
+  // What the last signed transaction was. A confirmed approval refreshes the
+  // allowance at once (not on the next poll) so the button turns into
+  // Buy/Sell; a confirmed trade refreshes the balances.
+  const [lastAction, setLastAction] = useState<"approve" | "trade">("trade");
+  useEffect(() => {
+    if (!isSuccess) return;
+    if (lastAction === "approve") {
+      refetchAllowance();
+      refetchQuoteAllowance();
+    } else {
+      refetchBalance();
+      refetchQuoteBalance();
+    }
+  }, [isSuccess, lastAction, refetchAllowance, refetchQuoteAllowance, refetchBalance, refetchQuoteBalance]);
+
+  // Approvals are granted once, unlimited, to the pad: it only ever pulls
+  // tokens from msg.sender inside sell/buyWithQuote, so the allowance is
+  // spendable by this wallet's own trades alone. Exact-amount approvals
+  // meant an Approve before every single trade.
   const needsSellApproval =
     mode === "sell" && parsed > 0n && (allowance === undefined || (allowance as bigint) < parsed);
   const needsBuyApproval =
@@ -219,6 +238,7 @@ export function TradeBox({
     !zapMode &&
     parsed > 0n &&
     (quoteAllowance === undefined || (quoteAllowance as bigint) < parsed);
+  const needsApproval = needsBuyApproval || needsSellApproval;
 
   function withSlippage(quote: bigint): bigint {
     return quote - (quote * BigInt(slippageBps)) / 10_000n;
@@ -227,6 +247,7 @@ export function TradeBox({
   function submit(e: React.FormEvent) {
     e.preventDefault();
     reset();
+    setLastAction(needsApproval ? "approve" : "trade");
     if (mode === "buy") {
       if (curveZapMode && zapAddr) {
         writeContract({
@@ -270,7 +291,7 @@ export function TradeBox({
           abi: erc20Abi,
           functionName: "approve",
           chainId: chain.id,
-          args: [pad, parsed],
+          args: [pad, maxUint256],
         });
       } else {
         writeContract({
@@ -287,7 +308,7 @@ export function TradeBox({
         abi: launchTokenAbi,
         functionName: "approve",
         chainId: chain.id,
-        args: [pad, parsed],
+        args: [pad, maxUint256],
       });
     } else {
       writeContract({
@@ -401,7 +422,9 @@ export function TradeBox({
               : isPending
                 ? "Sign in wallet…"
                 : isConfirming
-                  ? "Confirming…"
+                  ? lastAction === "approve"
+                    ? "Approving…"
+                    : "Confirming…"
                   : needsBuyApproval
                     ? `Approve ${q.symbol}`
                     : needsSellApproval
@@ -410,6 +433,13 @@ export function TradeBox({
                         ? "Buy"
                         : "Sell"}
         </button>
+        {needsApproval && isConnected && !isPending && !isConfirming && (
+          <p className="text-xs text-zinc-500">
+            One-time approval: it lets the launchpad take the {needsBuyApproval ? q.symbol : symbol} you
+            trade, and only your own trades can spend it. You won&apos;t be asked again
+            {needsBuyApproval ? ` when paying with ${q.symbol}` : " for this coin"}.
+          </p>
+        )}
       </form>
 
       <SlippageControl bps={slippageBps} onChange={setSlippageBps} />
@@ -423,7 +453,7 @@ export function TradeBox({
 
       {isSuccess && hash && (
         <p className="text-sm text-zinc-300">
-          Done!{" "}
+          {lastAction === "approve" ? `Approved: press ${mode === "buy" ? "Buy" : "Sell"} to trade.` : "Done!"}{" "}
           <a href={`${explorer}/tx/${hash}`} target="_blank" className="underline">
             tx
           </a>

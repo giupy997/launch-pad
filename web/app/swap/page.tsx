@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { parseEther } from "viem";
+import { maxUint256, parseEther } from "viem";
 import {
   useAccount,
   useReadContract,
@@ -61,7 +61,7 @@ export default function SwapPage() {
   const toToken = to !== ETH ? live.find((t) => t.address === to) : undefined;
   const isTokenToToken = from !== ETH && to !== ETH;
 
-  const { data: allowance } = useReadContract({
+  const { data: allowance, refetch: refetchAllowance } = useReadContract({
     address: from !== ETH ? from : undefined,
     abi: launchTokenAbi,
     functionName: "allowance",
@@ -116,8 +116,14 @@ export default function SwapPage() {
   const { writeContract, data: hash, isPending, error, reset } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
 
+  // one unlimited approval per coin (the pad only pulls from msg.sender), so
+  // no Approve before every swap; refreshed as soon as it confirms
   const needsApproval =
     from !== ETH && parsed > 0n && (allowance === undefined || (allowance as bigint) < parsed);
+  const [lastAction, setLastAction] = useState<"approve" | "trade">("trade");
+  useEffect(() => {
+    if (isSuccess && lastAction === "approve") refetchAllowance();
+  }, [isSuccess, lastAction, refetchAllowance]);
 
   // token->token: after the sell leg confirms, fire the buy leg
   useEffect(() => {
@@ -146,6 +152,7 @@ export default function SwapPage() {
   function submit(e: React.FormEvent) {
     e.preventDefault();
     reset();
+    setLastAction(from !== ETH && needsApproval ? "approve" : "trade");
     if (from === ETH && to !== ETH) {
       writeContract({
         address: pad,
@@ -161,7 +168,7 @@ export default function SwapPage() {
         abi: launchTokenAbi,
         functionName: "approve",
         chainId: appChainId,
-        args: [pad, parsed],
+        args: [pad, maxUint256],
       });
     } else if (from !== ETH) {
       if (to !== ETH) setStep("selling");
@@ -273,7 +280,9 @@ export default function SwapPage() {
                   : isPending
                     ? "Sign in wallet…"
                     : isConfirming
-                      ? "Confirming…"
+                      ? lastAction === "approve"
+                        ? "Approving…"
+                        : "Confirming…"
                       : needsApproval
                         ? `Approve ${fromToken?.symbol}`
                         : "Swap"}
@@ -286,7 +295,7 @@ export default function SwapPage() {
 
         {isSuccess && hash && step === "idle" && (
           <p className="text-sm text-zinc-300 text-center">
-            Done!{" "}
+            {lastAction === "approve" ? "Approved: press Swap to trade." : "Done!"}{" "}
             <a href={`${explorer}/tx/${hash}`} target="_blank" className="underline">
               tx
             </a>
