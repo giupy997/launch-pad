@@ -77,6 +77,16 @@ body::after {
   .input {
     @apply rounded-xl border border-white/10 bg-white/[0.03] text-white outline-none transition-colors placeholder:text-zinc-600 focus:border-white/40 focus:bg-white/[0.05];
   }
+  /* number fields without the spinner arrows */
+  .input[type="number"]::-webkit-outer-spin-button,
+  .input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  .input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
   .label {
     @apply font-mono text-[10px] tracking-[0.2em] uppercase text-zinc-500;
   }

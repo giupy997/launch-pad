@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { encodePacked, erc20Abi, formatUnits, maxUint256, parseUnits } from "viem";
 import {
   useAccount,
+  useBalance,
   useReadContract,
   useSimulateContract,
   useWaitForTransactionReceipt,
@@ -19,7 +20,7 @@ import {
   type CurveInfo,
   useNativeSymbol,
 } from "@/lib/hooks";
-import { fmtUnits, fmtTokens } from "@/lib/format";
+import { fmtEth, fmtUnits, fmtTokens } from "@/lib/format";
 import { quoteBuy, quoteSell, parseFeeConfig, NO_TAX, feeLabel, splitParts, type FeeConfig } from "@/lib/curve";
 import { SlippageControl, useSlippageBps } from "@/components/SlippageControl";
 import { QUOTE_ASSETS, ZAP_ROUTER, UNISWAP_QUOTER, WETH9, USDG } from "@/lib/config";
@@ -49,6 +50,10 @@ const zapRouterAbi = [
     outputs: [],
   },
 ] as const;
+
+/** what "Max" keeps back when the side being spent is the chain's own coin: gas for the trade */
+const GAS_RESERVE = 300_000_000_000_000n; // 0.0003 ETH
+const PICKS = [25, 50, 75, 100] as const;
 
 const quoterAbi = [
   {
@@ -96,8 +101,8 @@ export function TradeBox({
   const [mode, setMode] = useState<"buy" | "sell">("buy");
   const [slippageBps, setSlippageBps] = useSlippageBps();
   const [amount, setAmount] = useState("");
-  // "Max" pressed: the trade moves the whole live balance; the field shows it rounded
-  const [maxOn, setMaxOn] = useState(false);
+  // a quick pick (25/50/75/Max): the trade moves that share of the live balance, the field shows it rounded
+  const [pct, setPct] = useState<number | null>(null);
   const [payWithEth, setPayWithEth] = useState(true);
 
   const q = quoteInfo(chain.id, curve.quoteAsset);
@@ -183,24 +188,44 @@ export function TradeBox({
     query: { enabled: !!user && !!q.address, refetchInterval: 5_000 },
   });
 
-  // the balance "Max" refers to on this side, if any (none when paying with ETH)
-  const maxWei: bigint | undefined =
+  // the chain's own coin, for buys paid in it
+  const { data: ethBal, refetch: refetchEthBal } = useBalance({
+    address: user,
+    chainId: chain.id,
+    query: { enabled: !!user, refetchInterval: 5_000 },
+  });
+
+  // What this side spends: its balance as shown, and what the quick picks
+  // share out (the native coin less a gas reserve, so "Max" still sends).
+  const spendsEth = mode === "buy" && (zapMode || isEthQuote);
+  const inputDecimals = mode === "buy" ? (zapMode ? 18 : q.decimals) : 18;
+  const sideBalance: bigint | undefined =
     mode === "sell"
       ? (balance as bigint | undefined)
-      : !isEthQuote && !zapMode
-        ? (quoteBalance as bigint | undefined)
-        : undefined;
-  const inputDecimals = mode === "buy" ? (zapMode ? 18 : q.decimals) : 18;
-  const shown = maxOn && maxWei !== undefined ? fmtInput(maxWei, inputDecimals) : amount;
-  const parsed = maxOn && maxWei !== undefined ? maxWei : safeParse(amount, inputDecimals);
+      : spendsEth
+        ? ethBal?.value
+        : (quoteBalance as bigint | undefined);
+  const balanceLabel =
+    sideBalance === undefined
+      ? undefined
+      : mode === "sell"
+        ? `${fmtTokens(sideBalance)} ${symbol}`
+        : spendsEth
+          ? `${fmtEth(sideBalance)} ${native}`
+          : `${fmtUnits(sideBalance, q.decimals)} ${q.symbol}`;
+  const spendable: bigint | undefined =
+    sideBalance === undefined ? undefined : spendsEth ? (sideBalance > GAS_RESERVE ? sideBalance - GAS_RESERVE : 0n) : sideBalance;
+  const picked = pct !== null && spendable !== undefined ? (spendable * BigInt(pct)) / 100n : undefined;
+  const shown = picked !== undefined ? fmtInput(picked, inputDecimals) : amount;
+  const parsed = picked ?? safeParse(amount, inputDecimals);
 
   function editAmount(v: string) {
-    setMaxOn(false);
+    setPct(null);
     setAmount(v);
   }
-  function fillMax(wei: bigint, decimals: number) {
-    setMaxOn(true);
-    setAmount(fmtInput(wei, decimals));
+  function pick(p: number) {
+    setPct(p);
+    if (spendable !== undefined) setAmount(fmtInput((spendable * BigInt(p)) / 100n, inputDecimals));
   }
 
   // ETH -> quote estimate via the Uniswap quoter (pool route)
@@ -245,24 +270,25 @@ export function TradeBox({
     } else {
       refetchBalance();
       refetchQuoteBalance();
-      setMaxOn(false);
+      refetchEthBal();
+      setPct(null);
       setAmount("");
     }
-  }, [isSuccess, hash, lastAction, refetchAllowance, refetchQuoteAllowance, refetchBalance, refetchQuoteBalance]);
+  }, [isSuccess, hash, lastAction, refetchAllowance, refetchQuoteAllowance, refetchBalance, refetchQuoteBalance, refetchEthBal]);
 
   // Buy and Sell take different units, so the field and the last
   // transaction's outcome don't carry over from one side to the other.
   function switchMode(m: "buy" | "sell") {
     if (m === mode) return;
     setMode(m);
-    setMaxOn(false);
+    setPct(null);
     setAmount("");
     reset();
   }
   function switchPayWith(eth: boolean) {
     if (eth === payWithEth) return;
     setPayWithEth(eth);
-    setMaxOn(false);
+    setPct(null);
     setAmount("");
   }
 
@@ -418,23 +444,28 @@ export function TradeBox({
             min="0"
             className="w-full rounded-lg input px-3 py-2 text-sm focus:border-white outline-none"
           />
-          {mode === "buy" && !isEthQuote && !zapMode && quoteBalance !== undefined && (
-            <button
-              type="button"
-              onClick={() => fillMax(quoteBalance as bigint, q.decimals)}
-              className="mt-1 text-xs text-zinc-500 underline"
-            >
-              Max: {fmtUnits(quoteBalance as bigint, q.decimals)} {q.symbol}
-            </button>
-          )}
-          {mode === "sell" && balance !== undefined && (
-            <button
-              type="button"
-              onClick={() => fillMax(balance as bigint, 18)}
-              className="mt-1 text-xs text-zinc-500 underline"
-            >
-              Max: {fmtTokens(balance as bigint)} {symbol}
-            </button>
+          {isConnected && balanceLabel && (
+            <div className="mt-1.5 flex items-center justify-between gap-2 text-xs text-zinc-500">
+              <span>Balance: {balanceLabel}</span>
+              <div className="flex gap-1">
+                {PICKS.map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    disabled={!spendable}
+                    onClick={() => pick(p)}
+                    title={p === 100 && spendsEth ? `Keeps ${formatUnits(GAS_RESERVE, 18)} ${native} for gas` : undefined}
+                    className={`rounded-full px-2 py-0.5 font-mono text-[10px] disabled:opacity-40 ${
+                      pct === p
+                        ? "bg-white text-black"
+                        : "border border-white/15 text-zinc-400 hover:border-white hover:text-white"
+                    }`}
+                  >
+                    {p === 100 ? "Max" : `${p}%`}
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
         </div>
 
@@ -541,9 +572,9 @@ function safeParse(v: string, decimals: number): bigint {
   }
 }
 
-/** a balance as the input field shows it: at most four decimals, no trailing zeros */
+/** an amount as the input field shows it: four decimals (six below one), no trailing zeros */
 function fmtInput(wei: bigint, decimals: number): string {
   const [int, frac = ""] = formatUnits(wei, decimals).split(".");
-  const f = frac.slice(0, 4).replace(/0+$/, "");
+  const f = frac.slice(0, int === "0" ? 6 : 4).replace(/0+$/, "");
   return f ? `${int}.${f}` : int;
 }
