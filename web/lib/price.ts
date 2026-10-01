@@ -36,7 +36,11 @@ export function isLtcQuote(symbol: string): boolean {
 /** An amount of the quote asset as the pages show money: in dollars when the
  *  quote is LTC and its price is known, else in the quote itself. */
 export function fmtQuoteMoney(amount: bigint, decimals: number, symbol: string, usd: number | null | undefined): string {
-  const units = Number(amount) / 10 ** decimals;
+  return fmtQuoteMoneyNum(Number(amount) / 10 ** decimals, symbol, usd);
+}
+
+/** The same, from an amount already in quote units. */
+export function fmtQuoteMoneyNum(units: number, symbol: string, usd: number | null | undefined): string {
   if (usd && isLtcQuote(symbol)) return fmtUsd(units * usd);
   const digits = units >= 100 ? 0 : units >= 1 ? 2 : 4;
   return `${units.toFixed(digits)} ${symbol}`;

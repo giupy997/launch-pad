@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { type TokenInfo, marketCap, curveProgress, quoteInfo, useAppChain } from "@/lib/hooks";
-import { fmtUnits, shortAddr } from "@/lib/format";
+import { type TokenInfo, marketCapOf, curveProgress, quoteInfo, useAppChain } from "@/lib/hooks";
+import { fmtNum, fmtUnits, shortAddr } from "@/lib/format";
 import { TokenLogo } from "@/components/TokenLogo";
-import { fmtQuoteMoney, isLtcQuote } from "@/lib/price";
+import { fmtQuoteMoney, fmtQuoteMoneyNum, isLtcQuote } from "@/lib/price";
 
 export function TokenCard({
   token: t,
@@ -20,7 +20,7 @@ export function TokenCard({
   const progress = curveProgress(t.curve);
   const chain = useAppChain();
   const q = quoteInfo(chain.id, t.curve.quoteAsset);
-  const mcap = marketCap(t.curve);
+  const mcap = marketCapOf(t.curve, q.decimals);
   const inDollars = !!usd && isLtcQuote(q.symbol);
   return (
     <Link
@@ -58,10 +58,10 @@ export function TokenCard({
       <div className="mt-5 flex items-end justify-between gap-3">
         <div>
           <div className="label">Market cap</div>
-          <div className="mt-0.5 display text-2xl leading-none text-white">{fmtQuoteMoney(mcap, q.decimals, q.symbol, usd)}</div>
+          <div className="mt-0.5 display text-2xl leading-none text-white">{fmtQuoteMoneyNum(mcap, q.symbol, usd)}</div>
           {inDollars && (
             <div className="mt-1 font-mono text-[11px] text-zinc-500">
-              {fmtUnits(mcap, q.decimals)} {q.symbol}
+              {fmtNum(mcap)} {q.symbol}
             </div>
           )}
         </div>

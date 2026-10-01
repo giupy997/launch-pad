@@ -7,7 +7,8 @@ import { launchpadAbi, launchTokenAbi } from "@/lib/abi";
 import {
   useLaunchpadAddress,
   curveProgress,
-  spotPrice,
+  priceOf,
+  marketCapOf,
   parseCurve,
   parseMeta,
   useExplorer,
@@ -30,7 +31,8 @@ import { CashbackCard } from "@/components/CashbackCard";
 import { MigrationNotice } from "@/components/MigrationNotice";
 import { FeePanel } from "@/components/FeePanel";
 import { parseFeeConfig, NO_TAX, treasuryPct } from "@/lib/curve";
-import { useLtcPrice, fmtQuoteMoney, isLtcQuote } from "@/lib/price";
+import { useLtcPrice, fmtQuoteMoney, fmtQuoteMoneyNum, isLtcQuote } from "@/lib/price";
+import { fmtNum } from "@/lib/format";
 import { useAccount } from "wagmi";
 
 export default function TokenPage({ params }: { params: Promise<{ address: string }> }) {
@@ -204,8 +206,8 @@ export default function TokenPage({ params }: { params: Promise<{ address: strin
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <Stat
             label="Market cap"
-            value={fmtQuoteMoney(spotPrice(curve) * 1_000_000_000n, q.decimals, q.symbol, usd)}
-            sub={`${usd && isLtcQuote(q.symbol) ? `${fmtUnits(spotPrice(curve) * 1_000_000_000n, q.decimals)} ${q.symbol} · ` : ""}${fmtUnits(spotPrice(curve), q.decimals)} ${q.symbol} per coin`}
+            value={fmtQuoteMoneyNum(marketCapOf(curve, q.decimals), q.symbol, usd)}
+            sub={`${usd && isLtcQuote(q.symbol) ? `${fmtNum(marketCapOf(curve, q.decimals))} ${q.symbol} · ` : ""}${fmtNum(priceOf(curve, q.decimals))} ${q.symbol} per coin`}
           />
           <Stat
             label="Raised"
@@ -228,7 +230,12 @@ export default function TokenPage({ params }: { params: Promise<{ address: strin
           </p>
         </div>
 
-        <PriceChart points={pricePoints(tradeData?.trades ?? [], q.decimals)} quoteSymbol={q.symbol} />
+        <PriceChart
+          points={pricePoints(tradeData?.trades ?? [], q.decimals).map((p) => p * 1_000_000_000)}
+          quoteSymbol={q.symbol}
+          label="Market cap"
+          format={(v) => fmtQuoteMoneyNum(v, q.symbol, usd)}
+        />
         <TradeFeed
           trades={tradeData?.trades ?? []}
           symbol={symbol}

@@ -236,14 +236,27 @@ export function useTokens() {
   return { tokens, isLoading, isError: countError && count === undefined, count: n };
 }
 
-/** Fully diluted market cap in quote wei: the spot price times the 1B supply. */
-export function marketCap(curve: CurveInfo): bigint {
-  return spotPrice(curve) * 1_000_000_000n;
-}
 
-/** Spot price in wei per whole token (1e18). */
+/** Spot price in quote wei per whole token (1e18) — an integer, so for a
+ *  quote with few decimals (cbLTC: 8) it is a handful of units and loses
+ *  its fraction; read prices with priceOf and values with valueOf instead. */
 export function spotPrice(curve: CurveInfo): bigint {
   return (curve.vEth * 10n ** 18n) / curve.vToken;
+}
+
+/** Spot price in quote units per whole token, exact to the float. */
+export function priceOf(curve: CurveInfo, quoteDecimals: number): number {
+  return Number(curve.vEth) / 10 ** quoteDecimals / (Number(curve.vToken) / 1e18);
+}
+
+/** Fully diluted market cap in quote units: the spot price times the 1B supply. */
+export function marketCapOf(curve: CurveInfo, quoteDecimals: number): number {
+  return priceOf(curve, quoteDecimals) * 1_000_000_000;
+}
+
+/** What a balance is worth at the spot price, in quote wei, exactly. */
+export function valueOf(curve: CurveInfo, balance: bigint): bigint {
+  return (balance * curve.vEth) / curve.vToken;
 }
 
 /** Curve progress 0..100 (800M = graduation). */

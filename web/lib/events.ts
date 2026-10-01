@@ -341,9 +341,10 @@ export function useVolumes() {
   });
 }
 
-/** Price per whole token implied by each trade, in quote units. */
+/** Price per whole token implied by each trade, in quote units (a float, so a
+ *  quote with few decimals keeps its fraction). */
 export function pricePoints(trades: Trade[], quoteDecimals = 18): number[] {
   return trades
     .filter((t) => t.tokens > 0n)
-    .map((t) => Number((t.eth * 10n ** 18n) / t.tokens) / 10 ** quoteDecimals);
+    .map((t) => Number(t.eth) / 10 ** quoteDecimals / (Number(t.tokens) / 1e18));
 }

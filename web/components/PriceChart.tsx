@@ -31,9 +31,12 @@ export function PriceChart({
   const W = 640;
   const H = 160;
   const PAD = 8;
-  const min = Math.min(...points);
-  const max = Math.max(...points);
-  const span = max - min || max || 1;
+  const lo = Math.min(...points);
+  const hi = Math.max(...points);
+  // a flat line sits mid-height, with a little room around it, instead of on the floor
+  const min = lo === hi ? lo * 0.95 : lo;
+  const max = lo === hi ? hi * 1.05 : hi;
+  const span = max - min || 1;
 
   const x = (i: number) => PAD + (i * (W - PAD * 2)) / (points.length - 1);
   const y = (v: number) => H - PAD - ((v - min) * (H - PAD * 2)) / span;
@@ -56,8 +59,8 @@ export function PriceChart({
         <path d={d} fill="none" stroke="white" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
       </svg>
       <div className="flex justify-between font-mono text-[10px] text-zinc-600 mt-1">
-        <span>min {show(min)}</span>
-        <span>max {show(max)}</span>
+        <span>min {show(lo)}</span>
+        <span>max {show(hi)}</span>
       </div>
     </div>
   );

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useAccount, useBalance, useReadContracts } from "wagmi";
 import { launchTokenAbi } from "@/lib/abi";
-import { useTokens, spotPrice, useExplorer, useAppChain, useNativeSymbol, isQuoteAsset } from "@/lib/hooks";
+import { useTokens, valueOf, useExplorer, useAppChain, useNativeSymbol, isQuoteAsset } from "@/lib/hooks";
 import { fmtEth, fmtTokens, shortAddr } from "@/lib/format";
 import { TokenCard } from "@/components/TokenCard";
 import { TokenLogo } from "@/components/TokenLogo";
@@ -58,7 +58,7 @@ export default function ProfilePage() {
     .map((h) => ({
       ...h,
       // rough value estimate at spot price (ignores curve impact and fees)
-      value: (h.balance * spotPrice(h.token.curve)) / 10n ** 18n,
+      value: valueOf(h.token.curve, h.balance),
     }));
 
   return (
