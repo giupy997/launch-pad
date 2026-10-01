@@ -76,7 +76,7 @@ export const MIGRATION_TARGET: Record<number, string> = { [base.id]: "LitVM main
 
 // One address per chain: add future deployments here (multichain).
 export const LAUNCHPAD_ADDRESS: Record<number, `0x${string}` | undefined> = {
-  [base.id]: "0x0ba4dD0782e10a1D3946531dACC12F3797b74955", // v9 quoted in cbLTC, owned by the timelock 0xb97a4A1e998198bE8926a316361a4F3720f7d92c (24 h); UniV2Migrator 0x4D3C63F873bc2aC79E529C8003321d60643a4025 → Uniswap v2 pools; zap below
+  [base.id]: "0xcaB79e85BfC71C30E5BA65d35e1a2e2D909C42EF", // v9 quoted in cbLTC (60 virtual), owned by the timelock 0x24dc2a849D3dbD93d8051d6C8d3215Be718B6Dd8 (24 h); UniV2Migrator 0x92329D494D4D098C95A87E381a4D60CA666edb1b → Uniswap v2 pools; zap below
   [giwaSepolia.id]: "0x8E1a1308E3b176528Ee9278d7a531F185F9fBeFD",
   [robinhood.id]: "0x4A84c7B0dc45a473eA67f56617BC5903CA2c001c", // v7.4
   [litvmTestnet.id]: "0x4D3C63F873bc2aC79E529C8003321d60643a4025", // v7.7 (migrateToken bound to the ledger snapshot); UniV2Migrator 0xE34b882BD48D3b13A92C5A7C99469485d1761776 → Lester Labs v2 router
@@ -87,14 +87,14 @@ export const LAUNCHPAD_ADDRESS: Record<number, `0x${string}` | undefined> = {
  *  relaunched under the same name). They stay on the chain, their page stays
  *  reachable by link with a notice, holders can still sell on the curve. */
 export const HIDDEN_TOKENS: Record<number, `0x${string}`[]> = {
-  [base.id]: ["0x948c93A4b9427F231B0CC11716Fd0c7186fc9e00"], // the first Notus, relaunched
+  [base.id]: [], // (the first Notus lived on the pad before this one)
 };
 export function isHiddenToken(chainId: number, token: string): boolean {
   return (HIDDEN_TOKENS[chainId] ?? []).some((t) => t.toLowerCase() === token.toLowerCase());
 }
 
 export const LAUNCHPAD_DEPLOY_BLOCK: Record<number, bigint> = {
-  [base.id]: 52_009_454n,
+  [base.id]: 52_045_689n,
   [giwaSepolia.id]: 31_997_798n, // v7.1
   [robinhood.id]: 61_447_720n, // v7.4
   [litvmTestnet.id]: 55_934_572n, // v7.7 (the v7.6 pad 0xcdF1…6725, block 55_461_046, and the v7.5 pad 0x2cF3…9580 are retired)
@@ -235,7 +235,7 @@ export function rwaLogo(asset: QuoteAssetInfo): string | undefined {
 // Slipstream, where cbLTC's liquidity is (SlipstreamZapRouter speaks that
 // router's shape; both quoters answer QuoterV2's ABI).
 export const ZAP_ROUTER: Record<number, `0x${string}` | undefined> = {
-  [base.id]: "0xd7404Fe1aA4aAB4d27D1843c46e0b8cadA333C55", // SlipstreamZapRouter → Aerodrome, for the v9 pad
+  [base.id]: "0x2C3861638055A82782B8d30471c153B2DA00e756", // SlipstreamZapRouter → Aerodrome, for the v9 pad
   [robinhood.id]: "0xfd0C942E3DB34672715B862A8e19838bC9EDa7B5", // v7.4
 };
 export const UNISWAP_QUOTER: Record<number, `0x${string}` | undefined> = {

@@ -17,14 +17,14 @@ import {SlipstreamZapRouter} from "../src/SlipstreamZapRouter.sol";
 /// mainnet — is public for TIMELOCK_DELAY before it lands.
 ///
 ///   cd contracts && source .env && \
-///   [TREASURY=0x...] [TIMELOCK_DELAY=86400] [CBLTC_VIRTUAL=3000000000] forge script script/DeployBase.s.sol \
+///   [TREASURY=0x...] [TIMELOCK_DELAY=86400] [CBLTC_VIRTUAL=6000000000] forge script script/DeployBase.s.sol \
 ///     --rpc-url base --private-key "$PRIVATE_KEY" --broadcast
 ///
 /// TREASURY defaults to the Notus treasury below.
 ///
 /// CBLTC_VIRTUAL is the virtual reserve a cbLTC curve opens with, in cbLTC
-/// units (8 decimals): 30 cbLTC by default — about $2K of opening market cap
-/// with LTC at $66, ~96 LTC raised to graduate. cbLTC is the pad's only
+/// units (8 decimals): 60 cbLTC by default — about 57 cbLTC of opening
+/// market cap, ~192 cbLTC raised to graduate. cbLTC is the pad's only
 /// quote: the native one is switched off, so no coin can be created that
 /// the migration would leave behind. TIMELOCK_DELAY defaults to 24 hours;
 /// PROPOSER (default the deployer) may schedule and cancel, anyone may
@@ -51,7 +51,7 @@ contract DeployBase is Script {
 
     function run() external {
         address treasury = vm.envOr("TREASURY", TREASURY_DEFAULT);
-        uint256 virtualReserve = vm.envOr("CBLTC_VIRTUAL", uint256(30 * 1e8));
+        uint256 virtualReserve = vm.envOr("CBLTC_VIRTUAL", uint256(60 * 1e8));
         uint256 delay = vm.envOr("TIMELOCK_DELAY", uint256(24 hours));
         address proposer = vm.envOr("PROPOSER", msg.sender);
         require(CBLTC.code.length > 0, "no cbLTC at its address: is this Base?");
