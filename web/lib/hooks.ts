@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { keepPreviousData } from "@tanstack/react-query";
 import { useChainId, useReadContract, useReadContracts } from "wagmi";
 import { launchpadAbi, launchTokenAbi } from "./abi";
-import { APP_CHAINS, DEFAULT_CHAIN, LAUNCHPAD_ADDRESS, QUOTE_ASSETS, VISIBLE_CHAINS } from "./config";
+import { APP_CHAINS, DEFAULT_CHAIN, LAUNCHPAD_ADDRESS, QUOTE_ASSETS, VISIBLE_CHAINS, isHiddenToken } from "./config";
 
 /** Any chain the app is wired for (the pages still special-case Robinhood's assets). */
 export type AppChain = (typeof APP_CHAINS)[number];
@@ -156,12 +156,13 @@ export function useTokens() {
     query: { enabled: n > 0, ...IMMUTABLE, placeholderData: keepPreviousData },
   });
 
+  const chainId = useAppChain().id;
   const tokenAddrs = useMemo(
     () =>
       (addrs ?? [])
         .map((r) => (r.status === "success" ? (r.result as `0x${string}`) : null))
-        .filter((a): a is `0x${string}` => a !== null),
-    [addrs]
+        .filter((a): a is `0x${string}` => a !== null && !isHiddenToken(chainId, a)),
+    [addrs, chainId]
   );
 
   // Three tiers so the recurring RPC load stays light: name/symbol once per

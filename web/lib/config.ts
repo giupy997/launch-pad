@@ -83,6 +83,16 @@ export const LAUNCHPAD_ADDRESS: Record<number, `0x${string}` | undefined> = {
 };
 
 // Launchpad deployment blocks: where on-chain event scans start.
+/** Coins the site does not list: withdrawn by their creator (a false start,
+ *  relaunched under the same name). They stay on the chain, their page stays
+ *  reachable by link with a notice, holders can still sell on the curve. */
+export const HIDDEN_TOKENS: Record<number, `0x${string}`[]> = {
+  [base.id]: ["0x948c93A4b9427F231B0CC11716Fd0c7186fc9e00"], // the first Notus, relaunched
+};
+export function isHiddenToken(chainId: number, token: string): boolean {
+  return (HIDDEN_TOKENS[chainId] ?? []).some((t) => t.toLowerCase() === token.toLowerCase());
+}
+
 export const LAUNCHPAD_DEPLOY_BLOCK: Record<number, bigint> = {
   [base.id]: 52_009_454n,
   [giwaSepolia.id]: 31_997_798n, // v7.1

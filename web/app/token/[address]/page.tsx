@@ -16,7 +16,7 @@ import {
   isQuoteAsset,
   IMMUTABLE,
 } from "@/lib/hooks";
-import { PRE_IPO_DISCLAIMER } from "@/lib/config";
+import { PRE_IPO_DISCLAIMER, isHiddenToken } from "@/lib/config";
 import { fmtUnits, fmtTokens, shortAddr } from "@/lib/format";
 import { TradeBox } from "@/components/TradeBox";
 import { TokenLogo } from "@/components/TokenLogo";
@@ -127,6 +127,13 @@ export default function TokenPage({ params }: { params: Promise<{ address: strin
   return (
     <div className="grid gap-8 lg:grid-cols-[1fr_360px]">
       <div className="space-y-6 order-2 lg:order-1">
+        {isHiddenToken(chain.id, token) && (
+          <div className="rounded-xl border border-white/20 bg-black p-4 text-sm text-zinc-300">
+            <div className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">Not listed</div>
+            Its creator withdrew this coin and relaunched it; it is not shown on the explore page. It still trades on its
+            curve for whoever holds it.
+          </div>
+        )}
         <MigrationNotice token={token} symbol={symbol} compact />
         <div className="flex items-start gap-4">
           <TokenLogo uri={meta.logoURI} symbol={symbol} size={72} />
