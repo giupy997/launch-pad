@@ -1,5 +1,10 @@
 # Verifying the Base v9 stack on Blockscout, by hand
 
+**Done on 2026-10-01**: every contract below is verified on base.blockscout.com; the
+LaunchToken through Sourcify (`forge verify-contract --verifier sourcify`), which
+Blockscout imports, after the public API's rate limit refused the direct route.
+Kept for the next deployment.
+
 Deployed on Base (chain 8453) at block 52,045,689 from the sources at commit
 `771546c` (the contracts are those of `cd6db6b`, unchanged since). On each
 contract's page at https://base.blockscout.com → *Verify & publish* →
