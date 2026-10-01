@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useTokens, useAppChain, isQuoteAsset } from "@/lib/hooks";
+import { useVolumes } from "@/lib/events";
+import { useLtcPrice } from "@/lib/price";
 import { CHAIN_LABEL, MIGRATION_TARGET, QUOTE_ASSETS } from "@/lib/config";
 import { TokenCard } from "@/components/TokenCard";
 import { NotDeployedNotice } from "@/components/NotDeployedNotice";
@@ -11,7 +13,9 @@ import { MigrationNotice } from "@/components/MigrationNotice";
 type Sort = "newest" | "raised" | "progress";
 
 export default function Explore() {
-  const { tokens: allTokens, isLoading, count } = useTokens();
+  const { tokens: allTokens, isLoading, isError, count } = useTokens();
+  const { data: volumes } = useVolumes();
+  const usd = useLtcPrice().data?.usd ?? null;
   const chain = useAppChain();
   // what the coins are quoted in: the chain's first quote asset, else its gas coin
   const quote = QUOTE_ASSETS[chain.id]?.[0]?.symbol ?? chain.nativeCurrency.symbol;
@@ -133,13 +137,17 @@ export default function Explore() {
         )}
         {!isLoading && sorted.length === 0 && (
           <p className="text-zinc-500">
-            {q ? "No tokens match your search." : "No tokens yet. Be the first to launch."}
+            {isError
+              ? "The chain is not answering right now; trying again."
+              : q
+                ? "No tokens match your search."
+                : "No tokens yet. Be the first to launch."}
           </p>
         )}
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {sorted.map((t) => (
-            <TokenCard key={t.address} token={t} />
+            <TokenCard key={t.address} token={t} volume24h={volumes?.byToken[t.address.toLowerCase()] ?? (volumes ? 0n : undefined)} usd={usd} />
           ))}
         </div>
       </section>

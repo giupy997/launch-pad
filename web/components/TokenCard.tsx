@@ -1,14 +1,27 @@
 "use client";
 
 import Link from "next/link";
-import { type TokenInfo, spotPrice, curveProgress, quoteInfo, useAppChain } from "@/lib/hooks";
+import { type TokenInfo, marketCap, curveProgress, quoteInfo, useAppChain } from "@/lib/hooks";
 import { fmtUnits, shortAddr } from "@/lib/format";
 import { TokenLogo } from "@/components/TokenLogo";
+import { fmtQuoteMoney, isLtcQuote } from "@/lib/price";
 
-export function TokenCard({ token: t }: { token: TokenInfo }) {
+export function TokenCard({
+  token: t,
+  volume24h,
+  usd,
+}: {
+  token: TokenInfo;
+  /** the last day's trading in quote wei; undefined while unknown */
+  volume24h?: bigint;
+  /** the LTC price, for LTC-quoted coins; null while unknown */
+  usd?: number | null;
+}) {
   const progress = curveProgress(t.curve);
   const chain = useAppChain();
   const q = quoteInfo(chain.id, t.curve.quoteAsset);
+  const mcap = marketCap(t.curve);
+  const inDollars = !!usd && isLtcQuote(q.symbol);
   return (
     <Link
       href={`/token/${t.address}`}
@@ -44,12 +57,20 @@ export function TokenCard({ token: t }: { token: TokenInfo }) {
       <div className="mt-1 font-mono text-xs text-zinc-500">by {shortAddr(t.curve.creator)}</div>
       <div className="mt-5 flex items-end justify-between gap-3">
         <div>
-          <div className="label">Price</div>
-          <div className="mt-0.5 display text-2xl leading-none text-white">{fmtUnits(spotPrice(t.curve), q.decimals)} <span className="text-base text-zinc-400">{q.symbol}</span></div>
+          <div className="label">Market cap</div>
+          <div className="mt-0.5 display text-2xl leading-none text-white">{fmtQuoteMoney(mcap, q.decimals, q.symbol, usd)}</div>
+          {inDollars && (
+            <div className="mt-1 font-mono text-[11px] text-zinc-500">
+              {fmtUnits(mcap, q.decimals)} {q.symbol}
+            </div>
+          )}
         </div>
         <div className="text-right">
-          <div className="label">Raised</div>
-          <div className="mt-0.5 font-mono text-sm text-zinc-300">{fmtUnits(t.curve.realEth, q.decimals)} {q.symbol}</div>
+          <div className="label">Volume 24h</div>
+          <div className="mt-0.5 font-mono text-sm text-zinc-300">
+            {volume24h === undefined ? "…" : volume24h === 0n ? "—" : fmtQuoteMoney(volume24h, q.decimals, q.symbol, usd)}
+          </div>
+          <div className="mt-1 font-mono text-[11px] text-zinc-500">raised {fmtUnits(t.curve.realEth, q.decimals)} {q.symbol}</div>
         </div>
       </div>
       <div className="mt-4 bar-track">

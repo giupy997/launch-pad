@@ -30,13 +30,15 @@ import { CashbackCard } from "@/components/CashbackCard";
 import { MigrationNotice } from "@/components/MigrationNotice";
 import { FeePanel } from "@/components/FeePanel";
 import { parseFeeConfig, NO_TAX, treasuryPct } from "@/lib/curve";
+import { useLtcPrice, fmtQuoteMoney, isLtcQuote } from "@/lib/price";
 import { useAccount } from "wagmi";
 
 export default function TokenPage({ params }: { params: Promise<{ address: string }> }) {
   const { address: addressParam } = use(params);
   const token = addressParam as `0x${string}`;
   const { address: user } = useAccount();
-  const { data: tradeData } = useTrades(token);
+  const { data: tradeData, isPending: tradesPending } = useTrades(token);
+  const usd = useLtcPrice().data?.usd ?? null;
   const pad = useLaunchpadAddress() ?? ("0x0000000000000000000000000000000000000000" as `0x${string}`);
   const explorer = useExplorer();
   const chain = useAppChain();
@@ -193,8 +195,16 @@ export default function TokenPage({ params }: { params: Promise<{ address: strin
         {meta.livestream && <LiveStream url={meta.livestream} />}
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <Stat label="Price" value={`${fmtUnits(spotPrice(curve), q.decimals)} ${q.symbol}`} />
-          <Stat label="Raised" value={`${fmtUnits(curve.realEth, q.decimals)} ${q.symbol}`} />
+          <Stat
+            label="Market cap"
+            value={fmtQuoteMoney(spotPrice(curve) * 1_000_000_000n, q.decimals, q.symbol, usd)}
+            sub={`${usd && isLtcQuote(q.symbol) ? `${fmtUnits(spotPrice(curve) * 1_000_000_000n, q.decimals)} ${q.symbol} · ` : ""}${fmtUnits(spotPrice(curve), q.decimals)} ${q.symbol} per coin`}
+          />
+          <Stat
+            label="Raised"
+            value={fmtQuoteMoney(curve.realEth, q.decimals, q.symbol, usd)}
+            sub={usd && isLtcQuote(q.symbol) ? `${fmtUnits(curve.realEth, q.decimals)} ${q.symbol}` : undefined}
+          />
           <Stat label="Sold" value={fmtTokens(curve.sold)} />
           <Stat label="Curve" value={curve.graduated ? "Graduated" : `${progress.toFixed(1)}%`} />
         </div>
@@ -218,6 +228,7 @@ export default function TokenPage({ params }: { params: Promise<{ address: strin
           quoteSymbol={q.symbol}
           quoteDecimals={q.decimals}
           truncated={tradeData?.truncated ?? false}
+          loading={tradesPending}
         />
       </div>
 
@@ -249,11 +260,12 @@ export default function TokenPage({ params }: { params: Promise<{ address: strin
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div className="card p-3">
       <div className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">{label}</div>
       <div className="mt-1 font-semibold text-sm">{value}</div>
+      {sub && <div className="mt-0.5 font-mono text-[10px] text-zinc-500 truncate">{sub}</div>}
     </div>
   );
 }

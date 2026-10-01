@@ -12,11 +12,13 @@ import {
   type PublicClient,
   type RpcLog,
 } from "viem";
-import { LAUNCHPAD_DEPLOY_BLOCK } from "./config";
+import { BLOCK_SECONDS, LAUNCHPAD_DEPLOY_BLOCK, RPC_URLS } from "./config";
+import { fallback } from "viem";
 import { useAppChain, useLaunchpadAddress } from "./hooks";
 
 export type Trade = {
   type: "buy" | "sell";
+  token: `0x${string}`;
   trader: `0x${string}`;
   eth: bigint;
   tokens: bigint;
@@ -42,8 +44,11 @@ const scanClients = new Map<number, PublicClient>();
 function scanClient(chain: Chain): PublicClient {
   let c = scanClients.get(chain.id);
   if (!c) {
-    // generous timeout: some ranges take >10s when the RPC throttles
-    c = createPublicClient({ chain, transport: http(undefined, { timeout: 25_000, retryCount: 2 }) });
+    // generous timeout: some ranges take >10s when the RPC throttles; chains with
+    // more than one RPC fall through to the next when one refuses
+    const urls = RPC_URLS[chain.id];
+    const opts = { timeout: 25_000, retryCount: 2 };
+    c = createPublicClient({ chain, transport: urls ? fallback(urls.map((u) => http(u, opts))) : http(undefined, opts) });
     scanClients.set(chain.id, c);
   }
   return c;
@@ -60,7 +65,7 @@ async function scanTrades(
   client: PublicClient,
   chainId: number,
   pad: `0x${string}`,
-  token: `0x${string}`,
+  token: `0x${string}` | null,
   fromBlock: bigint,
   toBlock: bigint
 ): Promise<{ trades: Trade[]; truncated: boolean }> {
@@ -71,8 +76,9 @@ async function scanTrades(
   // everything from there on.
   const MAX_CHUNKS = 12;
   const CONCURRENCY = 6; // higher trips public-RPC rate limits
-  const topicToken = `0x${token.slice(2).toLowerCase().padStart(64, "0")}` as `0x${string}`;
-  const topics = [[topicBought, topicSold], topicToken];
+  // every trade of one token, or (no token) every trade of the pad
+  const topics: (`0x${string}` | `0x${string}`[])[] = [[topicBought, topicSold]];
+  if (token) topics.push(`0x${token.slice(2).toLowerCase().padStart(64, "0")}` as `0x${string}`);
 
   if (!needsChunking.has(chainId)) {
     try {
@@ -130,7 +136,12 @@ function decodeTrades(logs: RpcLog[]): Trade[] {
   return logs
     .map((l) => {
       const d = decodeEventLog({ abi: tradeAbi, data: l.data, topics: l.topics as [`0x${string}`, ...`0x${string}`[]] });
-      const base = { block: BigInt(l.blockNumber ?? "0x0"), tx: l.transactionHash as `0x${string}`, timestamp: 0 };
+      const base = {
+        token: (d.args as { token: `0x${string}` }).token,
+        block: BigInt(l.blockNumber ?? "0x0"),
+        tx: l.transactionHash as `0x${string}`,
+        timestamp: 0,
+      };
       if (d.eventName === "Bought") {
         const a = d.args as { buyer: `0x${string}`; ethIn: bigint; tokensOut: bigint };
         return { type: "buy" as const, trader: a.buyer, eth: a.ethIn, tokens: a.tokensOut, ...base };
@@ -147,7 +158,7 @@ function decodeTrades(logs: RpcLog[]): Trade[] {
 // instead of re-scanning the whole history — the difference between tens of
 // seconds and milliseconds on the token page.
 
-const CACHE_PREFIX = "notus.trades.v1.";
+const CACHE_PREFIX = "notus.trades.v2.";
 const CACHE_MAX_TRADES = 400; // enough for the chart + feed; keeps quota safe
 
 type TradeCache = { last: bigint; trades: Trade[]; truncated: boolean };
@@ -163,13 +174,14 @@ function loadCache(key: string): TradeCache | null {
     const p = JSON.parse(raw) as {
       last: string;
       truncated: boolean;
-      trades: [string, `0x${string}`, string, string, string, `0x${string}`, number][];
+      trades: [string, `0x${string}`, string, string, string, `0x${string}`, number, `0x${string}`][];
     };
     return {
       last: BigInt(p.last),
       truncated: p.truncated,
-      trades: p.trades.map(([type, trader, eth, tokens, block, tx, timestamp]) => ({
+      trades: p.trades.map(([type, trader, eth, tokens, block, tx, timestamp, token]) => ({
         type: type as "buy" | "sell",
+        token,
         trader,
         eth: BigInt(eth),
         tokens: BigInt(tokens),
@@ -196,6 +208,7 @@ function saveCache(key: string, cache: TradeCache) {
       t.block.toString(),
       t.tx,
       t.timestamp,
+      t.token,
     ]),
   });
   try {
@@ -267,6 +280,63 @@ export function useTrades(token: `0x${string}`) {
       const result = { trades, truncated };
       saveCache(key, { last: latest, ...result });
       return result;
+    },
+  });
+}
+
+/** The last day's trading of every coin on the pad, summed per token in quote
+ *  wei (what buyers paid plus what sellers received): one scan of the recent
+ *  blocks in modest chunks, refreshed every minute. For the explore cards. */
+export function useVolumes() {
+  const chain = useAppChain();
+  const pad = useLaunchpadAddress();
+  const deployBlock = LAUNCHPAD_DEPLOY_BLOCK[chain.id] ?? 0n;
+  return useQuery({
+    queryKey: ["volumes-24h", chain.id],
+    enabled: !!pad,
+    refetchInterval: 60_000,
+    placeholderData: (prev) => prev,
+    queryFn: async (): Promise<{ byToken: Record<string, bigint>; trades: number }> => {
+      const byToken: Record<string, bigint> = {};
+      if (!pad) return { byToken, trades: 0 };
+      const client = scanClient(chain);
+      const latest = await client.getBlockNumber();
+      const perDay = BigInt(Math.round(86_400 / (BLOCK_SECONDS[chain.id] ?? 2)));
+      const from = latest > deployBlock + perDay ? latest - perDay : deployBlock;
+      // chunks small enough for any public RPC's getLogs range cap, a few at a time
+      const CHUNK = 9_000n;
+      const ranges: { lo: bigint; hi: bigint }[] = [];
+      for (let lo = from; lo <= latest; lo += CHUNK) ranges.push({ lo, hi: lo + CHUNK - 1n > latest ? latest : lo + CHUNK - 1n });
+      const logs: RpcLog[][] = new Array(ranges.length);
+      const topics: (`0x${string}` | `0x${string}`[])[] = [[topicBought, topicSold]];
+      let next = 0;
+      await Promise.all(
+        Array.from({ length: Math.min(3, ranges.length) }, async () => {
+          while (next < ranges.length) {
+            const i = next++;
+            const params = {
+              address: pad,
+              fromBlock: numberToHex(ranges[i].lo),
+              toBlock: numberToHex(ranges[i].hi),
+              topics,
+            };
+            for (let attempt = 0; ; attempt++) {
+              try {
+                logs[i] = (await client.request({ method: "eth_getLogs", params: [params] })) as RpcLog[];
+                break;
+              } catch (e) {
+                if (attempt >= 2) throw e;
+              }
+            }
+          }
+        })
+      );
+      const trades = decodeTrades(logs.flat());
+      for (const t of trades) {
+        const k = t.token.toLowerCase();
+        byToken[k] = (byToken[k] ?? 0n) + t.eth;
+      }
+      return { byToken, trades: trades.length };
     },
   });
 }

@@ -354,35 +354,14 @@ export function useMigrated() {
   });
 }
 
-/** LTC in fiat, from the site (five-minute cache); null while unknown. */
-export function useLtcPrice() {
-  return useQuery({
-    queryKey: ["ltc-price"],
-    queryFn: async (): Promise<{ usd: number | null; eur: number | null }> => {
-      try {
-        const r = await fetch("/api/ltc-price");
-        if (r.ok) return (await r.json()) as { usd: number | null; eur: number | null };
-      } catch {}
-      return { usd: null, eur: null };
-    },
-    staleTime: 5 * 60_000,
-    refetchInterval: 5 * 60_000,
-  });
-}
+import { fmtUsd } from "@/lib/price";
+export { useLtcPrice, fmtUsd } from "@/lib/price";
 
 /** Fully diluted market cap in LTC: the spot price times the 1B supply. */
 export function marketCapLtc(c: Parameters<typeof spotPrice>[0]): number {
   return spotPrice(c) * 1_000_000_000;
 }
 
-/** "$12.3K" — the way meme-coin caps are read. */
-export function fmtUsd(n: number): string {
-  if (!(n > 0)) return "$0";
-  if (n < 1_000) return `$${n.toFixed(n < 10 ? 2 : 0)}`;
-  if (n < 1_000_000) return `$${(n / 1_000).toFixed(1)}K`;
-  if (n < 1_000_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
-  return `$${(n / 1_000_000_000).toFixed(2)}B`;
-}
 
 /** Traded LTC as the pages show it: in dollars when the price is known, else in LTC; a dash for nothing. */
 export function fmtVolume(lit: bigint, usd: number | null | undefined): string {

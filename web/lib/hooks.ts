@@ -135,7 +135,7 @@ export function parseMeta(result: unknown): TokenMeta {
 export function useTokens() {
   const pad = useLaunchpadAddress();
 
-  const { data: count } = useReadContract({
+  const { data: count, isPending: countPending, isError: countError } = useReadContract({
     address: pad,
     abi: launchpadAbi,
     functionName: "tokenCount",
@@ -230,7 +230,14 @@ export function useTokens() {
       .reverse(); // newest first
   }, [statics, curves, metas, tokenAddrs]);
 
-  return { tokens, isLoading: (staticsLoading || curvesLoading) && n > 0, count: n };
+  // until the count is in, the list is loading, not empty; a count that failed with nothing cached is an error
+  const isLoading = (!!pad && countPending) || ((staticsLoading || curvesLoading) && n > 0);
+  return { tokens, isLoading, isError: countError && count === undefined, count: n };
+}
+
+/** Fully diluted market cap in quote wei: the spot price times the 1B supply. */
+export function marketCap(curve: CurveInfo): bigint {
+  return spotPrice(curve) * 1_000_000_000n;
 }
 
 /** Spot price in wei per whole token (1e18). */

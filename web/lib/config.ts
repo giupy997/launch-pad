@@ -1,6 +1,6 @@
 import { defineChain } from "viem";
 import { base, mainnet, sepolia } from "viem/chains";
-import { cookieStorage, createConfig, createStorage, http, injected } from "wagmi";
+import { cookieStorage, createConfig, createStorage, fallback, http, injected } from "wagmi";
 import { walletConnect } from "wagmi/connectors";
 
 export const giwaSepolia = defineChain({
@@ -252,6 +252,17 @@ export const L1_STANDARD_BRIDGE: `0x${string}` =
 // parallel requests come back in a fraction of the time.
 const transport = () => http(undefined, { batch: { batchSize: 30, wait: 16 } });
 
+/** Chains with more than one RPC: the chain's own first, public ones behind
+ *  it, so a rate-limited or stalled endpoint costs a retry, not the page.
+ *  Every host here is also in the CSP (next.config.mjs). */
+export const RPC_URLS: Record<number, string[]> = {
+  [base.id]: ["https://mainnet.base.org", "https://base-rpc.publicnode.com", "https://base.llamarpc.com"],
+};
+const chainTransport = (chainId: number) => {
+  const urls = RPC_URLS[chainId];
+  return urls ? fallback(urls.map((u) => http(u, { batch: { batchSize: 30, wait: 16 } }))) : transport();
+};
+
 /** WalletConnect (mobile wallets, over a QR code or a deep link) needs a Reown
  *  Cloud project id (cloud.reown.com, free). Without one only wallets injected
  *  into the browser connect. */
@@ -278,7 +289,7 @@ export const config = createConfig({
   ],
   batch: { multicall: { wait: 16 } },
   transports: {
-    [base.id]: transport(),
+    [base.id]: chainTransport(base.id),
     [giwaSepolia.id]: transport(),
     [robinhood.id]: transport(),
     [litvmTestnet.id]: transport(),

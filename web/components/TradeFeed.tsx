@@ -10,12 +10,15 @@ export function TradeFeed({
   quoteSymbol: quoteSymbolProp,
   quoteDecimals = 18,
   truncated,
+  loading = false,
 }: {
   trades: Trade[];
   symbol: string;
   quoteSymbol?: string;
   quoteDecimals?: number;
   truncated: boolean;
+  /** the first scan of the chain is still running: not "no trades" yet */
+  loading?: boolean;
 }) {
   const explorer = useExplorer();
   const native = useNativeSymbol();
@@ -28,7 +31,7 @@ export function TradeFeed({
         Trades {trades.length > 0 && `(${trades.length}${truncated ? "+" : ""})`}
       </div>
       {recent.length === 0 && (
-        <p className="px-4 py-6 text-sm text-zinc-600">No trades yet.</p>
+        <p className="px-4 py-6 text-sm text-zinc-600">{loading ? "Reading the chain…" : "No trades yet."}</p>
       )}
       <ul className="divide-y divide-white/[0.06]">
         {recent.map((t) => (

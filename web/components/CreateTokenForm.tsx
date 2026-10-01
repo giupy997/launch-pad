@@ -16,7 +16,7 @@ import {
 } from "@/lib/config";
 import { TokenLogo } from "@/components/TokenLogo";
 import { processLogoFile, dataUriBytes } from "@/lib/image";
-import { fmtTokens } from "@/lib/format";
+import { fmtTokens, fmtUnits } from "@/lib/format";
 import { FeeSplitEditor, splitTotal, type SplitPct } from "@/components/FeeSplitEditor";
 import { feeLabel, treasuryPct } from "@/lib/curve";
 
@@ -154,6 +154,15 @@ export function CreateTokenForm() {
     { address: null, symbol: native, decimals: 18, kind: "native" as const },
   ];
   const quote = quoteAssets[Math.min(quoteIdx, quoteAssets.length - 1)];
+  // the virtual reserve a curve in this quote opens with, as the pad has it now (the timelock may change it)
+  const { data: virtualRaw } = useReadContract({
+    address: pad,
+    abi: launchpadAbi,
+    functionName: "quoteVirtualReserve",
+    args: [quote.address ?? ZERO_ADDRESS],
+    query: { enabled: deployed, staleTime: 60_000 },
+  });
+  const virtualReserve = (virtualRaw as bigint | undefined) ?? 0n;
   const isEthQuote = quote.address === null;
 
   function submit(e: React.FormEvent) {
@@ -499,7 +508,14 @@ export function CreateTokenForm() {
               }
               strong
             />
-            <Row k="Curve" v={isEthQuote ? `800M · graduates at ~4 ${native}` : `800M on the ${quote.symbol} curve`} />
+            {virtualReserve > 0n ? (
+              <>
+                <Row k="Opens with" v={`${fmtUnits(virtualReserve, quote.decimals)} ${quote.symbol} virtual reserve`} />
+                <Row k="Curve raises" v={`~${fmtUnits((virtualReserve * 32n) / 10n, quote.decimals)} ${quote.symbol}, then it graduates`} />
+              </>
+            ) : (
+              <Row k="Curve" v={isEthQuote ? `800M · graduates at ~4 ${native}` : `800M on the ${quote.symbol} curve`} />
+            )}
             <Row
               k="Liquidity"
               v={chain.id === robinhood.id ? "Locked forever on Uniswap v4" : "Locked at graduation"}
