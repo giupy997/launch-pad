@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { encodePacked, erc20Abi, maxUint256, parseUnits } from "viem";
+import { useEffect, useRef, useState } from "react";
+import { encodePacked, erc20Abi, formatUnits, maxUint256, parseUnits } from "viem";
 import {
   useAccount,
   useReadContract,
@@ -96,6 +96,8 @@ export function TradeBox({
   const [mode, setMode] = useState<"buy" | "sell">("buy");
   const [slippageBps, setSlippageBps] = useSlippageBps();
   const [amount, setAmount] = useState("");
+  // "Max" pressed: the trade moves the whole live balance; the field shows it rounded
+  const [maxOn, setMaxOn] = useState(false);
   const [payWithEth, setPayWithEth] = useState(true);
 
   const q = quoteInfo(chain.id, curve.quoteAsset);
@@ -148,26 +150,6 @@ export function TradeBox({
         : encodePacked(["address", "uint24", "address"], [wethAddr, zapFees![0], q.address])
       : undefined;
 
-  const parsed = safeParse(amount, mode === "buy" ? (zapMode ? 18 : q.decimals) : 18);
-
-  // ETH -> quote estimate via the Uniswap quoter (pool route)
-  const { data: quoterSim } = useSimulateContract({
-    address: quoterAddr,
-    abi: quoterAbi,
-    functionName: "quoteExactInput",
-    args: zapPath ? [zapPath, parsed] : undefined,
-    chainId: chain.id,
-    query: { enabled: zapMode && !curveZapMode && !!zapPath && parsed > 0n, refetchInterval: 10_000 },
-  });
-
-  // ETH -> pre-market estimate straight from its own curve (curve route): the pad's arithmetic, run here
-  const preQuoteOut: bigint | undefined =
-    curveZapMode && preCurveRaw && parsed > 0n
-      ? quoteBuy(parseCurve(preCurveRaw), parsed, platformFeeBps, preFeesRaw ? parseFeeConfig(preFeesRaw) : NO_TAX)
-      : undefined;
-
-  const zapQuoteOut = curveZapMode ? preQuoteOut : (quoterSim?.result?.[0] as bigint | undefined);
-
   const { data: balance, refetch: refetchBalance } = useReadContract({
     address: token,
     abi: launchTokenAbi,
@@ -201,6 +183,44 @@ export function TradeBox({
     query: { enabled: !!user && !!q.address, refetchInterval: 5_000 },
   });
 
+  // the balance "Max" refers to on this side, if any (none when paying with ETH)
+  const maxWei: bigint | undefined =
+    mode === "sell"
+      ? (balance as bigint | undefined)
+      : !isEthQuote && !zapMode
+        ? (quoteBalance as bigint | undefined)
+        : undefined;
+  const inputDecimals = mode === "buy" ? (zapMode ? 18 : q.decimals) : 18;
+  const shown = maxOn && maxWei !== undefined ? fmtInput(maxWei, inputDecimals) : amount;
+  const parsed = maxOn && maxWei !== undefined ? maxWei : safeParse(amount, inputDecimals);
+
+  function editAmount(v: string) {
+    setMaxOn(false);
+    setAmount(v);
+  }
+  function fillMax(wei: bigint, decimals: number) {
+    setMaxOn(true);
+    setAmount(fmtInput(wei, decimals));
+  }
+
+  // ETH -> quote estimate via the Uniswap quoter (pool route)
+  const { data: quoterSim } = useSimulateContract({
+    address: quoterAddr,
+    abi: quoterAbi,
+    functionName: "quoteExactInput",
+    args: zapPath ? [zapPath, parsed] : undefined,
+    chainId: chain.id,
+    query: { enabled: zapMode && !curveZapMode && !!zapPath && parsed > 0n, refetchInterval: 10_000 },
+  });
+
+  // ETH -> pre-market estimate straight from its own curve (curve route): the pad's arithmetic, run here
+  const preQuoteOut: bigint | undefined =
+    curveZapMode && preCurveRaw && parsed > 0n
+      ? quoteBuy(parseCurve(preCurveRaw), parsed, platformFeeBps, preFeesRaw ? parseFeeConfig(preFeesRaw) : NO_TAX)
+      : undefined;
+
+  const zapQuoteOut = curveZapMode ? preQuoteOut : (quoterSim?.result?.[0] as bigint | undefined);
+
   // what the curve pays or gives, computed here from its reserves and the coin's fees
   const buyAmountForQuote = zapMode ? (zapQuoteOut ?? 0n) : parsed;
   const buyQuote: bigint | undefined =
@@ -213,18 +233,38 @@ export function TradeBox({
 
   // What the last signed transaction was. A confirmed approval refreshes the
   // allowance at once (not on the next poll) so the button turns into
-  // Buy/Sell; a confirmed trade refreshes the balances.
+  // Buy/Sell; a confirmed trade refreshes the balances and clears the field.
   const [lastAction, setLastAction] = useState<"approve" | "trade">("trade");
+  const handled = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (!isSuccess) return;
+    if (!isSuccess || !hash || handled.current === hash) return;
+    handled.current = hash;
     if (lastAction === "approve") {
       refetchAllowance();
       refetchQuoteAllowance();
     } else {
       refetchBalance();
       refetchQuoteBalance();
+      setMaxOn(false);
+      setAmount("");
     }
-  }, [isSuccess, lastAction, refetchAllowance, refetchQuoteAllowance, refetchBalance, refetchQuoteBalance]);
+  }, [isSuccess, hash, lastAction, refetchAllowance, refetchQuoteAllowance, refetchBalance, refetchQuoteBalance]);
+
+  // Buy and Sell take different units, so the field and the last
+  // transaction's outcome don't carry over from one side to the other.
+  function switchMode(m: "buy" | "sell") {
+    if (m === mode) return;
+    setMode(m);
+    setMaxOn(false);
+    setAmount("");
+    reset();
+  }
+  function switchPayWith(eth: boolean) {
+    if (eth === payWithEth) return;
+    setPayWithEth(eth);
+    setMaxOn(false);
+    setAmount("");
+  }
 
   // Approvals are granted once, unlimited, to the pad: it only ever pulls
   // tokens from msg.sender inside sell/buyWithQuote, so the allowance is
@@ -338,10 +378,10 @@ export function TradeBox({
   return (
     <div className="card p-5 h-fit space-y-4">
       <div className="grid grid-cols-2 rounded-lg bg-zinc-900 p-1 text-sm font-semibold">
-        <Tab active={mode === "buy"} onClick={() => setMode("buy")}>
+        <Tab active={mode === "buy"} onClick={() => switchMode("buy")}>
           Buy
         </Tab>
-        <Tab active={mode === "sell"} onClick={() => setMode("sell")}>
+        <Tab active={mode === "sell"} onClick={() => switchMode("sell")}>
           Sell
         </Tab>
       </div>
@@ -356,7 +396,7 @@ export function TradeBox({
               <button
                 key={label}
                 type="button"
-                onClick={() => setPayWithEth(i === 0)}
+                onClick={() => switchPayWith(i === 0)}
                 className={`rounded-full px-2.5 py-1 text-xs font-mono ${
                   (i === 0) === payWithEth
                     ? "bg-white text-black"
@@ -370,23 +410,27 @@ export function TradeBox({
         )}
         <div>
           <input
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
+            value={shown}
+            onChange={(e) => editAmount(e.target.value)}
             placeholder={mode === "buy" ? `${zapMode ? native : q.symbol} to spend` : `${symbol} to sell`}
             type="number"
             step="any"
             min="0"
             className="w-full rounded-lg input px-3 py-2 text-sm focus:border-white outline-none"
           />
-          {mode === "buy" && !isEthQuote && quoteBalance !== undefined && (
-            <p className="mt-1 text-xs text-zinc-500">
-              Balance: {fmtUnits(quoteBalance as bigint, q.decimals)} {q.symbol}
-            </p>
+          {mode === "buy" && !isEthQuote && !zapMode && quoteBalance !== undefined && (
+            <button
+              type="button"
+              onClick={() => fillMax(quoteBalance as bigint, q.decimals)}
+              className="mt-1 text-xs text-zinc-500 underline"
+            >
+              Max: {fmtUnits(quoteBalance as bigint, q.decimals)} {q.symbol}
+            </button>
           )}
           {mode === "sell" && balance !== undefined && (
             <button
               type="button"
-              onClick={() => setAmount(fmtRaw(balance as bigint))}
+              onClick={() => fillMax(balance as bigint, 18)}
               className="mt-1 text-xs text-zinc-500 underline"
             >
               Max: {fmtTokens(balance as bigint)} {symbol}
@@ -497,10 +541,9 @@ function safeParse(v: string, decimals: number): bigint {
   }
 }
 
-function fmtRaw(wei: bigint): string {
-  // full-precision decimal string for the input field
-  const s = wei.toString().padStart(19, "0");
-  const int = s.slice(0, -18);
-  const frac = s.slice(-18).replace(/0+$/, "");
-  return frac ? `${int}.${frac}` : int;
+/** a balance as the input field shows it: at most four decimals, no trailing zeros */
+function fmtInput(wei: bigint, decimals: number): string {
+  const [int, frac = ""] = formatUnits(wei, decimals).split(".");
+  const f = frac.slice(0, 4).replace(/0+$/, "");
+  return f ? `${int}.${f}` : int;
 }

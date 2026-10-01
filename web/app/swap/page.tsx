@@ -207,7 +207,14 @@ export default function SwapPage() {
             From
           </label>
           <div className="flex gap-2">
-            <TokenPicker value={from} onChange={(v) => setFrom(v)} tokens={live} />
+            <TokenPicker
+              value={from}
+              onChange={(v) => {
+                setFrom(v);
+                setAmount("");
+              }}
+              tokens={live}
+            />
             <input
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
