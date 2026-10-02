@@ -39,14 +39,15 @@ export type PointsChain = {
 };
 
 export const POINTS_CHAINS: Record<string, PointsChain> = {
-  // LitVM's Liteforge testnet: the v7.7 pad, quoted in native zkLTC. Season 0,
-  // the rehearsal, from the pad's deploy block until LitVM mainnet opens.
+  // LitVM's Liteforge testnet: the v9 rehearsal pad (Notus's twin, migrated
+  // from Base at scale 1:100), quoted in native zkLTC. Season 0, the
+  // rehearsal, from the pad's deploy block until LitVM mainnet opens.
   liteforge: {
     key: "liteforge",
     chainId: 4441,
     name: "LitVM Liteforge testnet",
-    pad: "0x4D3C63F873bc2aC79E529C8003321d60643a4025",
-    deployBlock: 55_934_572n,
+    pad: "0xcaB79e85BfC71C30E5BA65d35e1a2e2D909C42EF",
+    deployBlock: 56_991_201n,
     rpcs: ["https://liteforge.rpc.caldera.xyz/infra-partner-http"],
     quoteDecimals: 18,
     quoteSymbol: "zkLTC",
@@ -54,7 +55,7 @@ export const POINTS_CHAINS: Record<string, PointsChain> = {
     chunk: 9_000n, // the node took these whole during the backfill
     lag: 60n,
     hidden: [],
-    season: { number: 0, name: "Season 0", start: 55_934_572n, end: null, rehearsal: true },
+    season: { number: 0, name: "Season 0", start: 56_991_201n, end: null, rehearsal: true },
     explorer: "https://liteforge.explorer.caldera.xyz",
   },
   // Base: the v9 pad in cbLTC. No season here (the features come with
