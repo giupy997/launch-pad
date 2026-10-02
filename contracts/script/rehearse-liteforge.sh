@@ -16,7 +16,10 @@
 # address and rerun with TARGET=<the pad it deployed> to skip step 1).
 #
 # Variables, all optional: TARGET (a receiving pad to reuse), SRC_RPC, DST_RPC,
-# SRC_PAD, SRC_QUOTE, SRC_FROM (the Base pad, its quote, its deploy block).
+# SRC_PAD, SRC_QUOTE, SRC_FROM (the Base pad, its quote, its deploy block),
+# SCALE (a mechanics-only rehearsal with every quote figure N times smaller,
+# for a testnet short of zkLTC: holders and coins stay exact, prices land N
+# times lower; the real day runs at 1).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export PATH="$HOME/.foundry/bin:$PATH"
@@ -37,6 +40,7 @@ SRC_QUOTE=${SRC_QUOTE:-0xcb17C9Db87B595717C857a08468793f5bAb6445F}
 SRC_FROM=${SRC_FROM:-52045689}
 # the v7.7 pad's migrator on Liteforge: it knows the DEX router there
 OLD_MIGRATOR=0xE34b882BD48D3b13A92C5A7C99469485d1761776
+SCALE=${SCALE:-1}
 MIG=../litecoin/migration
 FILE=$MIG/liteforge-rehearsal.json
 mkdir -p "$MIG"
@@ -66,7 +70,7 @@ echo "   pad $TARGET · migrator $MIGRATOR · deploy block $DEPLOY_BLOCK"
 
 echo "== 2. the snapshot of Base: unfrozen, at the latest block, 1,999 blocks per request, four nodes"
 node script/snapshot-evm.mjs --rpc "$SRC_RPC" --launchpad "$SRC_PAD" --quote "$SRC_QUOTE" --from-block "$SRC_FROM" \
-  --network base --chunk 1999 --allow-unfrozen --vault "$DEPLOYER" --out "$FILE"
+  --network base --chunk 1999 --allow-unfrozen --vault "$DEPLOYER" --scale "$SCALE" --out "$FILE"
 
 echo "== 3. the zkLTC the coins need, against the deployer's"
 NEED=$(node -p "require('$FILE').totals.bridgeLtc")

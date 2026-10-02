@@ -54,6 +54,13 @@ const network = flag("network", "base");
 const chunkDefault = BigInt(flag("chunk", "5000"));
 const allowUnfrozen = args.includes("--allow-unfrozen");
 const vault = flag("vault") ? getAddress(flag("vault")) : null;
+// --scale N: a mechanics-only rehearsal on a testnet short of coins. Every
+// quote figure (virtual reserve, pots, the curve's reserve) comes out N times
+// smaller, holders and their coins exactly as they are, so the receiving pad
+// needs N times less quote and the price lands N times lower. Dry runs only.
+const scale = BigInt(flag("scale", "1"));
+if (scale < 1n) throw new Error("--scale must be 1 or more");
+if (scale !== 1n && !allowUnfrozen) throw new Error("--scale is for a dry run: add --allow-unfrozen");
 
 const abi = (file, name) => JSON.parse(fs.readFileSync(path.join(root, "out", file, `${name}.json`), "utf8")).abi;
 const padAbi = abi("Launchpad.sol", "Launchpad");
@@ -100,6 +107,7 @@ const quoteDecimals = BigInt(await read(quoteAsset, erc20Abi, "decimals"));
 const SCALE = 10n ** (18n - quoteDecimals);
 const TOTAL_SUPPLY = await read(launchpad, padAbi, "TOTAL_SUPPLY");
 const DEX_RESERVE = await read(launchpad, padAbi, "DEX_RESERVE");
+const VIRTUAL_TOKEN = await read(launchpad, padAbi, "VIRTUAL_TOKEN");
 const treasury = await read(launchpad, padAbi, "treasury", [], block);
 
 // ---- every coin
@@ -144,8 +152,8 @@ for (const token of tokens) {
   const meta = await read(launchpad, padAbi, "tokenMetadata", [token], block);
   const [buyTaxBps, sellTaxBps, creatorBps, holdersBps, burnBps, liquidityBps] = await read(launchpad, padAbi, "feeConfig", [token], block);
   const burned = await read(launchpad, padAbi, "burned", [token], block);
-  const burnPot = (await read(launchpad, padAbi, "burnPot", [token], block)) * SCALE;
-  const liquidityPot = (await read(launchpad, padAbi, "liquidityPot", [token], block)) * SCALE;
+  let burnPot = (await read(launchpad, padAbi, "burnPot", [token], block)) * SCALE;
+  let liquidityPot = (await read(launchpad, padAbi, "liquidityPot", [token], block)) * SCALE;
   if ((await read(launchpad, padAbi, "migrationPending", [token], block)) !== 0n) throw new Error(`${symbol}: a migrated coin still delivering its holders cannot migrate again yet`);
 
   // holders: fold the transfers, then trust only balanceOf at the block
@@ -232,6 +240,16 @@ for (const token of tokens) {
     throw new Error(`${symbol}: holders own ${owned} but ${graduated ? "supply minus the pool" : "the curve's sold"} is ${expected} (the pad holds ${padBal}): the snapshot does not add up`);
   }
   if (holders.includes(getAddress(treasury))) warnings.push(`${symbol}: the treasury holds some (rounding leftovers of the pool seeding): it is listed as a holder`);
+  let virtualQuote = (vEth - raised) * SCALE;
+  if (scale !== 1n) {
+    // the quote side shrunk `scale` times; a curve's reserve follows the contract's
+    // own formula from the shrunk virtual reserve, so the receiving pad finds it exact
+    virtualQuote /= scale;
+    burnPot /= scale;
+    liquidityPot /= scale;
+    const soldNow = expected + burned;
+    realQuote = graduated ? realQuote / scale : soldNow === 0n ? 0n : (virtualQuote * soldNow) / (VIRTUAL_TOKEN - soldNow);
+  }
   bridgeWei += realQuote + burnPot + liquidityPot;
   sourceTokens[symbol] = token;
   coins.push({
@@ -245,7 +263,7 @@ for (const token of tokens) {
     holdersBps: BigInt(holdersBps),
     burnBps: BigInt(burnBps),
     liquidityBps: BigInt(liquidityBps),
-    virtualQuote: (vEth - raised) * SCALE,
+    virtualQuote,
     realQuote,
     sold: expected + burned, // what left the curve: holders' coins and the burned ones
     burned,
@@ -271,6 +289,7 @@ const out = {
   height: block,
   freezeHeight: block,
   stateRoot,
+  scale: Number(scale),
   partial: false,
   generatedAt: new Date().toISOString(),
   totals: {
@@ -292,3 +311,4 @@ fs.mkdirSync(path.dirname(outFile), { recursive: true });
 fs.writeFileSync(outFile, numbers(JSON.stringify(out, big, 1)));
 for (const w of warnings) console.warn(`warning: ${w}`);
 console.log(`${outFile}: ${coins.length} coins, ${out.totals.holders} holders, bridge ${out.totals.bridgeLtc} LTC · root ${stateRoot.slice(0, 16)}…`);
+if (scale !== 1n) console.log(`SCALED 1:${scale} — a mechanics rehearsal: every quote figure is ${scale}× smaller than the source's, prices ${scale}× lower; never for a real migration`);
