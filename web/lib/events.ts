@@ -165,6 +165,13 @@ function capNamed(e: unknown): bigint | null {
 }
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+/** the size to cut a refused range to: just under the cap a node named, else half.
+ *  (A function on purpose: Next's file tracer evaluates variables' initial
+ *  values statically, and `null - 1n` written out crashed the build.) */
+function cutSize(span: bigint, cap: bigint | undefined): bigint {
+  return cap !== undefined && cap - 1n < span ? cap - 1n : span / 2n;
+}
+
 /** eth_getLogs of `filter` over `ranges`, a few at a time, through the
  *  chain's nodes (see above): which ranges came back, and which didn't */
 async function getLogsAdaptive(
@@ -185,7 +192,7 @@ async function getLogsAdaptive(
       let settled = false;
       for (let attempt = 0; attempt < 3 && !settled; attempt++) {
         let tooBig = false;
-        let cap: bigint | null = null;
+        let cap: bigint | undefined;
         for (const n of nodesInOrder(set)) {
           try {
             const got = (await n.client.request({
@@ -201,14 +208,14 @@ async function getLogsAdaptive(
             else if (isRangeError(e)) {
               tooBig = true;
               const c = capNamed(e);
-              if (c !== null && (cap === null || c < cap)) cap = c;
+              if (c !== null && (cap === undefined || c < cap)) cap = c;
             }
           }
         }
         if (settled) break;
         if (tooBig && span > MIN_CHUNK) {
           // over a node's cap: cut to the size it named (just under), else in half
-          const size = cap !== null && cap - 1n < span ? cap - 1n : span / 2n;
+          const size = cutSize(span, cap);
           learnChunk(chainId, size);
           queue.push(...splitRange(r.lo, r.hi, size));
           settled = true; // handed on in pieces
