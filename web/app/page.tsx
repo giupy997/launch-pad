@@ -17,9 +17,9 @@ export default function Explore() {
   const { tokens: allTokens, isLoading, isError, count } = useTokens();
   const { data: volumes } = useVolumes();
   const chain = useAppChain();
-  // dollars only where the quote is LTC for real: a testnet's zkLTC is worth nothing
-  const ltcUsd = useLtcPrice().data?.usd ?? null;
-  const usd = chain.testnet ? null : ltcUsd;
+  // money in dollars wherever the quote is LTC in one of its forms (cbLTC, zkLTC): a
+  // market cap reads as a market cap, the quote amount stays beneath it
+  const usd = useLtcPrice().data?.usd ?? null;
   // what the coins are quoted in: the chain's first quote asset, else its gas coin
   const quote = QUOTE_ASSETS[chain.id]?.[0]?.symbol ?? chain.nativeCurrency.symbol;
   // the chain as the menu names it: Base goes by cbLTC, the coins' currency, hence "in"
