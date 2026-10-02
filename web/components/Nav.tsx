@@ -9,6 +9,7 @@ import { useAppChain } from "@/lib/hooks";
 const items = (chainId: number) => [
   { href: "/", label: "Explore" },
   { href: "/create", label: "Create" },
+  { href: "/points", label: "Points" },
   { href: "/bridge", label: chainId === base.id ? "Get cbLTC" : "Bridge" },
   { href: "/profile", label: "Profile" },
 ];

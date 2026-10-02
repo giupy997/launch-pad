@@ -9,6 +9,7 @@ import { CHAIN_LABEL, MIGRATION_TARGET, QUOTE_ASSETS } from "@/lib/config";
 import { TokenCard } from "@/components/TokenCard";
 import { NotDeployedNotice } from "@/components/NotDeployedNotice";
 import { MigrationNotice } from "@/components/MigrationNotice";
+import { SeasonStrip } from "@/components/SeasonStrip";
 
 type Sort = "newest" | "raised" | "progress";
 
@@ -51,6 +52,7 @@ export default function Explore() {
     <div className="space-y-10">
       <NotDeployedNotice />
       <MigrationNotice />
+      <SeasonStrip />
       <section className="relative overflow-hidden rounded-3xl border border-white/10 px-6 py-14 sm:px-12 sm:py-20 card">
         {/* the light through the open head; black dissolves into the card */}
         <div

@@ -23,49 +23,12 @@ import {
 } from "./rules.ts";
 import { stretches, type Nodes } from "./scan.ts";
 import type { Store } from "./store.ts";
+import type { LeaderboardRow, SeasonView, WalletView } from "./types.ts";
 
 export type IndexerOptions = {
   /** ranges per pass, so a backfill proceeds in passes while the API answers */
   maxChunksPerPass?: number;
   now?: () => number;
-};
-
-export type SeasonView = {
-  chain: string;
-  chainId: number;
-  name: string;
-  season: { number: number; name: string; start: string; end: string | null; rehearsal: boolean } | null;
-  quoteSymbol: string;
-  rules: {
-    version: number;
-    pointsPerQuote: number;
-    holderBonusPct: number;
-    creatorGraduation: number;
-    earlyBuyers: number;
-    earlyBuyer: number;
-    inviterPct: number;
-    inviteePct: number;
-    inviteeDays: number;
-  };
-  indexed: { last: string; head: string; lagBlocks: number; trades: number; coins: number; graduations: number; wallets: number; referrals: number };
-  updatedAt: number | null;
-  lastError: string | null;
-};
-
-export type LeaderboardRow = { rank: number; wallet: `0x${string}`; points: number; trades: number; volume: string; invitees: number };
-
-export type WalletView = {
-  wallet: `0x${string}`;
-  rank: number | null;
-  points: number;
-  byKind: { kind: LedgerKind; label: string; points: number }[];
-  trades: number;
-  /** quote moved, in its smallest unit, as a decimal string */
-  volume: string;
-  inviter: `0x${string}` | null;
-  invitees: { wallet: `0x${string}`; points: number }[];
-  /** the block the invitee's own bonus lasts to, if bound */
-  inviteeBonusUntil: string | null;
 };
 
 export class ChainIndexer {

@@ -189,7 +189,10 @@ there; on Base, `/points` is the *Coming with LitVM* page.
    testnet pad's deploy block. **Done**: `points/README.md`.
 3. Site: proxy route, `/points` (live on Liteforge, the roadmap page on Base),
    the profile section, the trade-box hint, the referral capture and
-   signature; the *Coming with LitVM* section on the About page.
+   signature; the *Coming with LitVM* section on the About page. **Done**:
+   `web/app/api/points/`, `web/app/points/`, `web/lib/points/client.ts`,
+   `components/{PointsCard,SeasonStrip,InviteLink,InviteCapture}.tsx`; Netlify
+   needs `POINTS_URL=https://desk.notus-pad.fun/points`.
 4. Rehearse on the testnet with real wallets: trades, a graduation, invites.
 5. At LitVM mainnet: add the chain to the service, open Season 1, announce it
    with the invite links.

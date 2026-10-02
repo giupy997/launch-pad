@@ -8,6 +8,7 @@ import { fmtEth, fmtTokens, shortAddr } from "@/lib/format";
 import { TokenCard } from "@/components/TokenCard";
 import { TokenLogo } from "@/components/TokenLogo";
 import { CreatorFees } from "@/components/CreatorFees";
+import { PointsCard } from "@/components/PointsCard";
 
 export default function ProfilePage() {
   const native = useNativeSymbol();
@@ -89,6 +90,8 @@ export default function ProfilePage() {
           <CreatorFees />
         </div>
       </section>
+
+      <PointsCard address={user} />
 
       <section>
         <h2 className="font-mono text-sm font-semibold tracking-[0.2em] uppercase mb-4 text-zinc-400">

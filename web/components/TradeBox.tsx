@@ -24,6 +24,7 @@ import { fmtEth, fmtUnits, fmtTokens } from "@/lib/format";
 import { quoteBuy, quoteSell, parseFeeConfig, NO_TAX, feeLabel, splitParts, type FeeConfig } from "@/lib/curve";
 import { SlippageControl, useSlippageBps } from "@/components/SlippageControl";
 import { QUOTE_ASSETS, ZAP_ROUTER, UNISWAP_QUOTER, WETH9, USDG } from "@/lib/config";
+import { fmtPoints, pointsFor, usePointsChain, useSeason } from "@/lib/points/client";
 
 const zapRouterAbi = [
   {
@@ -108,6 +109,9 @@ export function TradeBox({
   const q = quoteInfo(chain.id, curve.quoteAsset);
   const isEthQuote = q.address === null;
   const graduated = curve.graduated;
+  // the points a trade earns, where a season runs (LitVM); nothing elsewhere
+  const pointsChain = usePointsChain();
+  const seasonName = useSeason(pointsChain?.key ?? null).data?.season?.name;
 
   // ETH zap route for asset-quoted curves (registry-driven)
   const zapAddr = ZAP_ROUTER[chain.id];
@@ -482,6 +486,15 @@ export function TradeBox({
             ≈ {fmtUnits(sellQuote as bigint, q.decimals)} {q.symbol}
           </p>
         )}
+        {pointsChain && seasonName && parsed > 0n && (() => {
+          const quoteMoved = mode === "buy" ? buyAmountForQuote : ((sellQuote as bigint | undefined) ?? 0n);
+          const pts = pointsFor(quoteMoved, q.decimals);
+          return pts > 0 ? (
+            <p className="font-mono text-[10px] tracking-widest uppercase text-zinc-600">
+              +{fmtPoints(pts)} pts · {seasonName}
+            </p>
+          ) : null;
+        })()}
 
         <button
           type="submit"

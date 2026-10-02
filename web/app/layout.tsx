@@ -11,6 +11,7 @@ import { ChainSwitcher } from "@/components/ChainSwitcher";
 import { Nav } from "@/components/Nav";
 import { LogoVideo } from "@/components/LogoVideo";
 import { BottomNav } from "@/components/BottomNav";
+import { InviteCapture } from "@/components/InviteCapture";
 import Link from "next/link";
 
 const geistSans = localFont({
@@ -110,6 +111,7 @@ export default async function RootLayout({
               </p>
             </div>
           </footer>
+          <InviteCapture />
           <BottomNav />
         </Providers>
       </body>
