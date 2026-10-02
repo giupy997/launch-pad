@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { type TokenInfo, marketCapOf, curveProgress, quoteInfo, useAppChain } from "@/lib/hooks";
-import { fmtNum, fmtUnits, shortAddr } from "@/lib/format";
+import { fmtNum, fmtUnits } from "@/lib/format";
+import { mysticName } from "@/lib/names";
 import { TokenLogo } from "@/components/TokenLogo";
 import { fmtQuoteMoney, fmtQuoteMoneyNum, isLtcQuote } from "@/lib/price";
 
@@ -54,7 +55,9 @@ export function TokenCard({
           <div className="font-mono text-xs text-zinc-400">${t.symbol}</div>
         </div>
       </div>
-      <div className="mt-1 font-mono text-xs text-zinc-500">by {shortAddr(t.curve.creator)}</div>
+      <div className="mt-1 font-mono text-xs text-zinc-500" title={t.curve.creator}>
+        by {mysticName(t.curve.creator)}
+      </div>
       <div className="mt-5 flex items-end justify-between gap-3">
         <div>
           <div className="label">Market cap</div>

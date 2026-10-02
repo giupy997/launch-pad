@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useAccount, useConnect, useConnections, useDisconnect, useSwitchChain } from "wagmi";
 import { useAppChain, useExplorer } from "@/lib/hooks";
+import { mysticName } from "@/lib/names";
 
 export function ConnectButton() {
   const { address, isConnected, chainId } = useAccount();
@@ -98,13 +99,15 @@ export function ConnectButton() {
       )}
       <button
         onClick={() => setOpen((o) => !o)}
-        className="rounded-full border border-white/15 px-3 sm:px-4 py-2 text-sm font-mono text-zinc-300 hover:border-white hover:text-white"
+        title={address}
+        className="rounded-full border border-white/15 px-3 sm:px-4 py-2 text-sm font-medium text-zinc-200 hover:border-white hover:text-white whitespace-nowrap"
       >
-        {address?.slice(0, 6)}…{address?.slice(-4)}
+        {address ? mysticName(address) : ""}
       </button>
 
       {open && address && (
-        <div className="absolute right-0 top-full mt-2 w-56 rounded-xl input p-1.5 z-30 shadow-lg shadow-black/60">
+        <div className="absolute right-0 top-full mt-2 w-64 rounded-xl input p-1.5 z-30 shadow-lg shadow-black/60">
+          <div className="px-3 pt-2 pb-1 font-mono text-[11px] leading-snug text-zinc-500 break-all select-all">{address}</div>
           <MenuItem
             onClick={() => {
               navigator.clipboard.writeText(address);

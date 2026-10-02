@@ -1,7 +1,8 @@
 "use client";
 
 import { type Trade } from "@/lib/events";
-import { fmtUnits, fmtTokens, shortAddr } from "@/lib/format";
+import { fmtUnits, fmtTokens } from "@/lib/format";
+import { mysticName } from "@/lib/names";
 import { useExplorer, useNativeSymbol } from "@/lib/hooks";
 
 export function TradeFeed({
@@ -48,7 +49,7 @@ export function TradeFeed({
               target="_blank"
               className="font-mono text-xs text-zinc-400 hover:text-white underline"
             >
-              {shortAddr(t.trader)}
+              <span title={t.trader}>{mysticName(t.trader)}</span>
             </a>
             <span className="flex-1 text-right text-zinc-300">
               {fmtTokens(t.tokens)} {symbol}

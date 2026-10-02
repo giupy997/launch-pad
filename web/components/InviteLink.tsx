@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { shortAddr } from "@/lib/format";
+import { mysticName } from "@/lib/names";
 import { fmtPoints } from "@/lib/points/client";
 
 /** A wallet's invite link (its own address as the code), with a copy button
@@ -38,11 +38,13 @@ export function InviteLink({
 
   return (
     <div className="space-y-2">
-      <div className="label">Your invite link</div>
-      <div className="flex gap-2">
-        <input readOnly value={origin ? link : "…"} onFocus={(e) => e.currentTarget.select()} className="input flex-1 px-3 py-2 font-mono text-xs" />
-        <button type="button" onClick={copy} className="btn-ghost px-3 py-2 text-xs">
-          {copied ? "Copied" : "Copy"}
+      <div className="label">Your invite</div>
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="text-sm text-zinc-300">
+          You invite as <span className="font-semibold text-white">{mysticName(address)}</span>
+        </span>
+        <button type="button" onClick={copy} disabled={!origin} className="btn-ghost px-3 py-1.5 text-xs disabled:opacity-50">
+          {copied ? "Link copied" : "Copy invite link"}
         </button>
       </div>
       {!compact && (
@@ -56,7 +58,7 @@ export function InviteLink({
           {invitees.length} invited:{" "}
           {invitees
             .slice(0, 5)
-            .map((i) => `${shortAddr(i.wallet)} (${fmtPoints(i.points)} pts to you)`)
+            .map((i) => `${mysticName(i.wallet)} (${fmtPoints(i.points)} pts to you)`)
             .join(", ")}
           {invitees.length > 5 && ` and ${invitees.length - 5} more`}
         </p>

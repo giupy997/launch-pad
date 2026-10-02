@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useAccount, useSignMessage } from "wagmi";
-import { shortAddr } from "@/lib/format";
+import { mysticName } from "@/lib/names";
 import {
   acceptInvite,
   clearPendingInvite,
@@ -86,7 +86,7 @@ export function InviteCapture() {
     <div className="fixed bottom-20 md:bottom-5 right-4 left-4 sm:left-auto sm:w-96 z-40 card p-4 space-y-3 shadow-2xl">
       <div className="label">Invite · {s.season!.name}</div>
       <p className="text-sm text-zinc-300">
-        <span className="font-mono">{shortAddr(pending)}</span> invited you. Accept and you get +{s.rules.inviteePct}% on your trade points for{" "}
+        <span className="font-semibold text-white" title={pending}>{mysticName(pending)}</span> invited you. Accept and you get +{s.rules.inviteePct}% on your trade points for{" "}
         {s.rules.inviteeDays} days; they get {s.rules.inviterPct}% of yours. A free signature, nothing is sent on chain.
       </p>
       {note && <p className="text-xs text-zinc-400">{note}</p>}

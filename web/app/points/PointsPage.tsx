@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useAccount } from "wagmi";
 import { useAppChain, useExplorer } from "@/lib/hooks";
-import { fmtUnits, shortAddr } from "@/lib/format";
+import { fmtUnits } from "@/lib/format";
+import { mysticName } from "@/lib/names";
 import { ago, fmtPoints, PointsApiError, useLeaderboard, usePointsChain, useSeason, useWalletPoints } from "@/lib/points/client";
 import type { SeasonView } from "@/lib/points/types";
 import { InviteLink } from "@/components/InviteLink";
@@ -93,8 +94,8 @@ function Season({ chainKey, quoteDecimals, quoteSymbol }: { chainKey: string; qu
                   {mine.data.inviter && (
                     <span>
                       invited by{" "}
-                      <a href={`${explorer}/address/${mine.data.inviter}`} target="_blank" rel="noreferrer" className="underline">
-                        {shortAddr(mine.data.inviter)}
+                      <a href={`${explorer}/address/${mine.data.inviter}`} target="_blank" rel="noreferrer" className="underline" title={mine.data.inviter}>
+                        {mysticName(mine.data.inviter)}
                       </a>
                     </span>
                   )}
@@ -143,9 +144,9 @@ function Season({ chainKey, quoteDecimals, quoteSymbol }: { chainKey: string; qu
                   return (
                     <tr key={r.wallet} className={`border-t border-white/5 ${me ? "bg-white/[0.04]" : ""}`}>
                       <td className="px-5 sm:px-2 py-2 font-mono text-zinc-500">{r.rank}</td>
-                      <td className="px-2 py-2 font-mono">
-                        <a href={`${explorer}/address/${r.wallet}`} target="_blank" rel="noreferrer" className="hover:underline text-zinc-200">
-                          {shortAddr(r.wallet)}
+                      <td className="px-2 py-2">
+                        <a href={`${explorer}/address/${r.wallet}`} target="_blank" rel="noreferrer" className="hover:underline text-zinc-200" title={r.wallet}>
+                          {mysticName(r.wallet)}
                         </a>
                         {me && <span className="ml-2 text-[10px] tracking-widest uppercase text-zinc-500">you</span>}
                       </td>

@@ -19,6 +19,7 @@ import {
 } from "@/lib/hooks";
 import { PRE_IPO_DISCLAIMER, isHiddenToken } from "@/lib/config";
 import { fmtUnits, fmtTokens, shortAddr } from "@/lib/format";
+import { mysticName } from "@/lib/names";
 import { TradeBox } from "@/components/TradeBox";
 import { TokenLogo } from "@/components/TokenLogo";
 import { PriceChart } from "@/components/PriceChart";
@@ -169,7 +170,7 @@ export default function TokenPage({ params }: { params: Promise<{ address: strin
               <a href={`${explorer}/address/${token}`} target="_blank" className="underline">
                 {shortAddr(token)}
               </a>{" "}
-              · creator {shortAddr(curve.creator)} · paired with{" "}
+              · creator <span title={curve.creator}>{mysticName(curve.creator)}</span> · paired with{" "}
               <span className="text-zinc-300">{q.symbol}</span>
               {q.preIpo && (
                 <span className="ml-2 font-mono text-[10px] tracking-widest uppercase border border-white rounded-full px-2 py-0.5 text-white">
