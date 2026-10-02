@@ -5,7 +5,6 @@ import { useAccount, useBalance, useReadContracts } from "wagmi";
 import { launchTokenAbi } from "@/lib/abi";
 import { useTokens, valueOf, useExplorer, useAppChain, useNativeSymbol, isQuoteAsset } from "@/lib/hooks";
 import { fmtEth, fmtTokens, shortAddr } from "@/lib/format";
-import { mysticName } from "@/lib/names";
 import { TokenCard } from "@/components/TokenCard";
 import { TokenLogo } from "@/components/TokenLogo";
 import { CreatorFees } from "@/components/CreatorFees";
@@ -72,9 +71,9 @@ export default function ProfilePage() {
 
       <section className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h1 className="display text-4xl text-white">{mysticName(user)}</h1>
+          <h1 className="display text-4xl text-white">Profile</h1>
           <p className="mt-1 font-mono text-sm text-zinc-400">
-            <a href={`${explorer}/address/${user}`} target="_blank" className="underline" title={user}>
+            <a href={`${explorer}/address/${user}`} target="_blank" className="underline">
               {shortAddr(user)}
             </a>
           </p>

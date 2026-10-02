@@ -10,8 +10,7 @@ import {
 } from "wagmi";
 import { launchpadAbi } from "@/lib/abi";
 import { useAppChain, useLaunchpadAddress, type TokenMeta } from "@/lib/hooks";
-import {  } from "@/lib/format";
-import { mysticName } from "@/lib/names";
+import { shortAddr } from "@/lib/format";
 
 const inputCls =
   "w-full rounded-lg input px-3 py-2 text-sm focus:border-white outline-none placeholder:text-zinc-600";
@@ -130,7 +129,7 @@ export function CreatorPanel({
           Fee recipient{" "}
           <span className="text-zinc-500">
             — your 60% share currently accrues to{" "}
-            {redirected ? mysticName(currentRecipient as string) : "you"}
+            {redirected ? shortAddr(currentRecipient as string) : "you"}
           </span>
         </div>
         <div className="flex gap-2">
