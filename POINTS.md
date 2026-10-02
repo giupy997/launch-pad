@@ -1,11 +1,16 @@
 # Points and referrals
 
-A season-based points system for the Base launchpad: every wallet earns points
-for what it does on the pad, a public leaderboard ranks them, and an invite
-link gives both sides a bonus. Everything is derived from the chain, computed
-off-chain, and tied to wallet addresses, so it costs nothing on-chain, needs no
-new contract next to the immutable pad, and survives the move to LitVM (the
-addresses are the same there).
+A season-based points system for the launchpad **on LitVM**: every wallet
+earns points for what it does on the pad, a public leaderboard ranks them, and
+an invite link gives both sides a bonus. Everything is derived from the chain,
+computed off-chain, and tied to wallet addresses, so it costs nothing on-chain
+and needs no new contract next to the immutable pad.
+
+It is one of four features that come with LitVM, not with Base (see
+*Coming with LitVM* at the end). Until LitVM mainnet is live it runs **on the
+Liteforge testnet only**, against the pad already there, as a rehearsal:
+testnet points are for testing, are worth nothing and are wiped when mainnet
+opens. On Base the site only announces it.
 
 Points are a record of contribution. They are not a token, and nothing on the
 site or in an announcement promises one: what a season's points unlock is
@@ -15,10 +20,11 @@ announced when the season closes, never before.
 
 The unit is tied to money that really leaves a trader: of every curve trade,
 0.2% of the amount goes to the pad's treasury, whatever the coin's own fee
-split. **A point is one ten-thousandth of a cbLTC that reached the treasury**,
-which is the same as saying **20 points per cbLTC traded**, buy or sell. That
-is the whole base layer, and it is what makes the system hard to farm: however
-you move cbLTC through the pad, the points you get are proportional to what you
+split. **A point is one ten-thousandth of an LTC that reached the treasury**,
+which is the same as saying **20 points per LTC traded**, buy or sell (zkLTC
+on LitVM, one LTC each; the figure reads the same for cbLTC on Base). That is
+the whole base layer, and it is what makes the system hard to farm: however
+you move LTC through the pad, the points you get are proportional to what you
 gave up, and the same 0.2% funds whatever the points unlock. Nobody can take
 out more than they put in.
 
@@ -33,7 +39,7 @@ by something that costs real money:
 | Event | Who | Bonus | Why it cannot be farmed cheaply |
 |---|---|---|---|
 | A coin graduates | every wallet still holding it at the graduation block | +50% on all the trade points it earned on that coin | proportional to fees already paid; a dust balance only keeps what you bought |
-| A coin graduates | its creator | 2,000 points (the equivalent of 100 cbLTC traded) | graduating your own coin alone costs about 40 cbLTC of slippage into the locked pool, 18× the price of the same points earned trading |
+| A coin graduates | its creator | 2,000 points (the equivalent of 100 LTC traded) | graduating your own coin alone costs about 40 LTC of slippage into the locked pool, 18× the price of the same points earned trading |
 | A coin graduates | its first 25 distinct buyers | 100 points each | needs the graduation above; 25 sybil wallets still pay gas and fees |
 | Referral | the inviter | 10% of the invitee's trade points, for the season | an inviter inviting their own second wallet gets a 10% discount on their own points, nothing more |
 | Referral | the invitee | +5% on their own trade points for 30 days after accepting | same |
@@ -48,18 +54,26 @@ Trades on hidden coins (`HIDDEN_TOKENS` in the site's config) do not count.
 Nothing else is excluded: a creator trading their own coin pays the same 0.2%
 as anyone.
 
-Worked example. A wallet buys 2 cbLTC of a coin and later sells 1 cbLTC of it:
-3 cbLTC of volume, 60 points. The coin graduates while the wallet still holds
+Worked example. A wallet buys 2 LTC of a coin and later sells 1 LTC of it:
+3 LTC of volume, 60 points. The coin graduates while the wallet still holds
 the rest: +30. It was among the first 25 buyers: +100. It came in through an
 invite within the last 30 days: +3 on the 60. Total 193, and the inviter gets 6.
 
 ## Seasons
 
-Points accrue in seasons. **Season 1 runs from the pad's deploy block
-(52,045,689) to the LitVM freeze block**, so every trade made so far counts
-retroactively. The freeze announcement (`FreezeAnnounced` on the pad) fixes the
-end; the season closes at that block and its ranking is final. Season 2 opens
-on LitVM with the same wallets.
+Points accrue in seasons, each on one chain:
+
+- **Season 0, Liteforge testnet, now.** From the testnet pad's deploy block
+  (55,934,572; the v7.7 pad at `0x4D3C…4025`, quoted in native zkLTC) until
+  LitVM mainnet opens. A rehearsal of the whole thing: indexer, rules,
+  leaderboard, invites. Worth nothing, says so on the page, wiped at the end.
+- **Season 1, LitVM mainnet.** Opens with the receiving pad's first block
+  (`DeployLitVM.s.sol`, the one the Base coins migrate to) and runs until a
+  date set when it opens. Its ranking is the first that counts.
+
+Base has no season: what happened on Base can still be honoured at Season 1
+as a one-off genesis credit (the Base trades are indexed anyway, by the same
+code), an open choice below.
 
 Rules may be tuned during a season (weights, a new bonus), and the doc and the
 site say so. Tuning is safe because points are never stored as the source of
@@ -72,7 +86,7 @@ The invite link is the wallet address: `notus-pad.fun/?ref=0x…`. No codes to
 generate or store; a vanity name can come later.
 
 Accepting is a signature, not a transaction: the invitee signs the plain
-message `Notus referral · I was invited by 0x… · Season 1` (EIP-191) from
+message `Notus referral · I was invited by 0x… · Season N` (EIP-191) from
 their wallet, once, and the service stores the binding. Why a signature:
 without one, anyone could post a binding for somebody else's wallet and steal
 their referral, or bind them to a stranger. Why not on-chain: the pad is
@@ -84,7 +98,8 @@ binding can happen at any time (before or after the first trade) and the
 bonuses apply to trade points earned from that block on, never to the past.
 The link is kept in the browser (`localStorage`) from the first visit, and the
 site asks for the signature when a wallet connects with a pending invite,
-with a clear line on what both sides get and a "not now".
+with a clear line on what both sides get and a "not now". Bindings are per
+chain: a testnet invite does not carry into Season 1.
 
 ## How it runs
 
@@ -92,26 +107,31 @@ Mirrors the Litecoin desk (`litecoin/desk.ts`): one long-running Node process
 on the VPS, a systemd unit, Caddy in front, the site reading it through a
 same-origin API route. No framework, no native modules: Node 22 runs the
 TypeScript directly, `node:sqlite` holds the data, `fetch` talks to the RPCs.
+One process serves every chain it is configured for (today Liteforge, later
+LitVM mainnet), each with its own pad address, deploy block, RPCs and quote
+decimals (18 for native zkLTC, 8 for cbLTC).
 
-**Indexer.** Reads the pad's logs on Base in 1,999-block ranges (the public
-nodes' cap, measured) from `mainnet.base.org` with the same fallbacks as the
-site, 60 blocks behind the head so a reorg never credits a trade twice. Only
-four events matter, all with the fields we need in their topics or as plain
-uint256 words, so there is no ABI decoding to depend on:
+**Indexer.** Reads the pad's logs in ranges the chain's public nodes accept
+(1,999 blocks on Base, measured; Liteforge takes far wider ones; the size is
+configured and learned from a refusal like the site does), 60 blocks behind
+the head so a reorg never credits a trade twice. Only four events matter, all
+with the fields we need in their topics or as plain uint256 words, so there is
+no ABI decoding to depend on, and they are the same on every pad the site
+reads (one ABI decodes all of them today):
 
 - `TokenCreated(token, creator, …)`: a coin and its creator.
 - `Bought(token, buyer, ethIn, tokensOut, fee)` and
-  `Sold(token, seller, tokensIn, ethOut, fee)`: a trade, its volume in cbLTC
-  (`ethIn` or `ethOut`, 8 decimals), its tokens.
+  `Sold(token, seller, tokensIn, ethOut, fee)`: a trade, its volume in the
+  quote (`ethIn` or `ethOut`), its tokens.
 - `Graduated(token, raisedEth)`: the block that fixes the holder, creator and
   early-buyer bonuses.
-- `FreezeAnnounced(freezeBlock)`: the season's end.
+- `FreezeAnnounced(freezeBlock)`: on a pad being migrated out, the season's end.
 
 Holdings at graduation need no Transfer logs: before graduation a LaunchToken
 only moves through the pad, so a wallet's balance is its buys minus its sells.
 
-**Data** (`points/data/points.sqlite`), raw tables as the source of truth and
-a ledger derived from them:
+**Data** (`points/data/<chain>.sqlite`, one file per chain), raw tables as the
+source of truth and a ledger derived from them:
 
 ```
 meta(key, value)                       last indexed block, season bounds, rules version
@@ -124,13 +144,14 @@ ledger(wallet, season, kind, points, token, ref, block)                 kind: tr
 `rebuild` drops the ledger and replays it from the raw tables; the service
 does it itself when the rules version changes.
 
-**API** on `127.0.0.1:8789`, JSON, GET answers cached a minute:
+**API** on `127.0.0.1:8789`, JSON, GET answers cached a minute, the chain in
+the path:
 
 ```
-GET  /season                      season number, bounds, last indexed block, rules version
-GET  /leaderboard?limit=100       rank, wallet, points, trades, referrals
-GET  /wallet/0x…                  points by kind, rank, trades, inviter, invitees, 30-day bonus left
-POST /referral                    { invitee, inviter, signature } → 201, or 409 when already bound
+GET  /:chain/season                   season number, bounds, last indexed block, rules version
+GET  /:chain/leaderboard?limit=100    rank, wallet, points, trades, referrals
+GET  /:chain/wallet/0x…               points by kind, rank, trades, inviter, invitees, 30-day bonus left
+POST /:chain/referral                 { invitee, inviter, signature } → 201, or 409 when already bound
 GET  /health
 ```
 
@@ -139,17 +160,18 @@ no new DNS. The site proxies it at `/api/points/*` (`POINTS_URL` in Netlify's
 environment, like `LTC_STATE_URL`), with the edge caching GETs for 30 seconds
 and passing POSTs through; the service rate-limits POSTs by IP.
 
-**Site.**
+**Site.** Everything below shows on a LitVM chain (Liteforge today) and only
+there; on Base, `/points` is the *Coming with LitVM* page.
 
-- `/points`: the season banner (what counts, how long it has run), the
-  leaderboard, and, with a wallet connected, "your points" with the breakdown
-  and your invite link with a copy button. The explainer is short and uses
-  the table above in words.
+- `/points`: the season banner (which season, what counts, how long it has
+  run, and on the testnet that it is a rehearsal), the leaderboard, and, with
+  a wallet connected, "your points" with the breakdown and your invite link
+  with a copy button. The explainer is short and uses the table above in words.
 - Profile: a "Points" section at the top with rank, points by kind, the invite
   link, the invitees and what they brought.
 - Trade box: a one-line hint under the quote, "≈ +40 pts", so every trade
   shows what it earns.
-- Explore: a thin "Season 1 is on" strip linking to `/points`.
+- Explore: a thin "Season 0 is on, testnet" strip linking to `/points`.
 - Layout: a client component that reads `?ref=` into `localStorage` and, when
   a wallet connects with a pending invite, offers the signature.
 
@@ -157,28 +179,45 @@ and passing POSTs through; the service rate-limits POSTs by IP.
 
 1. This document agreed, with the open choices below settled.
 2. `points/` service: indexer, ledger, API, `points/deploy/notus-points.service`
-   and the Caddy block; backfill Season 1 from the deploy block (a day of
-   history today, minutes of work for the indexer).
-3. Site: proxy route, `/points`, the profile section, the trade-box hint, the
-   referral capture and signature.
-4. Announce Season 1 with its retroactive start, and the invite links.
+   and the Caddy block; configured for Liteforge; backfill Season 0 from the
+   testnet pad's deploy block.
+3. Site: proxy route, `/points` (live on Liteforge, the roadmap page on Base),
+   the profile section, the trade-box hint, the referral capture and
+   signature; the *Coming with LitVM* section on the About page.
+4. Rehearse on the testnet with real wallets: trades, a graduation, invites.
+5. At LitVM mainnet: add the chain to the service, open Season 1, announce it
+   with the invite links.
 
-Later, in this order if wanted: streaks with a minimum trade, holding points
-with a daily cap, soulbound badges minted from the same ledger (first 25 of a
-graduated coin, graduated creator, top 10 of a season).
+## Coming with LitVM
+
+The four features are a set, and none of them belongs on Base: the Base pad
+is the bridge to LitVM, not the destination. In the order they can land:
+
+1. **Points and referrals**: this document. Rehearsed on the testnet now.
+2. **Badges**: soulbound NFTs minted from the same ledger (first 25 of a
+   graduated coin, graduated creator, top 10 of a season). Status only, free
+   to mint, nothing financial.
+3. **Staking**: fee-sharing for graduated coins, the yield being the real fees
+   the pad and the pools earn, never emissions. Possible only after
+   graduation, since a coin on its curve moves only through the pad, and only
+   once there are coins and fees worth sharing. No "APY" is quoted anywhere:
+   the page shows what was actually paid out.
+4. **Liquidity rewards**: for liquidity added to a graduated coin's pool, paid
+   from the same real fees, with the pool's measured fee return shown as a
+   fact, not a promise.
 
 ## Open choices
 
-- **The weights.** 20 points per cbLTC traded; +50% holder bonus; 2,000 to the
+- **The weights.** 20 points per LTC traded; +50% holder bonus; 2,000 to the
   graduated creator; 100 to each of the first 25 buyers; 10% to the inviter,
   +5% for 30 days to the invitee. The base rate only scales the numbers; the
-  bonuses are what shape behaviour.
-- **Season 1's end.** The LitVM freeze, as proposed, or a fixed date if the
-  freeze is far.
+  bonuses are what shape behaviour. The testnet season is where to try them.
+- **Season 1's length.** Set when it opens: three months is a sensible first.
+- **A genesis credit for Base.** Whether Season 1 opens with a one-off credit
+  for what each wallet traded on Base (the same 20 per LTC, or a capped
+  amount), as a thank-you to the first traders. Proposed yes, capped.
 - **What Season 1 unlocks.** Decided and announced at its close. The honest
-  options are a share of the treasury's cbLTC of the season, or priority and
-  badges on LitVM. Never worded as a token.
+  options are a share of the treasury's LTC of the season, or priority and
+  badges. Never worded as a token.
 - **Whether a bare referral link counts without a signature.** Proposed no,
   for the reasons above.
-- **Retroactivity.** Proposed yes from the deploy block: the first traders
-  are exactly who should be at the top of the first board.

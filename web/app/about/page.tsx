@@ -4,7 +4,7 @@ import { SOURCE_URL } from "@/lib/site";
 export const metadata: Metadata = {
   title: "About",
   description:
-    "What Notus is, how coins work in cbLTC on Base, how they move to LitVM mainnet, how your keys are handled, what the risks are, and how to reach us.",
+    "What Notus is, how coins work in cbLTC on Base, how they move to LitVM mainnet, what comes with LitVM, how your keys are handled, what the risks are, and how to reach us.",
 };
 
 const X_URL = "https://x.com/Notuspad";
@@ -68,6 +68,27 @@ export default function AboutPage() {
         </li>
         <li>
           Nothing to do on your side: your coins appear at your address on LitVM, and each coin page here links to its new home.
+        </li>
+      </Section>
+
+      <Section title="Coming with LitVM" id="roadmap">
+        <li>
+          Four features are being built for the pad on LitVM, where the coins are headed, not for Base. Each is rehearsed on
+          LitVM&apos;s Liteforge testnet first, with the same wallets and the same pages, and opens on mainnet when the coins
+          move. Nothing below is live on Base.
+        </li>
+        <li>
+          <span className="text-white">Points and referrals.</span> A season-based record of what each wallet does on the pad,
+          computed from the chain: 20 points per LTC traded, bonuses when a coin you hold or created graduates, an invite link
+          that pays both sides. A public leaderboard; what a season unlocks is announced when it closes. Points are not a token.
+        </li>
+        <li>
+          <span className="text-white">Badges.</span> Soulbound NFTs minted from that record: among the first buyers of a coin
+          that graduated, creator of a graduated coin, top of a season. Status, free to mint, nothing financial.
+        </li>
+        <li>
+          <span className="text-white">Staking and liquidity rewards.</span> For graduated coins only, paid from the fees the
+          pad and the pools really earn, never from emissions. The pages will show what was paid out, not an APY.
         </li>
       </Section>
 

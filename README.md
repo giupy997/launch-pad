@@ -152,8 +152,10 @@ migration of the Litecoin ledger to LitVM mainnet, step by step:
 [`litecoin/MIGRATION.md`](litecoin/MIGRATION.md).
 
 Points and referrals, a season-based record of every wallet's contribution
-derived from the pad's events off-chain (20 points per cbLTC traded, bonuses
-on graduations, invite links), are designed in [`POINTS.md`](POINTS.md).
+derived from the pad's events off-chain (20 points per LTC traded, bonuses on
+graduations, invite links), come with LitVM and are rehearsed on its Liteforge
+testnet first; the design, and the other features that come with LitVM, are in
+[`POINTS.md`](POINTS.md).
 
 ### Pair assets (Robinhood Chain)
 
