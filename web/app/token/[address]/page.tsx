@@ -40,10 +40,12 @@ export default function TokenPage({ params }: { params: Promise<{ address: strin
   const token = addressParam as `0x${string}`;
   const { address: user } = useAccount();
   const { data: tradeData, isPending: tradesPending } = useTrades(token);
-  const usd = useLtcPrice().data?.usd ?? null;
+  const ltcUsd = useLtcPrice().data?.usd ?? null;
   const pad = useLaunchpadAddress() ?? ("0x0000000000000000000000000000000000000000" as `0x${string}`);
   const explorer = useExplorer();
   const chain = useAppChain();
+  // dollars only where the quote is LTC for real: a testnet's zkLTC is worth nothing
+  const usd = chain.testnet ? null : ltcUsd;
 
   // name/symbol/fee mode never change — read once; only curve + metadata poll.
   const { data: statics, isLoading: staticsLoading } = useReadContracts({

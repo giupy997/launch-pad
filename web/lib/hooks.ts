@@ -94,8 +94,11 @@ export function quoteInfo(
   preIpo: boolean;
   synthetic: boolean;
 } {
-  if (quoteAsset === ZERO_ADDRESS)
-    return { symbol: "ETH", decimals: 18, address: null, preIpo: false, synthetic: false };
+  // the chain's own coin: ETH on Base and GIWA, zkLTC on LitVM
+  if (quoteAsset === ZERO_ADDRESS) {
+    const native = APP_CHAINS.find((c) => c.id === chainId)?.nativeCurrency;
+    return { symbol: native?.symbol ?? "ETH", decimals: native?.decimals ?? 18, address: null, preIpo: false, synthetic: false };
+  }
   const found = (QUOTE_ASSETS[chainId] ?? []).find(
     (q) => q.address?.toLowerCase() === quoteAsset.toLowerCase()
   );
