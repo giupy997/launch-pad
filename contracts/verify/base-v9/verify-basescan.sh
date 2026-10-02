@@ -7,6 +7,7 @@
 # complains about v1).
 #
 #   cd ~/launch-pad/contracts && bash verify/base-v9/verify-basescan.sh
+#   FORCE=1 bash verify/base-v9/verify-basescan.sh      # when forge wrongly says "already verified"
 #
 # The LaunchToken of every coin is created by the factory and shares its
 # runtime bytecode with Notus's (the immutables are the pad and the
@@ -19,11 +20,14 @@ if [ -z "${ETHERSCAN_API_KEY:-}" ] && [ -f .env ]; then set -a; source .env; set
 : "${ETHERSCAN_API_KEY:?ETHERSCAN_API_KEY is not set: add it to contracts/.env}"
 CHAIN=8453
 PAD=0xcaB79e85BfC71C30E5BA65d35e1a2e2D909C42EF
+# FORCE=1: submit even when forge believes the explorer already has the source
+# (its check reads the API, which can answer for a "similar match" or a stale entry)
+SKIP=${FORCE:+--skip-is-verified-check}
 
 verify() {  # address  contract  [constructor args hex]
   echo "== $2 at $1"
-  forge verify-contract --chain $CHAIN --verifier etherscan --etherscan-api-key "$ETHERSCAN_API_KEY" --watch \
-    ${3:+--constructor-args "$3"} "$1" "$2" 2>&1 | grep -E "Submitted|Response|Status|verified|already|Error|rror" || true
+  forge verify-contract --chain $CHAIN --verifier etherscan --etherscan-api-key "$ETHERSCAN_API_KEY" --watch $SKIP \
+    ${3:+--constructor-args "$3"} "$1" "$2" 2>&1 | grep -E "Submitted|Response|Status|verified|already|Error|rror|GUID|Pass|Fail" || true
 }
 
 verify $PAD src/Launchpad.sol:Launchpad 0x00000000000000000000000024622320d93da2d9c626ee469ad0c2c48a1ed7f7
