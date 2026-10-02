@@ -44,23 +44,155 @@ const scanClients = new Map<number, PublicClient>();
 function scanClient(chain: Chain): PublicClient {
   let c = scanClients.get(chain.id);
   if (!c) {
-    // generous timeout: some ranges take >10s when the RPC throttles; chains with
-    // more than one RPC fall through to the next when one refuses
+    // generous timeout: some ranges take >10s when the RPC throttles. Chains
+    // with more than one RPC fall through to the next when one refuses; the
+    // retries (with backoff, and smaller ranges) are ours, not the transport's.
     const urls = RPC_URLS[chain.id];
-    const opts = { timeout: 25_000, retryCount: 2 };
+    const opts = { timeout: 25_000, retryCount: 0 };
     c = createPublicClient({ chain, transport: urls ? fallback(urls.map((u) => http(u, opts))) : http(undefined, opts) });
     scanClients.set(chain.id, c);
   }
   return c;
 }
 
-// chains whose RPC rejected an unbounded getLogs range (GIWA caps at 100k
-// blocks; Robinhood answers the full history in one call) — probed once.
-const needsChunking = new Set<number>();
+// ---------------------------------------------------------------------------
+// Adaptive eth_getLogs. Public RPCs cap the block range of one call (10k
+// blocks on most Base nodes, 100k on GIWA, none on some) and throttle bursts,
+// and each node differs. Nothing here assumes a cap: a range the node refuses
+// is halved until it is accepted, and the size that works is remembered per
+// chain (this tab, and localStorage) so later scans start there. A throttled
+// call waits and tries again. A range that keeps failing is reported back,
+// not thrown, so a page shows what it has instead of nothing.
 
-/** eth_getLogs covering BOTH trade events (topic0 OR-filter), server-filtered
- *  by token. Tries the whole range in ONE request first; falls back to
- *  concurrent chunks only on RPCs that cap the block range. */
+type Range = { lo: bigint; hi: bigint };
+const DEFAULT_CHUNK = 9_000n; // under the 10k cap of the common public nodes
+const MIN_CHUNK = 500n;
+const CHUNK_KEY = "notus.getlogs.chunk.";
+const chunkSizes = new Map<number, bigint>();
+
+/** the range size this chain's RPCs are known to accept, if learned */
+function knownChunk(chainId: number): bigint | undefined {
+  const m = chunkSizes.get(chainId);
+  if (m !== undefined) return m;
+  try {
+    const raw = localStorage.getItem(CHUNK_KEY + chainId);
+    if (raw) {
+      const v = BigInt(raw);
+      chunkSizes.set(chainId, v);
+      return v;
+    }
+  } catch {
+    /* no storage */
+  }
+  return undefined;
+}
+
+/** remember a size the node accepts (learned from its refusals, never from
+ *  a small remainder that happened to pass); only ever shrinks */
+function learnChunk(chainId: number, size: bigint) {
+  const cur = knownChunk(chainId);
+  if (cur !== undefined && cur <= size) return;
+  const v = size < MIN_CHUNK ? MIN_CHUNK : size;
+  chunkSizes.set(chainId, v);
+  try {
+    localStorage.setItem(CHUNK_KEY + chainId, v.toString());
+  } catch {
+    /* no storage */
+  }
+}
+
+/** [from, to] cut into ranges of at most `size` blocks, most recent first */
+function splitRange(from: bigint, to: bigint, size: bigint): Range[] {
+  const out: Range[] = [];
+  let hi = to;
+  while (hi >= from) {
+    const lo = hi - size + 1n > from ? hi - size + 1n : from;
+    out.push({ lo, hi });
+    hi = lo - 1n;
+  }
+  return out;
+}
+
+function errorText(e: unknown): string {
+  const err = e as { message?: string; details?: string; shortMessage?: string; cause?: { message?: string } };
+  return `${err?.shortMessage ?? ""} ${err?.message ?? ""} ${err?.details ?? ""} ${err?.cause?.message ?? ""}`.toLowerCase();
+}
+function isThrottle(e: unknown): boolean {
+  const t = errorText(e);
+  return t.includes("status: 429") || t.includes("too many requests") || t.includes("rate limit") || t.includes("rate-limit");
+}
+function isRangeError(e: unknown): boolean {
+  const t = errorText(e);
+  return (
+    /block ?range|range (is )?too|too (many|large).*block|max.*(range|blocks)|exceed.*(range|blocks|limit)|more than \d+ (results|logs)|response size|10,?000/.test(t)
+  );
+}
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/** the logs of `filter` over `ranges`, a few ranges at a time; see above */
+async function getLogsAdaptive(
+  client: PublicClient,
+  chainId: number,
+  filter: { address: `0x${string}`; topics: (`0x${string}` | `0x${string}`[])[] },
+  ranges: Range[],
+  concurrency: number
+): Promise<{ logs: RpcLog[]; failed: Range[] }> {
+  const queue = [...ranges];
+  const logs: RpcLog[] = [];
+  const failed: Range[] = [];
+  const worker = async () => {
+    while (queue.length) {
+      const r = queue.shift()!;
+      const span = r.hi - r.lo + 1n;
+      const canSplit = span > MIN_CHUNK;
+      const split = () => {
+        const mid = r.lo + span / 2n;
+        queue.push({ lo: r.lo, hi: mid - 1n }, { lo: mid, hi: r.hi });
+      };
+      for (let attempt = 0; ; attempt++) {
+        try {
+          const got = (await client.request({
+            method: "eth_getLogs",
+            params: [{ ...filter, fromBlock: numberToHex(r.lo), toBlock: numberToHex(r.hi) }],
+          })) as RpcLog[];
+          logs.push(...got);
+          break;
+        } catch (e) {
+          if (isRangeError(e)) {
+            // over the node's cap: halve, and start there from now on
+            if (!canSplit) {
+              failed.push(r);
+              break;
+            }
+            split();
+            learnChunk(chainId, span / 2n);
+            break;
+          }
+          const throttled = isThrottle(e);
+          // a hiccup that persists, or a throttle that won't ease: smaller pieces
+          if (canSplit && attempt >= (throttled ? 2 : 1)) {
+            split();
+            break;
+          }
+          if (attempt >= 3) {
+            failed.push(r);
+            break;
+          }
+          await sleep(500 * 2 ** attempt + Math.random() * 250);
+        }
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(concurrency, queue.length)) }, worker));
+  return { logs, failed };
+}
+
+/** The pad's trade logs over [fromBlock, toBlock] — one token's, or (no
+ *  token) every coin's — most recent ranges first. A first visit reads at
+ *  most MAX_SPAN blocks of history and flags the rest as truncated; the
+ *  incremental cache keeps everything from there on. `last` is the newest
+ *  block fully covered: when a range kept failing, everything from it up is
+ *  left out and will be read by the next scan. */
 async function scanTrades(
   client: PublicClient,
   chainId: number,
@@ -68,68 +200,25 @@ async function scanTrades(
   token: `0x${string}` | null,
   fromBlock: bigint,
   toBlock: bigint
-): Promise<{ trades: Trade[]; truncated: boolean }> {
-  const CHUNK = 90_000n; // stays under the common 100k range cap
-  // Only range-capped RPCs (GIWA) reach the chunked path, and they throttle
-  // sustained bursts hard — keep the first scan to ~1M recent blocks (weeks
-  // of history) and flag the rest as truncated; the incremental cache keeps
-  // everything from there on.
-  const MAX_CHUNKS = 12;
-  const CONCURRENCY = 6; // higher trips public-RPC rate limits
+): Promise<{ trades: Trade[]; truncated: boolean; last: bigint }> {
+  const MAX_SPAN = 250_000n; // ~6 days on Base
+  const CONCURRENCY = 3; // higher trips public-RPC rate limits
   // every trade of one token, or (no token) every trade of the pad
   const topics: (`0x${string}` | `0x${string}`[])[] = [[topicBought, topicSold]];
   if (token) topics.push(`0x${token.slice(2).toLowerCase().padStart(64, "0")}` as `0x${string}`);
 
-  if (!needsChunking.has(chainId)) {
-    try {
-      const logs = (await client.request({
-        method: "eth_getLogs",
-        params: [
-          { address: pad, fromBlock: numberToHex(fromBlock), toBlock: numberToHex(toBlock), topics },
-        ],
-      })) as RpcLog[];
-      return { trades: decodeTrades(logs), truncated: false };
-    } catch {
-      needsChunking.add(chainId); // range-capped (or hiccup) — chunk from now on
-    }
+  const start = toBlock - fromBlock + 1n > MAX_SPAN ? toBlock - MAX_SPAN + 1n : fromBlock;
+  const ranges = splitRange(start, toBlock, knownChunk(chainId) ?? DEFAULT_CHUNK);
+  const { logs, failed } = await getLogsAdaptive(client, chainId, { address: pad, topics }, ranges, CONCURRENCY);
+
+  let last = toBlock;
+  let kept = logs;
+  if (failed.length) {
+    const cut = failed.reduce((m, r) => (r.lo < m ? r.lo : m), failed[0].lo);
+    kept = logs.filter((l) => BigInt(l.blockNumber ?? "0x0") < cut);
+    last = cut - 1n;
   }
-
-  // most recent ranges first, so trades near "now" survive the chunk cap
-  const ranges: { lo: bigint; hi: bigint }[] = [];
-  let hi = toBlock;
-  while (hi >= fromBlock && ranges.length < MAX_CHUNKS) {
-    const lo = hi - CHUNK + 1n > fromBlock ? hi - CHUNK + 1n : fromBlock;
-    ranges.push({ lo, hi });
-    hi = lo - 1n;
-  }
-
-  const perChunk: RpcLog[][] = new Array(ranges.length);
-  let next = 0;
-  await Promise.all(
-    Array.from({ length: Math.min(CONCURRENCY, ranges.length) }, async () => {
-      while (next < ranges.length) {
-        const i = next++;
-        const r = ranges[i];
-        const params = {
-          address: pad,
-          fromBlock: numberToHex(r.lo),
-          toBlock: numberToHex(r.hi),
-          topics,
-        } as const;
-        // retry each chunk on its own: one hiccup must not restart the scan
-        for (let attempt = 0; ; attempt++) {
-          try {
-            perChunk[i] = (await client.request({ method: "eth_getLogs", params: [params] })) as RpcLog[];
-            break;
-          } catch (e) {
-            if (attempt >= 2) throw e;
-          }
-        }
-      }
-    })
-  );
-
-  return { trades: decodeTrades(perChunk.flat()), truncated: hi >= fromBlock };
+  return { trades: decodeTrades(kept), truncated: start > fromBlock, last };
 }
 
 function decodeTrades(logs: RpcLog[]): Trade[] {
@@ -278,7 +367,7 @@ export function useTrades(token: `0x${string}`) {
       }
 
       const result = { trades, truncated };
-      saveCache(key, { last: latest, ...result });
+      saveCache(key, { last: fresh.last, ...result });
       return result;
     },
   });
@@ -296,47 +385,28 @@ export function useVolumes() {
     enabled: !!pad,
     refetchInterval: 60_000,
     placeholderData: (prev) => prev,
-    queryFn: async (): Promise<{ byToken: Record<string, bigint>; trades: number }> => {
+    queryFn: async (): Promise<{ byToken: Record<string, bigint>; trades: number; partial: boolean }> => {
       const byToken: Record<string, bigint> = {};
-      if (!pad) return { byToken, trades: 0 };
+      if (!pad) return { byToken, trades: 0, partial: false };
       const client = scanClient(chain);
       const latest = await client.getBlockNumber();
       const perDay = BigInt(Math.round(86_400 / (BLOCK_SECONDS[chain.id] ?? 2)));
       const from = latest > deployBlock + perDay ? latest - perDay : deployBlock;
-      // chunks small enough for any public RPC's getLogs range cap, a few at a time
-      const CHUNK = 9_000n;
-      const ranges: { lo: bigint; hi: bigint }[] = [];
-      for (let lo = from; lo <= latest; lo += CHUNK) ranges.push({ lo, hi: lo + CHUNK - 1n > latest ? latest : lo + CHUNK - 1n });
-      const logs: RpcLog[][] = new Array(ranges.length);
-      const topics: (`0x${string}` | `0x${string}`[])[] = [[topicBought, topicSold]];
-      let next = 0;
-      await Promise.all(
-        Array.from({ length: Math.min(3, ranges.length) }, async () => {
-          while (next < ranges.length) {
-            const i = next++;
-            const params = {
-              address: pad,
-              fromBlock: numberToHex(ranges[i].lo),
-              toBlock: numberToHex(ranges[i].hi),
-              topics,
-            };
-            for (let attempt = 0; ; attempt++) {
-              try {
-                logs[i] = (await client.request({ method: "eth_getLogs", params: [params] })) as RpcLog[];
-                break;
-              } catch (e) {
-                if (attempt >= 2) throw e;
-              }
-            }
-          }
-        })
+      const ranges = splitRange(from, latest, knownChunk(chain.id) ?? DEFAULT_CHUNK);
+      const { logs, failed } = await getLogsAdaptive(
+        client,
+        chain.id,
+        { address: pad, topics: [[topicBought, topicSold]] },
+        ranges,
+        3
       );
-      const trades = decodeTrades(logs.flat());
+      const trades = decodeTrades(logs);
       for (const t of trades) {
         const k = t.token.toLowerCase();
         byToken[k] = (byToken[k] ?? 0n) + t.eth;
       }
-      return { byToken, trades: trades.length };
+      // a range the RPCs kept refusing leaves the sums short, not absent
+      return { byToken, trades: trades.length, partial: failed.length > 0 };
     },
   });
 }
