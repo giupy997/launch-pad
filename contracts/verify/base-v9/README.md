@@ -1,11 +1,12 @@
 # Verifying the Base v9 stack on Blockscout, by hand
 
-Basescan (Etherscan's Base explorer) keeps a database of its own and shows
-these contracts unverified until told: `verify-basescan.sh` here verifies all
-six with forge and an Etherscan API key in `contracts/.env`. The LaunchToken of
-every coin shares Notus's runtime bytecode (the immutables are the pad and the
-transferable flag), so one verified token gives every other coin of the pad a
-"similar match" there, as on Blockscout.
+**Also done on 2026-10-02 on Basescan** (Etherscan's Base explorer, a database
+of its own): all six, through Etherscan's v2 API with these very files,
+`verify-basescan.sh` here (an Etherscan API key in `contracts/.env`; forge's
+verifier is bypassed, since foundry.toml points chain 8453 at Blockscout). The
+LaunchToken of every coin shares Notus's runtime bytecode (the immutables are
+the pad and the transferable flag), so every other coin of the pad shows its
+source there as a "similar match" from its first block, as on Blockscout.
 
 **Done on 2026-10-01**: every contract below is verified on base.blockscout.com; the
 LaunchToken through Sourcify (`forge verify-contract --verifier sourcify`), which
