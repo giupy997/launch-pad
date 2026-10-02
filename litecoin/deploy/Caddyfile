@@ -1,7 +1,8 @@
 # HTTPS in front of the desks (Caddy fetches the certificates itself).
 # Point a DNS record for each hostname below at the server, then:
 #   sudo cp litecoin/deploy/Caddyfile /etc/caddy/Caddyfile && sudo systemctl reload caddy
-# Testnet desk (:8787) at /state.json and /health; mainnet desk (:8788) under /main/.
+# Testnet desk (:8787) at /state.json and /health; mainnet desk (:8788) under /main/;
+# the points service (:8789, points/deploy/notus-points.service) under /points/.
 # Everything else gets a 404. (`handle` blocks are mutually exclusive.)
 # Two hostnames: the site moved to notus-pad.fun, the old one stays until it lapses.
 desk.notuspad.com, desk.notus-pad.fun {
@@ -13,6 +14,11 @@ desk.notuspad.com, desk.notus-pad.fun {
 	@test path /state.json /health
 	handle @test {
 		reverse_proxy localhost:8787
+	}
+	@points path /points/*
+	handle @points {
+		uri strip_prefix /points
+		reverse_proxy localhost:8789
 	}
 	handle {
 		respond 404

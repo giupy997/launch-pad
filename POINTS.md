@@ -104,12 +104,15 @@ chain: a testnet invite does not carry into Season 1.
 ## How it runs
 
 Mirrors the Litecoin desk (`litecoin/desk.ts`): one long-running Node process
-on the VPS, a systemd unit, Caddy in front, the site reading it through a
-same-origin API route. No framework, no native modules: Node 22 runs the
-TypeScript directly, `node:sqlite` holds the data, `fetch` talks to the RPCs.
+on the VPS (`points/service.ts`), a systemd unit, Caddy in front, the site
+reading it through a same-origin API route. No framework, no database, no
+native modules: Node 22 runs the TypeScript directly, the facts live in JSON
+lines on disk, `fetch` talks to the RPCs. The logic sits in `web/lib/points/`
+(like the desk's in `web/lib/litecoin/`), so it resolves viem from the site's
+node_modules and the site reuses the same rules and the same invite message.
 One process serves every chain it is configured for (today Liteforge, later
 LitVM mainnet), each with its own pad address, deploy block, RPCs and quote
-decimals (18 for native zkLTC, 8 for cbLTC).
+decimals (18 for native zkLTC, 8 for cbLTC). Running it: `points/README.md`.
 
 **Indexer.** Reads the pad's logs in ranges the chain's public nodes accept
 (1,999 blocks on Base, measured; Liteforge takes far wider ones; the size is
@@ -130,28 +133,31 @@ reads (one ABI decodes all of them today):
 Holdings at graduation need no Transfer logs: before graduation a LaunchToken
 only moves through the pad, so a wallet's balance is its buys minus its sells.
 
-**Data** (`points/data/<chain>.sqlite`, one file per chain), raw tables as the
-source of truth and a ledger derived from them:
+**Data** (`points/data/<chain>/`), the facts as the source of truth and a
+ledger derived from them, never stored:
 
 ```
-meta(key, value)                       last indexed block, season bounds, rules version
-coins(token PK, creator, created_block, graduated_block)
-trades(tx, log_index, block, ts, token, wallet, side, quote, tokens)   PK (tx, log_index)
-referrals(invitee PK, inviter, block, ts, signature)
-ledger(wallet, season, kind, points, token, ref, block)                 kind: trade | grad_holder | grad_creator | early | ref_inviter | ref_invitee
+events.jsonl      the pad's events as read: created, bought, sold, graduated, freeze (append-only)
+referrals.jsonl   the invite bindings: invitee, inviter, block, time (append-only)
+meta.json         the last block indexed, the rules version, the getLogs size the nodes taught
+ledger            in memory: wallet, kind, points, coin, trade, block
+                  kind: trade | grad_holder | grad_creator | early | ref_inviter | ref_invitee
 ```
 
-`rebuild` drops the ledger and replays it from the raw tables; the service
-does it itself when the rules version changes.
+The ledger is recomputed from the events after every pass and on every
+start, so a change of weights (and of `RULES_VERSION`) replays the whole
+season on the next restart. Everything is tested against fakes of the real
+nodes and made-up pads: `node --test --experimental-strip-types
+web/lib/points/*.test.ts`.
 
-**API** on `127.0.0.1:8789`, JSON, GET answers cached a minute, the chain in
-the path:
+**API** on `127.0.0.1:8789`, JSON, GET answers cached half a minute, the
+chain in the path:
 
 ```
-GET  /:chain/season                   season number, bounds, last indexed block, rules version
-GET  /:chain/leaderboard?limit=100    rank, wallet, points, trades, referrals
-GET  /:chain/wallet/0x…               points by kind, rank, trades, inviter, invitees, 30-day bonus left
-POST /:chain/referral                 { invitee, inviter, signature } → 201, or 409 when already bound
+GET  /:chain/season                   chain, season, the rules, what is indexed
+GET  /:chain/leaderboard?limit=100    rank, wallet, points, trades, volume, invitees
+GET  /:chain/wallet/0x…               points by kind, rank, trades, volume, inviter, invitees, bonus end
+POST /:chain/referral                 { invitee, inviter, signature } → 201; 400 bad claim; 409 already bound; 429 too many
 GET  /health
 ```
 
@@ -180,7 +186,7 @@ there; on Base, `/points` is the *Coming with LitVM* page.
 1. This document agreed, with the open choices below settled.
 2. `points/` service: indexer, ledger, API, `points/deploy/notus-points.service`
    and the Caddy block; configured for Liteforge; backfill Season 0 from the
-   testnet pad's deploy block.
+   testnet pad's deploy block. **Done**: `points/README.md`.
 3. Site: proxy route, `/points` (live on Liteforge, the roadmap page on Base),
    the profile section, the trade-box hint, the referral capture and
    signature; the *Coming with LitVM* section on the About page.

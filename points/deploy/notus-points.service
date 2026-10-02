@@ -1,0 +1,34 @@
+# systemd unit for the Notus points service: indexes the pad's logs on the
+# chains it is configured for (Liteforge for now) and serves the leaderboard,
+# a wallet's points and invite acceptances on 127.0.0.1:8789, behind Caddy
+# (see litecoin/deploy/Caddyfile, the /points/* block).
+#
+#   cd ~/launch-pad && git pull && (cd web && npm install --no-audit --no-fund)   # viem, from the site's node_modules
+#   sudo cp points/deploy/notus-points.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now notus-points
+#   journalctl -u notus-points -f
+#
+# No key, no wallet: the only writes are invite bindings signed by the
+# invitee. Data lives in points/data/<chain>/ as JSON lines; back it up with
+# the rest of the home directory.
+[Unit]
+Description=Notus points (indexer + API)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=notus
+WorkingDirectory=/home/notus/launch-pad
+ExecStart=/usr/bin/node points/service.ts
+Restart=always
+RestartSec=10
+TimeoutStopSec=90
+KillSignal=SIGTERM
+Environment=PORT=8789
+Environment=NOTUS_POINTS_CHAINS=liteforge
+Environment=NOTUS_POINTS_DATA=/home/notus/launch-pad/points/data
+Environment=NOTUS_POINTS_EVERY=10
+
+[Install]
+WantedBy=multi-user.target
