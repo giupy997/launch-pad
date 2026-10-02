@@ -70,7 +70,7 @@ export const DEFAULT_CHAIN = base;
 export const CHAIN_LABEL: Record<number, string> = { [base.id]: "cbLTC" };
 
 /** Seconds a block takes, to turn a freeze block into a time. */
-export const BLOCK_SECONDS: Record<number, number> = { [base.id]: 2, [litvmTestnet.id]: 1 };
+export const BLOCK_SECONDS: Record<number, number> = { [base.id]: 2, [litvmTestnet.id]: 0.25 }; // Liteforge: ~4 blocks a second, measured
 /** Where a chain's coins go when the pad freezes for its migration (v8 pads). */
 export const MIGRATION_TARGET: Record<number, string> = { [base.id]: "LitVM mainnet" };
 

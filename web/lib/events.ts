@@ -257,7 +257,9 @@ async function scanTrades(
   fromBlock: bigint,
   toBlock: bigint
 ): Promise<{ trades: Trade[]; truncated: boolean; first: bigint; last: bigint }> {
-  const MAX_SPAN = 100_000n; // ~2.3 days on Base
+  // a first visit reads this much history: about fifty requests at the chain's
+  // configured range (~2.3 days on Base, ~1.3 on Liteforge's 250 ms blocks)
+  const MAX_SPAN = (GETLOGS_CHUNK[chainId] ?? DEFAULT_CHUNK) * 50n;
   const CONCURRENCY = 3; // higher trips public-RPC rate limits
   // every trade of one token, or (no token) every trade of the pad
   const topics: (`0x${string}` | `0x${string}`[])[] = [[topicBought, topicSold]];

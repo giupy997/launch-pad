@@ -50,8 +50,8 @@ export const POINTS_CHAINS: Record<string, PointsChain> = {
     rpcs: ["https://liteforge.rpc.caldera.xyz/infra-partner-http"],
     quoteDecimals: 18,
     quoteSymbol: "zkLTC",
-    blockSeconds: 1,
-    chunk: 9_000n,
+    blockSeconds: 0.25, // measured on the live chain: ~4 blocks a second (Orbit's 250 ms)
+    chunk: 9_000n, // the node took these whole during the backfill
     lag: 60n,
     hidden: [],
     season: { number: 0, name: "Season 0", start: 55_934_572n, end: null, rehearsal: true },
