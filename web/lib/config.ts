@@ -266,8 +266,13 @@ const transport = () => http(undefined, { batch: { batchSize: 30, wait: 16 } });
  *  it, so a rate-limited or stalled endpoint costs a retry, not the page.
  *  Every host here is also in the CSP (next.config.mjs). */
 export const RPC_URLS: Record<number, string[]> = {
-  [base.id]: ["https://mainnet.base.org", "https://base-rpc.publicnode.com", "https://base.llamarpc.com"],
+  [base.id]: ["https://mainnet.base.org", "https://base-rpc.publicnode.com", "https://base.drpc.org", "https://1rpc.io/base"],
 };
+
+/** The block range one eth_getLogs may cover on the chain's public nodes
+ *  (mainnet.base.org: "limited to a 2,000 range"). The scan learns a smaller
+ *  one from a refusal; chains missing here start from a guess. */
+export const GETLOGS_CHUNK: Record<number, bigint> = { [base.id]: 1_999n };
 const chainTransport = (chainId: number) => {
   const urls = RPC_URLS[chainId];
   return urls ? fallback(urls.map((u) => http(u, { batch: { batchSize: 30, wait: 16 } }))) : transport();

@@ -10,7 +10,8 @@ const RPC_HOSTS = [
   "https://liteforge.rpc.caldera.xyz", // LitVM Liteforge
   "https://mainnet.base.org", // Base
   "https://base-rpc.publicnode.com", // Base, second
-  "https://base.llamarpc.com", // Base, third
+  "https://base.drpc.org", // Base, third
+  "https://1rpc.io", // Base, fourth (1rpc.io/base)
   "https://sepolia-rpc.giwa.io", // GIWA Sepolia
   "https://rpc.mainnet.chain.robinhood.com", // Robinhood Chain
   "https://11155111.rpc.thirdweb.com", // Sepolia (viem's default)
