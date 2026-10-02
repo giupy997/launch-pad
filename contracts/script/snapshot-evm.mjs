@@ -6,7 +6,7 @@
 // MigrateFromLedger.s.sol re-creates the coins on the other side unchanged.
 // Quote amounts are scaled to 18 decimals (cbLTC has 8; zkLTC is native).
 //
-//   node script/snapshot-evm.mjs --rpc https://mainnet.base.org --launchpad 0x... \
+//   node script/snapshot-evm.mjs --rpc https://mainnet.base.org,https://base-rpc.publicnode.com --launchpad 0x... \
 //     --quote 0xcb17C9Db87B595717C857a08468793f5bAb6445F --from-block <pad deploy block> \
 //     [--network base] [--out ../litecoin/migration/base-<block>.json] [--chunk 5000] [--allow-unfrozen] [--vault 0x...]
 //
@@ -20,9 +20,19 @@
 // one the run refuses. Run it unfrozen before announcing the freeze, so the
 // day holds no surprise. Needs `forge build` (the ABIs come from out/) and
 // web/'s node_modules (viem).
+//
+// --rpc takes several nodes, comma separated: public nodes throttle a run of
+// a few hundred calls ("over rate limit"), so each call goes to the next node
+// when one refuses, the whole chain is retried with a growing pause, and the
+// calls are paced a little apart.
 import fs from "node:fs";
 import path from "node:path";
-import { createPublicClient, http, keccak256, toHex, getAddress, parseAbiItem } from "../../web/node_modules/viem/_esm/index.js";
+import { createPublicClient, fallback, http, keccak256, toHex, getAddress, parseAbiItem } from "../../web/node_modules/viem/_esm/index.js";
+
+process.on("unhandledRejection", (e) => {
+  console.error(`\nsnapshot failed: ${e?.shortMessage ?? e?.message ?? e}${e?.details ? ` (${e.details})` : ""}`);
+  process.exit(1);
+});
 
 const root = path.resolve(import.meta.dirname, "..");
 const args = process.argv.slice(2);
@@ -61,9 +71,21 @@ const erc20Abi = [
 const TRANSFER = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
 const GRADUATED = parseAbiItem("event Graduated(address indexed token, uint256 raisedEth)");
 
-const client = createPublicClient({ transport: http(rpc) });
+const rpcs = rpc.split(",").map((s) => s.trim()).filter(Boolean);
+const client = createPublicClient({
+  transport: fallback(
+    rpcs.map((u) => http(u, { timeout: 20_000 })),
+    { rank: false, retryCount: 5, retryDelay: 600 }
+  ),
+});
+const PACE_MS = Number(flag("pace", "120")); // between calls, so one node's rate limit is not tripped
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const chainId = await client.getChainId();
-const read = (address, abi_, functionName, args_ = [], blockNumber) => client.readContract({ address, abi: abi_, functionName, args: args_, blockNumber });
+const read = async (address, abi_, functionName, args_ = [], blockNumber) => {
+  await sleep(PACE_MS);
+  return client.readContract({ address, abi: abi_, functionName, args: args_, blockNumber });
+};
+console.log(`${rpcs.length} RPC node${rpcs.length === 1 ? "" : "s"}: ${rpcs.join(", ")}`);
 
 // ---- the block: the freeze, reached
 const freezeBlock = await read(launchpad, padAbi, "freezeBlock");
@@ -94,12 +116,14 @@ async function logsOf(address, event, eventArgs) {
   while (from <= block) {
     const to = from + chunk - 1n > block ? block : from + chunk - 1n;
     try {
+      await sleep(PACE_MS);
       const logs = await client.getLogs({ address, event, args: eventArgs, fromBlock: from, toBlock: to });
       out.push(...logs);
       from = to + 1n;
     } catch (e) {
       if (chunk <= 100n) throw e;
       chunk /= 2n;
+      console.log(`  (a node refused ${to - from + 1n} blocks of logs: trying ${chunk})`);
     }
   }
   return out;

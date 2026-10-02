@@ -29,7 +29,8 @@ if [ -z "${PRIVATE_KEY:-}" ] && [ -f .env ]; then
   set +a
 fi
 : "${PRIVATE_KEY:?PRIVATE_KEY is not set and contracts/.env has none}"
-SRC_RPC=${SRC_RPC:-https://mainnet.base.org}
+# the Base nodes the site uses, in order: the snapshot falls through them when one throttles
+SRC_RPC=${SRC_RPC:-https://mainnet.base.org,https://base-rpc.publicnode.com,https://base.drpc.org,https://1rpc.io/base}
 DST_RPC=${DST_RPC:-https://liteforge.rpc.caldera.xyz/infra-partner-http}
 SRC_PAD=${SRC_PAD:-0xcaB79e85BfC71C30E5BA65d35e1a2e2D909C42EF}
 SRC_QUOTE=${SRC_QUOTE:-0xcb17C9Db87B595717C857a08468793f5bAb6445F}
@@ -63,7 +64,7 @@ fi
 printf '{"launchpad":"%s","migrator":"%s"}\n' "$TARGET" "$MIGRATOR" > "$MIG/rehearsal-target.json"
 echo "   pad $TARGET · migrator $MIGRATOR · deploy block $DEPLOY_BLOCK"
 
-echo "== 2. the snapshot of Base: unfrozen, at the latest block, 1,999 blocks per request"
+echo "== 2. the snapshot of Base: unfrozen, at the latest block, 1,999 blocks per request, four nodes"
 node script/snapshot-evm.mjs --rpc "$SRC_RPC" --launchpad "$SRC_PAD" --quote "$SRC_QUOTE" --from-block "$SRC_FROM" \
   --network base --chunk 1999 --allow-unfrozen --vault "$DEPLOYER" --out "$FILE"
 
