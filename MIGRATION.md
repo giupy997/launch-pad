@@ -9,7 +9,10 @@ announcement on, so the list of coins to move is final too; **migrateOut**,
 also through the timelock, takes each coin's cbLTC to the account that bridges
 it; the **snapshot tool** reads the frozen pad; the **migration script**
 re-creates the coins on the other side. Rehearsed end to end on a local chain
-(`contracts/script/rehearse-local.sh`, which anyone can run).
+(`contracts/script/rehearse-local.sh`, which anyone can run), and against the
+live Base pad on the Liteforge testnet (`contracts/script/rehearse-liteforge.sh`:
+an unfrozen snapshot of Base, a fresh pad on Liteforge, the migration, the
+check; nothing on Base changes and nothing is published).
 
 What it costs users: about a day of notice during which trading goes on (no
 new coins), then a few hours of stillness while the coins move. What it costs
