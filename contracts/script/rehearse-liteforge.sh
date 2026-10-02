@@ -8,7 +8,7 @@
 # Nothing is published to the site: the ticker map it writes stays in
 # litecoin/migration/ (publishing it is the real day's step 7).
 #
-#   cd ~/launch-pad/contracts && source .env && bash script/rehearse-liteforge.sh
+#   cd ~/launch-pad/contracts && bash script/rehearse-liteforge.sh      # reads .env itself
 #
 # Needs foundry, web/'s node_modules (viem), PRIVATE_KEY in the environment,
 # and zkLTC on Liteforge for the deployer: the coins' real reserves (step 3
@@ -20,7 +20,15 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export PATH="$HOME/.foundry/bin:$PATH"
-: "${PRIVATE_KEY:?source contracts/.env first}"
+# .env sets PRIVATE_KEY without exporting it, so a `source` in the shell does
+# not reach this process: read it here when it is missing
+if [ -z "${PRIVATE_KEY:-}" ] && [ -f .env ]; then
+  set -a
+  # shellcheck disable=SC1091
+  source .env
+  set +a
+fi
+: "${PRIVATE_KEY:?PRIVATE_KEY is not set and contracts/.env has none}"
 SRC_RPC=${SRC_RPC:-https://mainnet.base.org}
 DST_RPC=${DST_RPC:-https://liteforge.rpc.caldera.xyz/infra-partner-http}
 SRC_PAD=${SRC_PAD:-0xcaB79e85BfC71C30E5BA65d35e1a2e2D909C42EF}
