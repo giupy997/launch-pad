@@ -20,13 +20,16 @@ if [ -z "${ETHERSCAN_API_KEY:-}" ] && [ -f .env ]; then set -a; source .env; set
 : "${ETHERSCAN_API_KEY:?ETHERSCAN_API_KEY is not set: add it to contracts/.env}"
 CHAIN=8453
 PAD=0xcaB79e85BfC71C30E5BA65d35e1a2e2D909C42EF
+ETHERSCAN_V2=${ETHERSCAN_V2:-https://api.etherscan.io/v2/api}
 # FORCE=1: submit even when forge believes the explorer already has the source
 # (its check reads the API, which can answer for a "similar match" or a stale entry)
 SKIP=${FORCE:+--skip-is-verified-check}
 
 verify() {  # address  contract  [constructor args hex]
   echo "== $2 at $1"
-  forge verify-contract --chain $CHAIN --verifier etherscan --etherscan-api-key "$ETHERSCAN_API_KEY" --watch $SKIP \
+  # the explicit URL matters: foundry.toml's [etherscan] entry for chain 8453 is Blockscout's API, which
+  # already holds these verifications and would answer "already verified" (or throttle) for Basescan's sake
+  forge verify-contract --chain $CHAIN --verifier etherscan --verifier-url "$ETHERSCAN_V2" --etherscan-api-key "$ETHERSCAN_API_KEY" --watch $SKIP \
     ${3:+--constructor-args "$3"} "$1" "$2" 2>&1 | grep -E "Submitted|Response|Status|verified|already|Error|rror|GUID|Pass|Fail" || true
 }
 
