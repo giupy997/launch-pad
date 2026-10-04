@@ -35,9 +35,9 @@ fi
 # the Base nodes the site uses, in order: the snapshot falls through them when one throttles
 SRC_RPC=${SRC_RPC:-https://mainnet.base.org,https://base-rpc.publicnode.com,https://base.drpc.org,https://1rpc.io/base}
 DST_RPC=${DST_RPC:-https://liteforge.rpc.caldera.xyz/infra-partner-http}
-SRC_PAD=${SRC_PAD:-0xcaB79e85BfC71C30E5BA65d35e1a2e2D909C42EF}
+SRC_PAD=${SRC_PAD:-0xDd48A36aa65142A5CF111f485C2EFB26482b74C1}
 SRC_QUOTE=${SRC_QUOTE:-0xcb17C9Db87B595717C857a08468793f5bAb6445F}
-SRC_FROM=${SRC_FROM:-52045689}
+SRC_FROM=${SRC_FROM:-52172805}
 # the v7.7 pad's migrator on Liteforge: it knows the DEX router there
 OLD_MIGRATOR=0xE34b882BD48D3b13A92C5A7C99469485d1761776
 SCALE=${SCALE:-1}

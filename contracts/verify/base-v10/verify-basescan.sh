@@ -11,7 +11,7 @@
 #
 #   cd ~/launch-pad/contracts && bash verify/base-v10/verify-basescan.sh
 #
-# The addresses come from addresses.env next to this script, written from the
+# The addresses come from addresses.sh next to this script, written from the
 # deploy script's output (PAD, FACTORY, MIGRATOR, ZAP, TIMELOCK, TREASURY,
 # PROPOSER, DELAY); the constructor arguments are encoded from them. The
 # LaunchToken of every coin is created by the factory and shares its runtime
@@ -76,7 +76,7 @@ verify() {  # address  file  "path:Name"  [constructor args, hex without 0x]
 }
 
 
-set -a; source "$HERE/addresses.env"; set +a
+set -a; source "$HERE/addresses.sh"; set +a
 : "${PAD:?}" "${FACTORY:?}" "${MIGRATOR:?}" "${ZAP:?}" "${TIMELOCK:?}" "${TREASURY:?}" "${PROPOSER:?}" "${DELAY:?}"
 export PATH="$HOME/.foundry/bin:$PATH"
 enc() { cast abi-encode "$@" | sed 's/^0x//'; }
