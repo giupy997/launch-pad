@@ -218,7 +218,6 @@ contract Launchpad is Ownable, ReentrancyGuard {
     event BoughtBack(address indexed token, uint256 quoteIn, uint256 tokensBurned);
     /// The coin's metadata changed: read tokenMetadata(token).
     event MetadataUpdated(address indexed token);
-    event AutoMigrationFailed(address indexed token);
     event FeeRecipientUpdated(address indexed token, address indexed recipient);
     event Bought(address indexed token, address indexed buyer, uint256 ethIn, uint256 tokensOut, uint256 fee);
     event Sold(address indexed token, address indexed seller, uint256 tokensIn, uint256 ethOut, uint256 fee);
@@ -507,27 +506,20 @@ contract Launchpad is Ownable, ReentrancyGuard {
         if (c.sold == CURVE_SUPPLY) _graduate(token, c);
     }
 
-    /// @notice The curve sold out: close it and hand the reserve to the DEX.
+    /// @notice The curve sold out: close it and hand the reserve to the DEX,
+    ///         in the same transaction and as one piece. A failing DEX leg
+    ///         fails the trade that crossed the line; the earlier design
+    ///         caught it (`try/catch`) so the graduation would stand anyway,
+    ///         and that left a window — the token transferable, the reserve
+    ///         still here, `migrate` public — in which whoever starved that
+    ///         call of gas could set the pool's price before the reserve
+    ///         reached it. Now a coin is never graduated with its reserve
+    ///         waiting, unless no migrator is set at all.
     function _graduate(address token, Curve storage c) internal {
         c.graduated = true;
         LaunchToken(token).setGraduated();
         emit Graduated(token, c.realEth);
-        // Auto-migrate to the DEX in the same transaction. The external
-        // self-call isolates state: if the DEX leg reverts for any reason
-        // the graduation itself still succeeds and migrate() stays
-        // available as a manual fallback.
-        if (address(migrator) != address(0)) {
-            try this.autoMigrate(token) {}
-            catch {
-                emit AutoMigrationFailed(token);
-            }
-        }
-    }
-
-    /// @notice Self-call target for automatic graduation migration.
-    function autoMigrate(address token) external {
-        if (msg.sender != address(this)) revert NotCreator();
-        _doMigrate(token);
+        if (address(migrator) != address(0)) _doMigrate(token);
     }
 
     function sell(address token, uint256 tokensIn, uint256 minEthOut) external nonReentrant {

@@ -9,8 +9,8 @@ import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {MockWETH9, MockV2Factory, MockV2Pair, MockV2Router} from "./mocks/UniV2Mock.sol";
 
 /// The graduation adapter against a Uniswap v2 pool that anyone may have
-/// touched first: the reserve must end up in the pool at the curve's price,
-/// whatever was in the pair before.
+/// touched first: the reserve reaches the pool at the curve's price, or waits,
+/// and never meets a price somebody else set.
 contract UniV2MigratorTest is Test {
     Launchpad pad;
     MockWETH9 weth;
@@ -91,18 +91,94 @@ contract UniV2MigratorTest is Test {
         assertGt(migrator.liquidity(token), 0);
     }
 
-    /// Funds parked after graduation (here: no migrator was set) leave a
-    /// window in which transfers are open and someone can mint liquidity at a
-    /// wild price. The adapter trades the pool back to the curve's price
-    /// before joining it, so the reserve is neither swept aside nor seeded at
-    /// the manipulated price.
-    function test_aSkewedPoolIsRebalancedBeforeSeeding() public {
+    /// Puts most of the supply in the pair against a little quote: a deep pool
+    /// at a fraction of the curve's price, as in the attack this replaces.
+    function _attackerPool(address token) internal returns (address pair, uint256 attackerTokens, uint256 attackerWeth) {
+        pair = factory.createPair(token, address(weth));
+        attackerTokens = IERC20(token).balanceOf(buyer);
+        attackerWeth = 10 ether;
+        vm.prank(buyer);
+        IERC20(token).transfer(pair, attackerTokens);
+        vm.startPrank(griefer);
+        weth.deposit{value: attackerWeth}();
+        weth.transfer(pair, attackerWeth);
+        MockV2Pair(pair).mint(griefer);
+        vm.stopPrank();
+    }
+
+    /// The window after graduation (here: no migrator was set yet; on a live
+    /// pad, the automatic migration starved of gas) is open to anyone minting
+    /// liquidity at a wild price. Deep and cheap — the attack: trading it to
+    /// our price would buy the attacker's tokens with the raise. The adapter
+    /// does not: the reserve is parked, still the coin's, nothing of ours
+    /// reaches the pool, and the attacker's liquidity is worth what they put in.
+    function test_aDeepCheapPoolParksTheReserve() public {
         address token = _create();
         vm.prank(buyer);
         pad.buy{value: 50 ether}(token, 0); // graduates; nothing migrates yet
-        (,, uint256 parked,, bool graduated,,) = pad.curves(token);
+        (,, uint256 raised,, bool graduated,,) = pad.curves(token);
         assertTrue(graduated);
-        assertGt(parked, 0, "the raise waits in the launchpad");
+        assertGt(raised, 0, "the raise waits in the launchpad");
+        (address pair, uint256 attackerTokens, uint256 attackerWeth) = _attackerPool(token);
+
+        pad.setMigrator(address(migrator));
+        pad.migrate(token); // anyone may
+
+        (uint256 rToken, uint256 rWeth,) = _reserves(token);
+        assertEq(rToken, attackerTokens, "the pool is untouched");
+        assertEq(rWeth, attackerWeth, "not a wei of the raise went in");
+        assertEq(migrator.liquidity(token), 0, "no position in somebody else's pool");
+        (uint256 pT, uint256 pQ) = migrator.parked(token);
+        assertEq(pT, pad.DEX_RESERVE(), "the reserve is parked");
+        assertEq(pQ, raised, "the raise is parked");
+        assertEq(IERC20(token).balanceOf(treasury), 0, "nothing swept to the treasury");
+        assertEq(IERC20(token).balanceOf(address(migrator)), pT);
+        assertEq(weth.balanceOf(address(migrator)), pQ);
+        assertEq(migrator.buybackCap(token), 0, "nothing to buy back from");
+        assertFalse(migrator.seed(token), "still at the other price: still parked");
+    }
+
+    /// ...and once the attacker leaves, the parked reserve lands at the curve's price.
+    function test_aParkedReserveLandsWhenTheAttackerLeaves() public {
+        address token = _create();
+        vm.prank(buyer);
+        pad.buy{value: 50 ether}(token, 0);
+        (,, uint256 raised,,,,) = pad.curves(token);
+        (address pair, uint256 attackerTokens, uint256 attackerWeth) = _attackerPool(token);
+        pad.setMigrator(address(migrator));
+        pad.migrate(token);
+
+        // the attacker withdraws: back out comes what went in, no raise inside
+        uint256 lp = MockV2Pair(pair).balanceOf(griefer);
+        vm.startPrank(griefer);
+        MockV2Pair(pair).transfer(pair, lp);
+        (uint256 a0, uint256 a1) = MockV2Pair(pair).burn(griefer);
+        vm.stopPrank();
+        (uint256 outTokens, uint256 outWeth) = MockV2Pair(pair).token0() == token ? (a0, a1) : (a1, a0);
+        assertLe(outWeth, attackerWeth, "no quote of ours in the attacker's liquidity");
+        assertLe(outTokens, attackerTokens, "no tokens of ours either");
+
+        // the pool keeps Uniswap's minimum liquidity as dust at the attacker's
+        // price: moving that costs nothing, so the parked reserve lands now
+        assertTrue(migrator.seed(token));
+        (uint256 rToken, uint256 rWeth,) = _reserves(token);
+        _assertPriceNear(rToken, rWeth, raised, pad.DEX_RESERVE(), 100);
+        assertGt(rToken, pad.DEX_RESERVE() * 99 / 100, "(almost) the whole reserve reached the pool");
+        assertGt(migrator.liquidity(token), 0);
+        (uint256 pT, uint256 pQ) = migrator.parked(token);
+        assertEq(pT + pQ, 0, "nothing parked any more");
+        assertLt(IERC20(token).balanceOf(treasury), pad.DEX_RESERVE() / 100, "only the ratio's remainder went to the treasury");
+    }
+
+    /// A little liquidity at a price far above ours (dust, or a griefer's
+    /// twenty WETH against one token) is sold into, down to our price, which
+    /// costs a sliver of tokens and brings their quote back: the manipulator
+    /// pays, and the reserve joins the pool at the curve's price.
+    function test_aDearDustPoolIsSoldIntoAndJoined() public {
+        address token = _create();
+        vm.prank(buyer);
+        pad.buy{value: 50 ether}(token, 0);
+        (,, uint256 raised,,,,) = pad.curves(token);
 
         // 1 token : 20 WETH — twenty thousand times the curve's price
         address pair = factory.createPair(token, address(weth));
@@ -115,39 +191,75 @@ contract UniV2MigratorTest is Test {
         vm.stopPrank();
 
         pad.setMigrator(address(migrator));
-        pad.migrate(token); // anyone may
+        pad.migrate(token);
 
         (uint256 rToken, uint256 rWeth,) = _reserves(token);
-        _assertPriceNear(rToken, rWeth, parked, pad.DEX_RESERVE(), 100); // within 1%
+        _assertPriceNear(rToken, rWeth, raised, pad.DEX_RESERVE(), 100);
         assertGt(rToken, pad.DEX_RESERVE() * 99 / 100, "(almost) the whole reserve reached the pool");
-        assertLt(IERC20(token).balanceOf(treasury), pad.DEX_RESERVE() / 100, "not swept to the treasury");
         assertGt(migrator.liquidity(token), 0);
-        // the griefer's liquidity was traded against: it is worth less than the 20 WETH put in
+        (uint256 pT, uint256 pQ) = migrator.parked(token);
+        assertEq(pT + pQ, 0);
         uint256 share = MockV2Pair(pair).balanceOf(griefer) * 1e18 / MockV2Pair(pair).totalSupply();
         assertLt(rWeth * share / 1e18, 20 ether, "the manipulator paid for the manipulation");
+        assertGt(treasury.balance, 0, "what the sale brought in beyond the pool's ratio went to the treasury, unwrapped");
     }
 
-    function test_aPoolWithTokensTooCheapIsRebalancedToo() public {
+    /// Liquidity already there at our price (within tolerance) is simply
+    /// joined at its ratio; the sliver the ratio leaves over goes to the treasury.
+    function test_aPoolAtOurPriceIsJoined() public {
         address token = _create();
         vm.prank(buyer);
         pad.buy{value: 50 ether}(token, 0);
-        (,, uint256 parked,,,,) = pad.curves(token);
+        (,, uint256 raised,,,,) = pad.curves(token);
 
-        // lots of tokens against almost no WETH: a price far below the curve's
         address pair = factory.createPair(token, address(weth));
+        uint256 someTokens = 1_000_000e18;
+        uint256 someWeth = raised * someTokens / pad.DEX_RESERVE(); // exactly our price
         vm.prank(buyer);
-        IERC20(token).transfer(pair, 50_000_000e18);
+        IERC20(token).transfer(pair, someTokens);
         vm.startPrank(griefer);
-        weth.deposit{value: 0.001 ether}();
-        weth.transfer(pair, 0.001 ether);
+        weth.deposit{value: someWeth}();
+        weth.transfer(pair, someWeth);
         MockV2Pair(pair).mint(griefer);
         vm.stopPrank();
 
         pad.setMigrator(address(migrator));
         pad.migrate(token);
         (uint256 rToken, uint256 rWeth,) = _reserves(token);
-        _assertPriceNear(rToken, rWeth, parked, pad.DEX_RESERVE(), 100);
+        _assertPriceNear(rToken, rWeth, raised, pad.DEX_RESERVE(), 10);
+        assertGe(rToken, pad.DEX_RESERVE(), "the whole reserve joined");
         assertGt(migrator.liquidity(token), 0);
+        (uint256 pT, uint256 pQ) = migrator.parked(token);
+        assertEq(pT + pQ, 0);
+        // the pool's ratio was set from the raise alone; what the launchpad added (the coin's liquidity pot) is the remainder
+        assertLt(IERC20(token).balanceOf(treasury), 1e12, "no tokens left over");
+        assertLt(treasury.balance, raised / 100, "only the pot's sliver of quote went to the treasury");
+    }
+
+    /// A migration to another chain gets the parked reserve back too.
+    function test_unlockReturnsWhatIsParked() public {
+        address token = _create();
+        vm.prank(buyer);
+        pad.buy{value: 50 ether}(token, 0);
+        (,, uint256 raised,,,,) = pad.curves(token);
+        (address pair,,) = _attackerPool(token);
+        pad.setMigrator(address(migrator));
+        pad.migrate(token);
+        (uint256 pT, uint256 pQ) = migrator.parked(token);
+        assertEq(pT, pad.DEX_RESERVE(), "parked, as the pool is the attacker's");
+
+        address bridge = makeAddr("bridge");
+        vm.prank(address(pad));
+        (uint256 quoteOut, uint256 tokenOut, address got) = migrator.unlock(token, bridge);
+        assertEq(got, pair);
+        assertEq(quoteOut, raised);
+        assertEq(tokenOut, pad.DEX_RESERVE());
+        assertEq(weth.balanceOf(bridge), raised);
+        (pT, pQ) = migrator.parked(token);
+        assertEq(pT + pQ, 0);
+        vm.prank(address(pad));
+        vm.expectRevert(UniV2Migrator.NothingToUnlock.selector);
+        migrator.unlock(token, bridge);
     }
 
     function test_onlyTheLaunchpadMigrates() public {

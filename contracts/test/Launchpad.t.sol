@@ -423,19 +423,30 @@ contract LaunchpadTest is Test {
         assertEq(realEthAfter, 0);
     }
 
-    function test_gracefulWhenAutoMigrationReverts() public {
+    /// Graduation and migration are one piece: a migrator that reverts fails
+    /// the buy that would cross the line, and the coin stays on its curve,
+    /// its reserve untouched, until a working migrator is set. (The earlier
+    /// try/catch left the coin graduated with its reserve waiting, the window
+    /// the Base v9 pools were taken through.)
+    function test_aRevertingMigratorFailsTheGraduatingBuy() public {
         RevertingMigrator bad = new RevertingMigrator();
         pad.setMigrator(address(bad));
         address token = _create();
-        _graduate(token); // must NOT revert even though the migrator does
+        (,, uint256 before, uint256 soldBefore,,,) = pad.curves(token);
+        vm.prank(bob);
+        vm.expectRevert(bytes("dex down"));
+        pad.buy{value: 50 ether}(token, 0);
 
-        (,,,, bool graduated,,) = pad.curves(token);
-        assertTrue(graduated);
-        (,, uint256 raised,,,,) = pad.curves(token);
-        assertGt(raised, 0); // funds still parked, manual path available
+        (,, uint256 raised, uint256 sold, bool graduated,,) = pad.curves(token);
+        assertFalse(graduated, "not graduated without its pool");
+        assertEq(raised, before);
+        assertEq(sold, soldBefore);
 
         pad.setMigrator(address(migrator));
-        pad.migrate(token);
+        _graduate(token);
+        (,, raised,, graduated,,) = pad.curves(token);
+        assertTrue(graduated);
+        assertEq(raised, 0, "migrated in the same transaction");
         assertEq(migrator.lastToken(), token);
     }
 
