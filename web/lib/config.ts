@@ -253,6 +253,24 @@ export const USDG: Record<number, `0x${string}` | undefined> = {
   [robinhood.id]: "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
 };
 
+/** Where a graduated coin's pool trades, per chain: the DEX's swap page for
+ *  the coin (the quote is null for a native curve) and a chart of its pair.
+ *  Chains missing here show the pool on the explorer only. */
+export const DEX_LINKS: Record<
+  number,
+  { name: string; swap: (token: `0x${string}`, quote: `0x${string}` | null) => string; chart?: (pair: `0x${string}`) => string } | undefined
+> = {
+  [base.id]: {
+    name: "Uniswap",
+    swap: (token, quote) => `https://app.uniswap.org/swap?chain=base&inputCurrency=${quote ?? "NATIVE"}&outputCurrency=${token}`,
+    chart: (pair) => `https://dexscreener.com/base/${pair}`,
+  },
+  [litvmTestnet.id]: {
+    name: "Lester Labs", // the Uniswap v2 the Liteforge pad graduates to; no deep link to a pair
+    swap: () => "https://www.lester-labs.com/swap",
+  },
+};
+
 // OP Stack standard bridge for GIWA Sepolia (on Ethereum Sepolia, L1).
 // Sending plain ETH to it bridges to the same address on GIWA L2.
 export const L1_STANDARD_BRIDGE: `0x${string}` =

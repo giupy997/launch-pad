@@ -23,6 +23,7 @@ import {
 import { fmtEth, fmtUnits, fmtTokens } from "@/lib/format";
 import { quoteBuy, quoteSell, parseFeeConfig, NO_TAX, feeLabel, splitParts, type FeeConfig } from "@/lib/curve";
 import { SlippageControl, useSlippageBps } from "@/components/SlippageControl";
+import { PoolCard } from "@/components/PoolCard";
 import { QUOTE_ASSETS, ZAP_ROUTER, UNISWAP_QUOTER, WETH9, USDG } from "@/lib/config";
 import { fmtPoints, pointsFor, usePointsChain, useSeason } from "@/lib/points/client";
 
@@ -391,19 +392,7 @@ export function TradeBox({
     }
   }
 
-  if (graduated) {
-    return (
-      <div className="card p-5 h-fit">
-        <p className="text-sm text-zinc-300">
-          🎓 Curve completed: trading here is closed. This token now trades in its pool on the DEX, paired with{" "}
-          {q.symbol}, with liquidity locked forever.
-        </p>
-        <p className="mt-2 text-xs text-zinc-500">
-          The launchpad&apos;s fees ended with the curve; the pool keeps its own swap fee for its liquidity.
-        </p>
-      </div>
-    );
-  }
+  if (graduated) return <PoolCard token={token} symbol={symbol} quote={q} />;
 
   return (
     <div className="card p-5 h-fit space-y-4">

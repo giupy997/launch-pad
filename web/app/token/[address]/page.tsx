@@ -32,6 +32,7 @@ import { MigrationNotice } from "@/components/MigrationNotice";
 import { FeePanel } from "@/components/FeePanel";
 import { parseFeeConfig, NO_TAX, treasuryPct } from "@/lib/curve";
 import { useLtcPrice, fmtQuoteMoney, fmtQuoteMoneyNum, isLtcQuote } from "@/lib/price";
+import { poolMarketCapOf, poolPriceOf, usePool } from "@/lib/pool";
 import { fmtNum } from "@/lib/format";
 import { useAccount } from "wagmi";
 
@@ -68,6 +69,9 @@ export default function TokenPage({ params }: { params: Promise<{ address: strin
     ],
     query: { refetchInterval: 5_000 },
   });
+  // a graduated coin's pool: its price and reserves replace the curve's frozen ones
+  const graduatedNow = dyn?.[0]?.status === "success" && (dyn[0].result as readonly unknown[])[4] === true;
+  const pool = usePool(pad, token, chain.id, graduatedNow);
   const isLoading = staticsLoading || dynLoading;
 
   if (isLoading || !statics || !dyn)
@@ -117,6 +121,9 @@ export default function TokenPage({ params }: { params: Promise<{ address: strin
       : { logoURI: "", website: "", twitter: "", telegram: "", livestream: "", description: "" };
   const progress = curveProgress(curve);
   const q = quoteInfo(chain.id, curve.quoteAsset);
+  const livePool = curve.graduated ? pool.data : undefined;
+  const price = livePool ? poolPriceOf(livePool, q.decimals) : priceOf(curve, q.decimals);
+  const mcap = livePool ? poolMarketCapOf(livePool, q.decimals) : marketCapOf(curve, q.decimals);
   // this token is itself a Notus pre-market (a registered pair asset)
   const isPreMarket = isQuoteAsset(chain.id, token);
 
@@ -206,14 +213,22 @@ export default function TokenPage({ params }: { params: Promise<{ address: strin
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <Stat
             label="Market cap"
-            value={fmtQuoteMoneyNum(marketCapOf(curve, q.decimals), q.symbol, usd)}
-            sub={`${usd && isLtcQuote(q.symbol) ? `${fmtNum(marketCapOf(curve, q.decimals))} ${q.symbol} · ` : ""}${fmtNum(priceOf(curve, q.decimals))} ${q.symbol} per coin`}
+            value={fmtQuoteMoneyNum(mcap, q.symbol, usd)}
+            sub={`${usd && isLtcQuote(q.symbol) ? `${fmtNum(mcap)} ${q.symbol} · ` : ""}${fmtNum(price)} ${q.symbol} per coin${livePool ? " · pool" : ""}`}
           />
-          <Stat
-            label="Raised"
-            value={fmtQuoteMoney(curve.realEth, q.decimals, q.symbol, usd)}
-            sub={usd && isLtcQuote(q.symbol) ? `${fmtUnits(curve.realEth, q.decimals)} ${q.symbol}` : undefined}
-          />
+          {curve.graduated ? (
+            <Stat
+              label="In the pool"
+              value={livePool ? fmtQuoteMoney(livePool.quoteReserve, q.decimals, q.symbol, usd) : pool.none ? "—" : "…"}
+              sub={livePool ? `${fmtUnits(livePool.quoteReserve, q.decimals)} ${q.symbol} · ${fmtTokens(livePool.tokenReserve)} ${symbol}` : undefined}
+            />
+          ) : (
+            <Stat
+              label="Raised"
+              value={fmtQuoteMoney(curve.realEth, q.decimals, q.symbol, usd)}
+              sub={usd && isLtcQuote(q.symbol) ? `${fmtUnits(curve.realEth, q.decimals)} ${q.symbol}` : undefined}
+            />
+          )}
           <Stat label="Sold" value={fmtTokens(curve.sold)} />
           <Stat label="Curve" value={curve.graduated ? "Graduated" : `${progress.toFixed(1)}%`} />
         </div>
@@ -226,7 +241,9 @@ export default function TokenPage({ params }: { params: Promise<{ address: strin
             />
           </div>
           <p className="mt-2 text-xs text-zinc-500">
-            Once 800M tokens are sold the curve closes and liquidity migrates to the DEX.
+            {curve.graduated
+              ? "The curve closed at 800M sold: its reserve seeded the pool, whose liquidity the pad keeps locked."
+              : "Once 800M tokens are sold the curve closes and liquidity migrates to the DEX."}
           </p>
         </div>
 
