@@ -11,8 +11,15 @@ import {UniV2Migrator} from "../src/UniV2Migrator.sol";
 /// holder rewards stop at graduation there, like on GIWA).
 ///
 ///   cd contracts && source .env && \
-///   UNIV2_ROUTER=0x... forge script script/DeployLitVM.s.sol --rpc-url litvm_testnet \
-///     --private-key "$PRIVATE_KEY" --broadcast
+///   UNIV2_ROUTER=0x... [TREASURY=0x...] [NATIVE_VIRTUAL=<wei>] forge script script/DeployLitVM.s.sol \
+///     --rpc-url litvm_testnet --private-key "$PRIVATE_KEY" --broadcast
+///
+/// TREASURY defaults to the deployer. NATIVE_VIRTUAL is the virtual reserve
+/// a native-quoted curve opens with, in wei of zkLTC (default the contract's
+/// 1.25): a testnet short of zkLTC wants a small one, so that a curve can be
+/// bought through graduation with faucet coins — 0.05 zkLTC raises 0.16 to
+/// graduate. The pad stays owned by the deployer: a rehearsal pad; the
+/// mainnet one gets a TimelockController like Base's (DeployBase.s.sol).
 ///
 /// Verify both on Blockscout from the same checkout that deployed (same
 /// foundry.toml, same solc), passing each constructor's ABI-encoded args
@@ -20,7 +27,7 @@ import {UniV2Migrator} from "../src/UniV2Migrator.sol";
 ///
 ///   forge verify-contract --chain 4441 --verifier blockscout \
 ///     --verifier-url https://liteforge.explorer.caldera.xyz/api/ --watch \
-///     --constructor-args "$(cast abi-encode 'constructor(address,address)' <treasury> 0x0000000000000000000000000000000000000000)" \
+///     --constructor-args "$(cast abi-encode 'constructor(address)' <treasury>)" \
 ///     <launchpad> src/Launchpad.sol:Launchpad
 ///   forge verify-contract --chain 4441 --verifier blockscout \
 ///     --verifier-url https://liteforge.explorer.caldera.xyz/api/ --watch \
@@ -32,6 +39,7 @@ contract DeployLitVM is Script {
     function run() external {
         address treasury = vm.envOr("TREASURY", msg.sender);
         address router = vm.envOr("UNIV2_ROUTER", address(0));
+        uint256 nativeVirtual = vm.envOr("NATIVE_VIRTUAL", uint256(0));
 
         vm.startBroadcast();
         Launchpad pad = new Launchpad(treasury);
@@ -40,10 +48,12 @@ contract DeployLitVM is Script {
             pad.setMigrator(address(migrator));
             console.log("UniV2Migrator:", address(migrator));
         }
+        if (nativeVirtual != 0 && nativeVirtual != pad.VIRTUAL_ETH()) pad.setQuoteAsset(address(0), nativeVirtual);
         vm.stopBroadcast();
 
         console.log("Launchpad:    ", address(pad));
         console.log("Treasury:     ", treasury);
+        console.log("Native virtual (wei):", pad.quoteVirtualReserve(address(0)));
         console.log("Deploy block: ", block.number);
         if (router == address(0)) console.log("No UNIV2_ROUTER: graduation stays manual until setMigrator");
         if (MULTICALL3.code.length == 0) {
