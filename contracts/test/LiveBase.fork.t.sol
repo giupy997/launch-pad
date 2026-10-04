@@ -25,8 +25,8 @@ interface IUniV2RouterSwap {
 /// funds spent), every contract the live one: a coin is created on the live
 /// pad and bought through graduation with ETH through the live zap (Aerodrome
 /// → cbLTC → the curve), so the pool it seeds on the live Uniswap v2 can be
-/// checked — seeded in the same transaction, the whole reserve in, at the
-/// price the curve closed at, the LP locked in the migrator, nothing parked —
+/// checked — seeded in the same transaction, the whole reserve and the whole
+/// raise in, the LP locked in the migrator, nothing parked —
 /// and traded on the live router both ways; and a small ETH buy on the curve.
 /// NOTE: targets the deployed addresses — update them after a redeploy.
 /// Run with: RUN_FORK_LIVE=true forge test --match-contract LiveBase -vv
@@ -118,14 +118,23 @@ contract LiveBaseForkTest is Test {
         assertEq(MIGRATOR.pairAsset(token), address(CBLTC));
         (uint256 rToken, uint256 rQuote) = _reserves(token, pair);
         assertEq(rToken, PAD.DEX_RESERVE(), "the whole DEX reserve is in the pool");
-        assertGt(rQuote, 190e8, "the whole raise is in the pool (about 192 cbLTC)");
-        assertLt(rQuote, 200e8);
-        // the pool opens at the price the curve closed at: rQuote/rToken vs vEth/vToken, within 1%
+        // the whole raise is in the pool: what a sold-out curve holds is its virtual
+        // reserve grown by VIRTUAL_TOKEN / (VIRTUAL_TOKEN - CURVE_SUPPLY), less the
+        // virtual part — 3.2 times the 60 cbLTC, 192 cbLTC — plus the coin's liquidity
+        // pot (none: a plain createToken has no tax), to the rounding of the buys
+        uint256 virtualQuote = PAD.quoteVirtualReserve(address(CBLTC));
+        uint256 raise = (virtualQuote * PAD.VIRTUAL_TOKEN()) / (PAD.VIRTUAL_TOKEN() - PAD.CURVE_SUPPLY()) - virtualQuote;
+        assertApproxEqAbs(rQuote, raise, 1e4, "the whole raise is in the pool");
+        // the pool opens where the raise meets the DEX reserve: 192 / 200M, which is
+        // 4.8% under the curve's marginal closing price (252 / 250M virtual) — the
+        // constants' doing, the same for any virtual reserve, the same on v9: the
+        // first buyer in the pool gets that much under the last buyer on the curve
         (uint256 vEth, uint256 vToken,,,,,) = PAD.curves(token);
         uint256 poolSide = rQuote * vToken;
         uint256 curveSide = vEth * rToken;
-        uint256 diff = poolSide > curveSide ? poolSide - curveSide : curveSide - poolSide;
-        assertLe(diff * 100, curveSide, "the pool price is the closing price");
+        assertLt(poolSide, curveSide, "the pool opens under the closing price");
+        assertGt(poolSide * 1000, curveSide * 940, "...by about 4.8%, not more than 6%");
+        assertLt(poolSide * 1000, curveSide * 965, "...and not less than 3.5%");
     }
 
     function _checkLocked(address token, address pair) internal view {

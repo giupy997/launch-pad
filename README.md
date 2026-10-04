@@ -122,7 +122,12 @@ and at `/litecoin`, out of the menu.
   the reserve at `migrateOut` and arrive as pots on the other chain
 - Graduation: once the 800M are sold out → curve trading closes and the
   200M reserve + raised quote (+ the liquidity pot) move automatically into
-  a locked pool on the chain's DEX; fees end with the curve
+  a locked pool on the chain's DEX, in the same transaction; fees end with
+  the curve. The pool opens where the raise meets the reserve, 192 / 200M
+  on Base, which is 4.8% under the curve's marginal closing price (252 /
+  250M virtual): the constants' doing, the same for any virtual reserve, so
+  the first buyer in the pool pays that much less than the last buyer on the
+  curve did. The liquidity pot narrows it
 - Holder cashback is spread over the eligible supply (every wallet, not the
   launchpad), with debts rounded up so the sum of all claims can never
   exceed what the contract holds
