@@ -418,9 +418,15 @@ contract LaunchpadTest is Test {
         address token = _create();
         _graduate(token); // graduating buy should migrate in the same tx
         assertEq(migrator.lastToken(), token);
-        assertEq(migrator.lastTokenAmount(), pad.DEX_RESERVE());
-        (,, uint256 realEthAfter,,,,) = pad.curves(token);
+        // the pool opens at the closing price: the quote raised against as many coins as that
+        // price says; the rest of the DEX reserve, the curve's virtual share, stays locked in the pad
+        uint256 locked = pad.lockedAtGraduation(token);
+        assertGt(locked, 0, "the virtual share stays");
+        assertEq(migrator.lastTokenAmount() + locked, pad.DEX_RESERVE(), "pool and lock share the DEX reserve");
+        assertEq(LaunchToken(token).balanceOf(address(pad)), locked, "locked in the pad");
+        (uint256 vEth, uint256 vToken, uint256 realEthAfter,,,,) = pad.curves(token);
         assertEq(realEthAfter, 0);
+        assertEq(migrator.lastTokenAmount(), (migrator.lastEthAmount() * vToken) / vEth, "coins at the closing price");
     }
 
     /// Graduation and migration are one piece: a migrator that reverts fails
@@ -470,9 +476,9 @@ contract LaunchpadTest is Test {
         pad.migrate(token);
 
         assertEq(migrator.lastToken(), token);
-        assertEq(migrator.lastTokenAmount(), pad.DEX_RESERVE());
+        assertEq(migrator.lastTokenAmount(), pad.DEX_RESERVE() - pad.lockedAtGraduation(token));
         assertEq(migrator.lastEthAmount(), raised);
-        assertEq(LaunchToken(token).balanceOf(address(migrator)), pad.DEX_RESERVE());
+        assertEq(LaunchToken(token).balanceOf(address(migrator)), pad.DEX_RESERVE() - pad.lockedAtGraduation(token));
     }
 
     function test_migrateRevertsBeforeGraduation() public {

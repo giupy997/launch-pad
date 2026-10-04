@@ -919,6 +919,25 @@ export const launchpadAbi = [
   },
   {
     "type": "function",
+    "name": "lockedAtGraduation",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "migrate",
     "inputs": [
       {

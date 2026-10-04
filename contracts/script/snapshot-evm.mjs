@@ -16,7 +16,7 @@
 // migrator's leaves those providers' share of the coins in the pool on this
 // chain; coins somebody sent to the pad itself (a transfer to it passes) sit
 // there unaccounted — go to --vault (an address of yours, for a claim by
-// hand), since the receiving side needs holders + pool == supply; without
+// hand), since the receiving side needs holders + pool == supply less what a graduation locked; without
 // one the run refuses. Run it unfrozen before announcing the freeze, so the
 // day holds no surprise. Needs `forge build` (the ABIs come from out/) and
 // web/'s node_modules (viem).
@@ -235,14 +235,24 @@ for (const token of tokens) {
   // than that is coins holders sent to the pad themselves (a transfer to it passes before
   // graduation): the pad never counts them, so on the ledger they have no holder
   const padBal = await read(token, tokenAbi, "balanceOf", [launchpad], block);
-  const expectedPad = !graduated ? TOTAL_SUPPLY - sold : pair ? 0n : DEX_RESERVE;
+  // a coin graduated on a v11 pad keeps the curve's virtual share of its DEX reserve locked in the pad
+  // (the pool opened at the closing price); earlier pads have no such getter and locked nothing
+  let locked = 0n;
+  if (graduated && pair) {
+    try {
+      locked = await read(launchpad, padAbi, "lockedAtGraduation", [token], block);
+    } catch {
+      /* an older pad */
+    }
+  }
+  const expectedPad = !graduated ? TOTAL_SUPPLY - sold : pair ? locked : DEX_RESERVE;
   if (padBal < expectedPad) throw new Error(`${symbol}: the pad holds ${padBal} coins, less than the ${expectedPad} it should: the snapshot does not add up`);
   const excess = padBal - expectedPad;
   const unowned = [];
   if (stranded > 0n) unowned.push(`${stranded} coins of the pool's other liquidity providers`);
   if (excess > 0n) unowned.push(`${excess} coins holders sent to the pad`);
   if (unowned.length) {
-    if (!vault) throw new Error(`${symbol}: ${unowned.join(" and ")} have no holder to go to; the receiving side needs holders + pool == supply. Pass --vault <address> to park them for a claim by hand, or migrate this coin by hand`);
+    if (!vault) throw new Error(`${symbol}: ${unowned.join(" and ")} have no holder to go to; the receiving side needs holders + pool == supply less what a graduation locked. Pass --vault <address> to park them for a claim by hand, or migrate this coin by hand`);
     if (holders.includes(vault)) throw new Error(`${symbol}: the vault ${vault} holds this coin itself and a holder can be listed once; choose another --vault`);
     holders.push(vault);
     amounts.push(stranded + excess);
@@ -250,10 +260,10 @@ for (const token of tokens) {
   }
   const owned = amounts.reduce((t, b) => t + b, 0n);
   // holders (the vault included) own what left the curve less what was burned; for a graduated
-  // coin that is the supply less our share of the pool and less the burn
-  const expected = (graduated ? TOTAL_SUPPLY - poolToken : sold) - burned;
+  // coin that is the supply less our share of the pool, less what stayed locked in the pad, less the burn
+  const expected = (graduated ? TOTAL_SUPPLY - poolToken - locked : sold) - burned;
   if (owned !== expected) {
-    throw new Error(`${symbol}: holders own ${owned} but ${graduated ? "supply minus the pool" : "the curve's sold"} is ${expected} (the pad holds ${padBal}): the snapshot does not add up`);
+    throw new Error(`${symbol}: holders own ${owned} but ${graduated ? "supply minus the pool and the lock" : "the curve's sold"} is ${expected} (the pad holds ${padBal}): the snapshot does not add up`);
   }
   if (holders.includes(getAddress(treasury))) warnings.push(`${symbol}: the treasury holds some (rounding leftovers of the pool seeding): it is listed as a holder`);
   let virtualQuote = (vEth - raised) * SCALE;

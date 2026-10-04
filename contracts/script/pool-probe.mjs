@@ -49,6 +49,7 @@ const padAbi = parseAbi([
   "function curves(address) view returns (uint256 vEth, uint256 vToken, uint256 realEth, uint256 sold, bool graduated, address creator, address quoteAsset)",
   "function graduatedVia(address) view returns (address)",
   "function treasury() view returns (address)",
+  "function lockedAtGraduation(address) view returns (uint256)",
   "event Graduated(address indexed token, uint256 raisedEth)",
   "event Migrated(address indexed token, uint256 tokenAmount, uint256 ethAmount)",
   "event AutoMigrationFailed(address indexed token)",
@@ -231,6 +232,13 @@ for (const token of list) {
       (lockedPct < 99.99 ? " (the rest was added by others, theirs to remove)" : "") +
       ` · floor if every one of the ${coins(TOTAL_SUPPLY)} coins were sold into it: ${quote(floorQ)} left, ${mcap(floorPrice)}`
   );
+  let lockedHere = 0n;
+  try {
+    lockedHere = await read(launchpad, padAbi, "lockedAtGraduation", [token]);
+  } catch {
+    /* a pad before v11 locks nothing: its pool opened 4.8% under the closing price */
+  }
+  if (lockedHere > 0n) console.log(`   ${coins(lockedHere)} ${symbol} stay locked in the pad: the curve's virtual share, so the pool opened at the closing price`);
   const swept = await read(token, erc20Abi, "balanceOf", [treasury]);
   if (swept > 0n) console.log(`   the treasury holds ${coins(swept)} ${symbol}, swept at the seeding (the pool already had liquidity)`);
 

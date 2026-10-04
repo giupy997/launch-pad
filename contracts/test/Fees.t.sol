@@ -220,8 +220,12 @@ contract FeesTest is Test {
         assertLt(pad.burnPot(token), burnPot);
         assertEq(pad.liquidityPot(token), 0, "the liquidity pot went into the pool");
         (uint256 rToken, uint256 rQuote) = _reserves(token);
-        assertEq(rToken, pad.DEX_RESERVE());
+        assertEq(rToken + pad.lockedAtGraduation(token), pad.DEX_RESERVE(), "the pool and the lock share the DEX reserve");
         assertEq(rQuote, (c.vEth - 30e8) + liqPot, "the pool holds the raise and the liquidity pot");
+        // against coins at the closing price, never more than the reserve: a pot this big asks for more
+        // than the 200M, so the whole reserve goes in and the pool opens above the closing price
+        uint256 atClosing = (rQuote * c.vToken) / c.vEth;
+        assertEq(rToken, atClosing > pad.DEX_RESERVE() ? pad.DEX_RESERVE() : atClosing, "coins at the closing price, capped by the reserve");
 
         // graduated: the leftover pot buys on the pool, a two-hundredth of its quote side at a time, and burns
         uint256 supply = IERC20(token).totalSupply();

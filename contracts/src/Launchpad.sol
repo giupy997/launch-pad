@@ -137,6 +137,12 @@ contract Launchpad is Ownable, ReentrancyGuard {
     /// Coins that graduated on the ledger: the token side of the locked pool
     /// they arrived with, handed to the DEX in place of DEX_RESERVE.
     mapping(address token => uint256) public migratedPoolTokens;
+    /// Coins of a graduated coin's DEX reserve that never reach its pool and
+    /// stay here for good: the curve's virtual share of the supply, so that
+    /// the pool opens at the price the curve closed at (see _doMigrate). For
+    /// a coin that arrived graduated from a ledger, what its holders and its
+    /// pool leave of the supply.
+    mapping(address token => uint256) public lockedAtGraduation;
     /// The ledger snapshot every migrated coin comes from: its state root,
     /// the block it froze at and which chain, set once before the first coin
     /// and never changed, so anyone can replay the ledger to that root and
@@ -580,9 +586,19 @@ contract Launchpad is Ownable, ReentrancyGuard {
         ethAmount += liquidityPot[token];
         liquidityPot[token] = 0;
 
-        // a coin that graduated on a ledger brings its own pool's token side
+        // a coin that graduated on a ledger brings its own pool's token side;
+        // one that graduated here opens its pool at the price the curve closed
+        // at: the quote that goes in (the raise and the liquidity pot) against
+        // as many coins as that price says, never more than the DEX reserve.
+        // The rest of the reserve — the curve's virtual share of the supply,
+        // 9.52M of the 200M by the constants — stays here for good; put in the
+        // pool as well, it would open the pool 4.8% under the closing price
         uint256 reserve = migratedPoolTokens[token];
-        if (reserve == 0) reserve = DEX_RESERVE;
+        if (reserve == 0) {
+            reserve = Math.mulDiv(ethAmount, c.vToken, c.vEth);
+            if (reserve > DEX_RESERVE) reserve = DEX_RESERVE;
+            lockedAtGraduation[token] = DEX_RESERVE - reserve;
+        }
 
         IERC20(token).safeTransfer(address(migrator), reserve);
         if (c.quoteAsset == address(0)) {
@@ -628,7 +644,10 @@ contract Launchpad is Ownable, ReentrancyGuard {
         }
         burnPot[token] = coin.burnPot;
         liquidityPot[token] = coin.liquidityPot;
-        if (coin.poolToken != 0) migratedPoolTokens[token] = coin.poolToken;
+        if (coin.poolToken != 0) {
+            migratedPoolTokens[token] = coin.poolToken;
+            lockedAtGraduation[token] = TOTAL_SUPPLY - coin.sold - coin.poolToken; // what stays here, as on the ledger
+        }
         allTokens.push(token);
         migrationPending[token] = coin.sold - coin.burned; // what its holders own, to deliver
         if (coin.sold != coin.burned) pendingCoins++;
@@ -650,13 +669,14 @@ contract Launchpad is Ownable, ReentrancyGuard {
 
     /// Only state the ledger could have produced. A coin that graduated there
     /// (poolToken != 0) has `sold` = everything its holders own and `poolToken`
-    /// = what its pool holds, the two adding up to the supply, and its pool
-    /// always has a quote side.
+    /// = what its pool holds, the two adding up to at most the supply (what
+    /// they leave stayed locked where it graduated, and stays locked here),
+    /// and its pool always has a quote side.
     function _checkLedgerCoin(LedgerCoin calldata coin, uint256 holderCount) internal view {
         if (coin.creator == address(0) || coin.virtualQuote == 0 || coin.burned > coin.sold) revert BadMigration();
         uint256 reserve = _ledgerReserve(coin); // msg.value less the pots
         if (coin.poolToken != 0) {
-            if (coin.sold + coin.poolToken != TOTAL_SUPPLY || reserve == 0) revert BadMigration();
+            if (coin.sold + coin.poolToken > TOTAL_SUPPLY || reserve == 0) revert BadMigration();
         } else if (coin.sold > CURVE_SUPPLY) {
             revert BadMigration();
         } else if (coin.sold != 0) {

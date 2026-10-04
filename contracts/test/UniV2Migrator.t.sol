@@ -42,6 +42,24 @@ contract UniV2MigratorTest is Test {
         (rToken, rWeth) = MockV2Pair(pair).token0() == token ? (r0, r1) : (r1, r0);
     }
 
+    /// The pool's price against the curve's closing one (vEth / vToken), within `bps`.
+    function _assertPoolAtClosingPrice(address token, uint256 bps) internal view {
+        (uint256 rToken, uint256 rWeth,) = _reserves(token);
+        (uint256 vEth, uint256 vToken,,,,,) = pad.curves(token);
+        _assertPriceNear(rToken, rWeth, vEth, vToken, bps);
+    }
+
+    /// What `tokens` are worth at the curve's closing price.
+    function _atClosingPrice(address token, uint256 tokens) internal view returns (uint256) {
+        (uint256 vEth, uint256 vToken,,,,,) = pad.curves(token);
+        return (tokens * vEth) / vToken;
+    }
+
+    /// The share of the DEX reserve that goes to the pool: the rest stays locked in the pad.
+    function _poolShare(address token) internal view returns (uint256) {
+        return pad.DEX_RESERVE() - pad.lockedAtGraduation(token);
+    }
+
     /// Pool price in wei per token, vs the price the migrator was given.
     function _assertPriceNear(uint256 rToken, uint256 rWeth, uint256 wantWeth, uint256 wantToken, uint256 bps) internal pure {
         uint256 pool = rWeth * 1e18 / rToken;
@@ -59,7 +77,10 @@ contract UniV2MigratorTest is Test {
         assertTrue(graduated);
         assertEq(realEth, 0, "auto-migrated in the same transaction");
         (uint256 rToken, uint256 rWeth, address pair) = _reserves(token);
-        assertEq(rToken, pad.DEX_RESERVE(), "the whole reserve is in the pool");
+        assertEq(rToken, _poolShare(token), "the pool's share of the reserve is in the pool");
+        assertGt(pad.lockedAtGraduation(token), 0, "the curve's virtual share stays in the pad");
+        assertEq(IERC20(token).balanceOf(address(pad)), pad.lockedAtGraduation(token), "locked in the pad");
+        _assertPoolAtClosingPrice(token, 1); // a hundredth of a percent: the pool opens where the curve closed
         assertGt(rWeth, 0);
         assertEq(IERC20(token).balanceOf(treasury), 0, "nothing swept aside");
         assertEq(MockV2Pair(pair).balanceOf(address(migrator)), migrator.liquidity(token));
@@ -85,7 +106,7 @@ contract UniV2MigratorTest is Test {
         assertTrue(graduated);
         assertEq(realEth, 0, "the migration went through despite the pre-existing pair");
         (uint256 rToken, uint256 rWeth,) = _reserves(token);
-        assertEq(rToken, pad.DEX_RESERVE());
+        assertEq(rToken, _poolShare(token));
         assertGt(rWeth, 5 ether, "the donation stays in the pool, on top of the raise");
         assertEq(IERC20(token).balanceOf(treasury), 0);
         assertGt(migrator.liquidity(token), 0);
@@ -129,7 +150,7 @@ contract UniV2MigratorTest is Test {
         assertEq(rWeth, attackerWeth, "not a wei of the raise went in");
         assertEq(migrator.liquidity(token), 0, "no position in somebody else's pool");
         (uint256 pT, uint256 pQ) = migrator.parked(token);
-        assertEq(pT, pad.DEX_RESERVE(), "the reserve is parked");
+        assertEq(pT, _poolShare(token), "the pool's share of the reserve is parked");
         assertEq(pQ, raised, "the raise is parked");
         assertEq(IERC20(token).balanceOf(treasury), 0, "nothing swept to the treasury");
         assertEq(IERC20(token).balanceOf(address(migrator)), pT);
@@ -161,9 +182,9 @@ contract UniV2MigratorTest is Test {
         // the pool keeps Uniswap's minimum liquidity as dust at the attacker's
         // price: moving that costs nothing, so the parked reserve lands now
         assertTrue(migrator.seed(token));
-        (uint256 rToken, uint256 rWeth,) = _reserves(token);
-        _assertPriceNear(rToken, rWeth, raised, pad.DEX_RESERVE(), 100);
-        assertGt(rToken, pad.DEX_RESERVE() * 99 / 100, "(almost) the whole reserve reached the pool");
+        (uint256 rToken,,) = _reserves(token);
+        _assertPoolAtClosingPrice(token, 100);
+        assertGt(rToken, _poolShare(token) * 99 / 100, "(almost) the whole share reached the pool");
         assertGt(migrator.liquidity(token), 0);
         (uint256 pT, uint256 pQ) = migrator.parked(token);
         assertEq(pT + pQ, 0, "nothing parked any more");
@@ -194,8 +215,8 @@ contract UniV2MigratorTest is Test {
         pad.migrate(token);
 
         (uint256 rToken, uint256 rWeth,) = _reserves(token);
-        _assertPriceNear(rToken, rWeth, raised, pad.DEX_RESERVE(), 100);
-        assertGt(rToken, pad.DEX_RESERVE() * 99 / 100, "(almost) the whole reserve reached the pool");
+        _assertPoolAtClosingPrice(token, 100);
+        assertGt(rToken, _poolShare(token) * 99 / 100, "(almost) the whole share reached the pool");
         assertGt(migrator.liquidity(token), 0);
         (uint256 pT, uint256 pQ) = migrator.parked(token);
         assertEq(pT + pQ, 0);
@@ -214,7 +235,7 @@ contract UniV2MigratorTest is Test {
 
         address pair = factory.createPair(token, address(weth));
         uint256 someTokens = 1_000_000e18;
-        uint256 someWeth = raised * someTokens / pad.DEX_RESERVE(); // exactly our price
+        uint256 someWeth = _atClosingPrice(token, someTokens); // exactly the price the pool will open at
         vm.prank(buyer);
         IERC20(token).transfer(pair, someTokens);
         vm.startPrank(griefer);
@@ -225,9 +246,9 @@ contract UniV2MigratorTest is Test {
 
         pad.setMigrator(address(migrator));
         pad.migrate(token);
-        (uint256 rToken, uint256 rWeth,) = _reserves(token);
-        _assertPriceNear(rToken, rWeth, raised, pad.DEX_RESERVE(), 10);
-        assertGe(rToken, pad.DEX_RESERVE(), "the whole reserve joined");
+        (uint256 rToken,,) = _reserves(token);
+        _assertPoolAtClosingPrice(token, 10);
+        assertGe(rToken, _poolShare(token), "the pool's whole share joined");
         assertGt(migrator.liquidity(token), 0);
         (uint256 pT, uint256 pQ) = migrator.parked(token);
         assertEq(pT + pQ, 0);
@@ -246,14 +267,14 @@ contract UniV2MigratorTest is Test {
         pad.setMigrator(address(migrator));
         pad.migrate(token);
         (uint256 pT, uint256 pQ) = migrator.parked(token);
-        assertEq(pT, pad.DEX_RESERVE(), "parked, as the pool is the attacker's");
+        assertEq(pT, _poolShare(token), "parked, as the pool is the attacker's");
 
         address bridge = makeAddr("bridge");
         vm.prank(address(pad));
         (uint256 quoteOut, uint256 tokenOut, address got) = migrator.unlock(token, bridge);
         assertEq(got, pair);
         assertEq(quoteOut, raised);
-        assertEq(tokenOut, pad.DEX_RESERVE());
+        assertEq(tokenOut, _poolShare(token));
         assertEq(weth.balanceOf(bridge), raised);
         (pT, pQ) = migrator.parked(token);
         assertEq(pT + pQ, 0);

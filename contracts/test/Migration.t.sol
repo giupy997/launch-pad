@@ -234,7 +234,10 @@ contract MigrationTest is Test {
         assertTrue(LaunchToken(token).graduated());
         assertEq(realEth, 0, "the reserve went to the DEX");
         assertEq(migrator.lastToken(), token);
-        assertEq(migrator.lastTokenAmount(), pad.DEX_RESERVE());
+        // a curve that sold out here opens its pool at the closing price: the pool's share of
+        // the reserve goes, the curve's virtual share stays locked in the pad
+        assertEq(migrator.lastTokenAmount(), pad.DEX_RESERVE() - pad.lockedAtGraduation(token));
+        assertGt(pad.lockedAtGraduation(token), 0);
         assertEq(migrator.lastEthAmount(), raised);
         // graduated: holders can now transfer freely
         vm.prank(alice);
@@ -320,8 +323,11 @@ contract MigrationTest is Test {
         );
         address pair = factory.getPair(token, address(weth));
         assertTrue(pair != address(0), "the pair was created");
-        assertEq(IERC20(token).balanceOf(pair), pad.DEX_RESERVE(), "the reserve sits in the pool");
+        assertEq(IERC20(token).balanceOf(pair), pad.DEX_RESERVE() - pad.lockedAtGraduation(token), "the pool's share of the reserve sits in the pool");
+        assertEq(IERC20(token).balanceOf(address(pad)), pad.lockedAtGraduation(token), "the virtual share stays locked in the pad");
         assertEq(weth.balanceOf(pair), 0.64 ether, "the raise sits in the pool");
+        (uint256 vEth, uint256 vToken,,,,,) = pad.curves(token);
+        assertEq(IERC20(token).balanceOf(pair), (0.64 ether * vToken) / vEth, "coins at the closing price");
         assertEq(IERC20(token).balanceOf(address(migrator)), 0, "nothing stranded in the adapter");
         assertEq(migrator.pairAsset(token), address(weth));
         assertEq(migrator.pairOf(token), pair);

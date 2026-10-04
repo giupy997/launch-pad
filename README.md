@@ -104,7 +104,9 @@ and at `/litecoin`, out of the menu.
 
 ## Curve parameters
 
-- Total supply: 1B per token; 800M sold on the curve, 200M reserved for DEX
+- Total supply: 1B per token; 800M sold on the curve, 200M reserved for the
+  DEX, of which 190.48M seed the pool and 9.52M stay locked in the pad for
+  good (the curve's virtual share: below)
 - Virtual reserves: 1.25 ETH / 1.05B tokens → the curve raises ~4 ETH
 - Platform fee: 1% on buys and sells (max 5%, owner-configurable), 20% of
   it to the treasury; a coin's own tax on top, up to 10% each way, fixed at
@@ -123,11 +125,16 @@ and at `/litecoin`, out of the menu.
 - Graduation: once the 800M are sold out → curve trading closes and the
   200M reserve + raised quote (+ the liquidity pot) move automatically into
   a locked pool on the chain's DEX, in the same transaction; fees end with
-  the curve. The pool opens where the raise meets the reserve, 192 / 200M
-  on Base, which is 4.8% under the curve's marginal closing price (252 /
-  250M virtual): the constants' doing, the same for any virtual reserve, so
-  the first buyer in the pool pays that much less than the last buyer on the
-  curve did. The liquidity pot narrows it
+  the curve. The pool opens **at the price the curve closed at**: the quote
+  that goes in (the raise and the liquidity pot) against as many coins as
+  that price says, 190.48M of the 200M reserve, and the rest of the reserve
+  stays locked in the pad for good (`lockedAtGraduation`), the curve's
+  virtual share of the supply, as Pons does. Put in the pool as well, those
+  coins would open it 4.8% under the closing price (192 / 200M against 252 /
+  250M virtual), which is what the Base v10 pad, deployed before this
+  change, still does: its first buyer in the pool pays that much less than
+  the last buyer on the curve did. The liquidity pot deepens the opening
+  without lifting it
 - Holder cashback is spread over the eligible supply (every wallet, not the
   launchpad), with debts rounded up so the sum of all claims can never
   exceed what the contract holds
