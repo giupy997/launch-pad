@@ -168,6 +168,7 @@ for (const token of tokens) {
   let pair = null;
   let poolToken = 0n;
   let stranded = 0n; // coins in the pool that belong to other liquidity providers
+  const excludedExtra = []; // other addresses whose coins are the pool's, not a holder's
   let realQuote = realEth * SCALE;
   // the curve's virtual reserve is vEth less what the curve raised; a graduated coin
   // whose reserve went to its pool keeps the whole raise in vEth with realEth at zero,
@@ -187,23 +188,38 @@ for (const token of tokens) {
       const pairQuote = await read(quoteAsset, erc20Abi, "balanceOf", [pair], block);
       const lpTotal = await read(pair, pairAbi, "totalSupply", [], block);
       const lpOurs = await read(via, migratorAbi, "liquidity", [token], block);
+      // the v2 adapter parks a reserve the pool would not take at the closing price: it
+      // waits in the adapter, still the coin's, and unlock brings it back with the pool's share
+      let parkedToken = 0n;
+      let parkedQuote = 0n;
+      try {
+        [parkedToken, parkedQuote] = await read(via, migratorAbi, "parked", [token], block);
+      } catch {
+        /* the v1 adapter knows no parking */
+      }
+      if (parkedToken > 0n || parkedQuote > 0n) {
+        excludedExtra.push(via.toLowerCase()); // the adapter holds the parked coins: not a holder
+        warnings.push(`${symbol}: ${parkedToken} coins and ${parkedQuote} quote wait in the migrator (the pool held liquidity at another price when it graduated); they migrate as the pool side`);
+      }
       const lpOthers = lpTotal - lpOurs;
-      realQuote = ((pairQuote * lpOurs) / lpTotal) * SCALE;
-      if (lpOthers <= 1000n) {
+      realQuote = ((lpTotal === 0n ? 0n : (pairQuote * lpOurs) / lpTotal) + parkedQuote) * SCALE;
+      if (lpTotal === 0n) {
+        poolToken = parkedToken; // nothing of ours in the pool yet
+      } else if (lpOthers <= 1000n) {
         // only Uniswap's minimum liquidity, burned at the first mint, is not ours: its
         // dust of coins counts with the pool, so that holders + pool is the whole supply
-        poolToken = pairToken;
+        poolToken = pairToken + parkedToken;
       } else {
         // liquidity somebody else added: their share of the coins stays in this pool
-        poolToken = (pairToken * lpOurs) / lpTotal;
-        stranded = pairToken - poolToken;
+        poolToken = (pairToken * lpOurs) / lpTotal + parkedToken;
+        stranded = pairToken - (pairToken * lpOurs) / lpTotal;
         warnings.push(`${symbol}: the pool has liquidity besides ours (${lpOthers} of ${lpTotal} LP): that share stays in the pool on this chain`);
       }
     } else {
       poolToken = DEX_RESERVE; // graduated with its reserve parked in the pad: the DEX reserve is still there
     }
   }
-  const excluded = new Set([launchpad.toLowerCase(), ...(pair ? [pair.toLowerCase()] : [])]);
+  const excluded = new Set([launchpad.toLowerCase(), ...(pair ? [pair.toLowerCase()] : []), ...excludedExtra]);
   const holders = [];
   const amounts = [];
   const addresses = [...balances.keys()].filter((a) => balances.get(a) > 0n && !excluded.has(a.toLowerCase())).sort();

@@ -58,7 +58,9 @@ const migratorAbi = parseAbi([
   "function pairAsset(address) view returns (address)",
   "function liquidity(address) view returns (uint256)",
   "event PoolSeeded(address indexed token, address pair, uint256 tokenAmount, uint256 quoteAmount, uint256 liquidity)",
-  "event PoolRebalanced(address indexed token, address pair, uint256 tokenIn, uint256 quoteIn)",
+  "event PoolRebalanced(address indexed token, address pair, uint256 tokenIn, uint256 quoteIn)", // the v1 adapter
+  "event PoolParked(address indexed token, address pair, uint256 tokenAmount, uint256 quoteAmount)", // v2
+  "event PoolNudged(address indexed token, address pair, uint256 tokenIn, uint256 quoteIn)", // v2
 ]);
 const pairAbi = parseAbi([
   "function token0() view returns (address)",
@@ -241,6 +243,10 @@ for (const token of list) {
     if (l.eventName === "PoolSeeded") console.log(`   seeded: ${coins(l.args.tokenAmount)} ${symbol} + ${quote(l.args.quoteAmount)} → ${l.args.liquidity} LP`);
     if (l.eventName === "PoolRebalanced")
       console.log(`   rebalanced first (the pool held liquidity at another price): ${coins(l.args.tokenIn)} ${symbol} / ${quote(l.args.quoteIn)} traded in`);
+    if (l.eventName === "PoolNudged")
+      console.log(`   nudged first (the pool held dust at another price): ${coins(l.args.tokenIn)} ${symbol} / ${quote(l.args.quoteIn)} traded in`);
+    if (l.eventName === "PoolParked")
+      console.log(`   !! PARKED: the pool held liquidity at another price, ${coins(l.args.tokenAmount)} ${symbol} + ${quote(l.args.quoteAmount)} wait in the migrator (anyone may call seed(token) once the pool is back at the closing price)`);
   }
   const txFrom = new Map();
   const senderOf = async (hash) => {
