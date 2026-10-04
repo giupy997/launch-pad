@@ -11,6 +11,7 @@ export const migratorAbi = parseAbi([
   "function pairOf(address token) view returns (address)",
   "function pairAsset(address token) view returns (address)",
   "function liquidity(address token) view returns (uint256)",
+  "function router() view returns (address)",
 ]);
 
 /** What the site reads of a Uniswap v2 pair. */
@@ -23,6 +24,8 @@ export const pairAbi = parseAbi([
 export type PoolInfo = {
   migrator: `0x${string}`;
   pair: `0x${string}`;
+  /** the Uniswap v2 router the migrator seeds through: the one to swap on */
+  router: `0x${string}`;
   /** what the coin is paired against in the pool: the quote, wrapped for a native curve */
   pairAsset: `0x${string}`;
   /** the pool's two sides, as (coin, quote) whatever their order in the pair */
@@ -53,6 +56,7 @@ export function usePool(pad: `0x${string}`, token: `0x${string}`, chainId: numbe
       ? [
           { address: migrator, abi: migratorAbi, functionName: "pairOf", args: [token], chainId },
           { address: migrator, abi: migratorAbi, functionName: "pairAsset", args: [token], chainId },
+          { address: migrator, abi: migratorAbi, functionName: "router", chainId },
         ]
       : [],
     query: { enabled: !!migrator, ...IMMUTABLE },
@@ -79,7 +83,8 @@ export function usePool(pad: `0x${string}`, token: `0x${string}`, chainId: numbe
   const liveReads = live.data as readonly Read[] | undefined;
   const seatReads = seat.data as readonly Read[] | undefined;
   let data: PoolInfo | undefined;
-  if (pair && migrator && liveReads && liveReads.length === 4 && liveReads.every((r) => r.status === "success")) {
+  const seated = seatReads !== undefined && seatReads.length === 3 && seatReads.every((r) => r.status === "success");
+  if (pair && migrator && seated && liveReads && liveReads.length === 4 && liveReads.every((r) => r.status === "success")) {
     const [reserve0, reserve1] = liveReads[0].result as readonly [bigint, bigint, number];
     const token0 = liveReads[1].result as `0x${string}`;
     const lpTotal = liveReads[2].result as bigint;
@@ -89,6 +94,7 @@ export function usePool(pad: `0x${string}`, token: `0x${string}`, chainId: numbe
       migrator,
       pair,
       pairAsset: seatReads![1].result as `0x${string}`,
+      router: seatReads![2].result as `0x${string}`,
       tokenReserve: tokenIsZero ? reserve0 : reserve1,
       quoteReserve: tokenIsZero ? reserve1 : reserve0,
       lockedPct: lpTotal > 0n ? Number((lpOurs * 10_000n) / lpTotal) / 100 : 0,

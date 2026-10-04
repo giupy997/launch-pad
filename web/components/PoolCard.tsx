@@ -5,6 +5,7 @@ import { fmtNum, fmtTokens, fmtUnits, shortAddr } from "@/lib/format";
 import { useAppChain, useExplorer, useLaunchpadAddress, ZERO_ADDRESS } from "@/lib/hooks";
 import { poolMarketCapOf, poolPriceOf, usePool } from "@/lib/pool";
 import { fmtQuoteMoney, fmtQuoteMoneyNum, isLtcQuote, useLtcPrice } from "@/lib/price";
+import { PoolTrade } from "@/components/PoolTrade";
 
 /** The trade box of a graduated coin: where it trades now, what its pool
  *  holds, that the pad keeps the liquidity locked, and the way to the DEX. */
@@ -71,15 +72,12 @@ export function PoolCard({
         </p>
       )}
 
+      {p && <PoolTrade token={token} symbol={symbol} quote={quote} pool={p} />}
+
       <div className="flex flex-wrap gap-2">
         {dex && (
-          <a
-            href={dex.swap(token, quote.address)}
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-black"
-          >
-            Swap on {dex.name} ↗
+          <a href={dex.swap(token, quote.address)} target="_blank" rel="noreferrer" className="btn-ghost px-4 py-2 text-sm">
+            {dex.name} ↗
           </a>
         )}
         {dex?.chart && p && (
@@ -95,8 +93,8 @@ export function PoolCard({
       </div>
 
       <p className="text-xs text-zinc-500">
-        The launchpad&apos;s fees ended with the curve. The pool&apos;s own 0.3% swap fee goes to its liquidity, which the pad
-        holds: it stays in the pool.
+        Swaps here go straight to the pool through its router, with no fee of the launchpad&apos;s: the curve&apos;s fees ended with
+        it. The pool&apos;s own 0.3% goes to its liquidity, which the pad holds: it stays in the pool.
       </p>
     </div>
   );
