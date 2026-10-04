@@ -224,6 +224,7 @@ forge test                       # incl. the fee model, the freeze, a cashback-s
 script/rehearse-local.sh         # the migration to another chain, end to end on anvil
 node script/pool-probe.mjs --rpc <nodes> --launchpad <pad> --from-block <deploy block>   # a graduated coin's pool: what went in, what it holds, every swap since
 # fork tests against live contracts: RUN_FORK_LIVE=true forge test --match-contract Live
+# the Base v10 stack end to end on a fork — zap, graduation, the Uniswap pool, trading on it: RUN_FORK_LIVE=true forge test --match-contract LiveBase -vv
 ```
 
 ```bash
