@@ -7,10 +7,12 @@ import {Launchpad} from "../src/Launchpad.sol";
 import {UniV2Migrator} from "../src/UniV2Migrator.sol";
 import {SlipstreamZapRouter} from "../src/SlipstreamZapRouter.sol";
 
-/// Base (chain 8453), the whole stack in one run — v10, replacing the v9
-/// stack whose pools were taken at block 52,105,142 (README, Deployments):
-/// the graduation now migrates in one piece, and the migrator never trades
-/// against a pool somebody pre-seeded. The Launchpad quoted in
+/// Base (chain 8453), the whole stack in one run — v11 (block 52,180,589),
+/// replacing the v9 stack whose pools were taken at block 52,105,142 and the
+/// v10 stack deployed the same day before the opening-price change, never
+/// used (README, Deployments): the graduation migrates in one piece, the
+/// migrator never trades against a pool somebody pre-seeded, and the pool
+/// opens at the price the curve closed at. The Launchpad quoted in
 /// cbLTC — Coinbase Wrapped LTC, LTC 1:1 in Coinbase custody with a public
 /// proof of reserves, 8 decimals — graduating into a locked Uniswap v2 pool
 /// (token/cbLTC); the ETH zap through Aerodrome Slipstream, where cbLTC's

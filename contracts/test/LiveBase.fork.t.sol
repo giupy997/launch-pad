@@ -21,20 +21,21 @@ interface IUniV2RouterSwap {
         returns (uint256[] memory amounts);
 }
 
-/// End-to-end against the PRODUCTION v10 stack on Base, on a fork (no real
+/// End-to-end against the PRODUCTION v11 stack on Base, on a fork (no real
 /// funds spent), every contract the live one: a coin is created on the live
 /// pad and bought through graduation with ETH through the live zap (Aerodrome
 /// → cbLTC → the curve), so the pool it seeds on the live Uniswap v2 can be
-/// checked — seeded in the same transaction, the whole reserve and the whole
-/// raise in, the LP locked in the migrator, nothing parked —
+/// checked — seeded in the same transaction, the whole raise in against coins
+/// at the price the curve closed at, the rest of the reserve locked in the
+/// pad, the LP locked in the migrator, nothing parked —
 /// and traded on the live router both ways; and a small ETH buy on the curve.
 /// NOTE: targets the deployed addresses — update them after a redeploy.
 /// Run with: RUN_FORK_LIVE=true forge test --match-contract LiveBase -vv
 ///   (FORK_RPC overrides the Base node; the default is mainnet.base.org)
 contract LiveBaseForkTest is Test {
-    Launchpad constant PAD = Launchpad(0xDd48A36aa65142A5CF111f485C2EFB26482b74C1);
-    UniV2Migrator constant MIGRATOR = UniV2Migrator(payable(0xe6358F4953EcCD49a2f133FCb50661854589E2ba));
-    SlipstreamZapRouter constant ZAP = SlipstreamZapRouter(payable(0xb743CA5D9d5f1E91f98cE2AF727E39694620331a));
+    Launchpad constant PAD = Launchpad(0xEfbB4ebdf5130cC4fC45899EeBA727fa2F55b5f4);
+    UniV2Migrator constant MIGRATOR = UniV2Migrator(payable(0x8fB7f1D18F4b2ECC79da94aBF51f95B93E07d218));
+    SlipstreamZapRouter constant ZAP = SlipstreamZapRouter(payable(0x072a77dC2a770504A1DA17e2fB6814C9cFf85254));
     IERC20 constant CBLTC = IERC20(0xcb17C9Db87B595717C857a08468793f5bAb6445F);
     address constant WETH = 0x4200000000000000000000000000000000000006;
     address constant UNIV2_ROUTER = 0x4752ba5DBc23f44D87826276BF6Fd6b1C372aD24;
@@ -102,7 +103,7 @@ contract LiveBaseForkTest is Test {
         assertEq(sold, PAD.CURVE_SUPPLY(), "the whole curve sold");
         assertEq(realQuote, 0, "the reserve left for the pool in the same transaction");
         assertEq(address(PAD.graduatedVia(token)), address(MIGRATOR));
-        assertEq(LaunchToken(token).balanceOf(address(PAD)), 0, "the pad keeps no coins");
+        assertEq(LaunchToken(token).balanceOf(address(PAD)), PAD.lockedAtGraduation(token), "the pad keeps only the locked share");
         assertGt(CBLTC.balanceOf(whale), 0, "the cbLTC the last buy did not need came back to the buyer");
         // the curve is closed
         vm.startPrank(whale);
@@ -117,7 +118,8 @@ contract LiveBaseForkTest is Test {
         assertTrue(pair != address(0), "the pool exists");
         assertEq(MIGRATOR.pairAsset(token), address(CBLTC));
         (uint256 rToken, uint256 rQuote) = _reserves(token, pair);
-        assertEq(rToken, PAD.DEX_RESERVE(), "the whole DEX reserve is in the pool");
+        assertEq(rToken + PAD.lockedAtGraduation(token), PAD.DEX_RESERVE(), "the pool and the lock share the DEX reserve");
+        assertGt(PAD.lockedAtGraduation(token), 0, "the curve's virtual share stays locked");
         // the whole raise is in the pool: what a sold-out curve holds is its virtual
         // reserve grown by VIRTUAL_TOKEN / (VIRTUAL_TOKEN - CURVE_SUPPLY), less the
         // virtual part — 3.2 times the 60 cbLTC, 192 cbLTC — plus the coin's liquidity
@@ -125,16 +127,13 @@ contract LiveBaseForkTest is Test {
         uint256 virtualQuote = PAD.quoteVirtualReserve(address(CBLTC));
         uint256 raise = (virtualQuote * PAD.VIRTUAL_TOKEN()) / (PAD.VIRTUAL_TOKEN() - PAD.CURVE_SUPPLY()) - virtualQuote;
         assertApproxEqAbs(rQuote, raise, 1e4, "the whole raise is in the pool");
-        // the pool opens where the raise meets the DEX reserve: 192 / 200M, which is
-        // 4.8% under the curve's marginal closing price (252 / 250M virtual) — the
-        // constants' doing, the same for any virtual reserve, the same on v9: the
-        // first buyer in the pool gets that much under the last buyer on the curve
+        // the pool opens at the price the curve closed at (vEth / vToken), to a hundredth
+        // of a percent: the raise against as many coins as that price says, the rest locked
         (uint256 vEth, uint256 vToken,,,,,) = PAD.curves(token);
         uint256 poolSide = rQuote * vToken;
         uint256 curveSide = vEth * rToken;
-        assertLt(poolSide, curveSide, "the pool opens under the closing price");
-        assertGt(poolSide * 1000, curveSide * 940, "...by about 4.8%, not more than 6%");
-        assertLt(poolSide * 1000, curveSide * 965, "...and not less than 3.5%");
+        uint256 diff = poolSide > curveSide ? poolSide - curveSide : curveSide - poolSide;
+        assertLe(diff * 10_000, curveSide, "the pool opens at the closing price");
     }
 
     function _checkLocked(address token, address pair) internal view {

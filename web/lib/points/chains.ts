@@ -39,15 +39,16 @@ export type PointsChain = {
 };
 
 export const POINTS_CHAINS: Record<string, PointsChain> = {
-  // LitVM's Liteforge testnet: the v9 rehearsal pad (Notus's twin, migrated
-  // from Base at scale 1:100), quoted in native zkLTC. Season 0, the
-  // rehearsal, from the pad's deploy block until LitVM mainnet opens.
+  // LitVM's Liteforge testnet: the v11 rehearsal pad, quoted in native zkLTC
+  // with a 0.05 zkLTC virtual reserve so that curves graduate on faucet
+  // money. Season 0, the rehearsal, from the pad's deploy block until LitVM
+  // mainnet opens (the v9 pad's season, 56,991,201 on, was wiped with it).
   liteforge: {
     key: "liteforge",
     chainId: 4441,
     name: "LitVM Liteforge testnet",
-    pad: "0xcaB79e85BfC71C30E5BA65d35e1a2e2D909C42EF",
-    deployBlock: 56_991_201n,
+    pad: "0x39D104b3258B6A18c5d5d967CDA182Ded20Bef7F",
+    deployBlock: 57_741_789n,
     rpcs: ["https://liteforge.rpc.caldera.xyz/infra-partner-http"],
     quoteDecimals: 18,
     quoteSymbol: "zkLTC",
@@ -55,17 +56,17 @@ export const POINTS_CHAINS: Record<string, PointsChain> = {
     chunk: 9_000n, // the node took these whole during the backfill
     lag: 60n,
     hidden: [],
-    season: { number: 0, name: "Season 0", start: 56_991_201n, end: null, rehearsal: true },
+    season: { number: 0, name: "Season 0", start: 57_741_789n, end: null, rehearsal: true },
     explorer: "https://liteforge.explorer.caldera.xyz",
   },
-  // Base: the v10 pad in cbLTC. No season here (the features come with
+  // Base: the v11 pad in cbLTC. No season here (the features come with
   // LitVM); indexed only when enabled, for a one-off genesis credit at Season 1.
   base: {
     key: "base",
     chainId: 8453,
     name: "Base",
-    pad: "0xDd48A36aa65142A5CF111f485C2EFB26482b74C1",
-    deployBlock: 52_172_805n,
+    pad: "0xEfbB4ebdf5130cC4fC45899EeBA727fa2F55b5f4",
+    deployBlock: 52_180_589n,
     rpcs: ["https://mainnet.base.org", "https://base-rpc.publicnode.com", "https://base.drpc.org", "https://1rpc.io/base"],
     quoteDecimals: 8,
     quoteSymbol: "cbLTC",

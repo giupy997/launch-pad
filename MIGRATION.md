@@ -60,10 +60,10 @@ One file holds the names as they arrive; every block below sources it:
 ```bash
 cat > ~/notus-litvm.env <<'EOF2'
 export PATH="$HOME/.foundry/bin:$PATH"
-export BASE_PAD=0xDd48A36aa65142A5CF111f485C2EFB26482b74C1       # the v10 Launchpad on Base
-export BASE_TIMELOCK=0x8606eD231728A0977a72a9d1874219Ac7E873D04  # its TimelockController (24 h)
+export BASE_PAD=0xEfbB4ebdf5130cC4fC45899EeBA727fa2F55b5f4       # the v11 Launchpad on Base
+export BASE_TIMELOCK=0xeDCe189855E9298C3f5b937fE9Ffe8D5261B9EB2  # its TimelockController (24 h)
 export BASE_QUOTE=0xcb17C9Db87B595717C857a08468793f5bAb6445F
-export BASE_FROM_BLOCK=52172805                                   # the pad's deploy block
+export BASE_FROM_BLOCK=52180589                                   # the pad's deploy block
 export BRIDGE_FROM=         # the EVM account that receives the cbLTC and takes it through Coinbase
 export VAULT=               # an account of yours: coins with no holder to go to are parked there (step 2)
 export LITVM_RPC=           # LitVM mainnet RPC

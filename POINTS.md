@@ -64,8 +64,9 @@ invite within the last 30 days: +3 on the 60. Total 193, and the inviter gets 6.
 Points accrue in seasons, each on one chain:
 
 - **Season 0, Liteforge testnet, now.** From the testnet pad's deploy block
-  (56,991,201; the v9 rehearsal pad at `0xcaB7…42EF`, quoted in native zkLTC,
-  holding Notus's twin migrated from Base) until LitVM mainnet opens. A
+  (57,741,789; the v11 rehearsal pad at `0x39D1…ef7F`, quoted in native zkLTC
+  with a 0.05 zkLTC virtual reserve, so that a curve graduates on faucet
+  money; the v9 pad's season was wiped with it) until LitVM mainnet opens. A
   rehearsal of the whole thing: indexer, rules, leaderboard, invites. Worth
   nothing, says so on the page, wiped at the end.
 - **Season 1, LitVM mainnet.** Opens with the receiving pad's first block

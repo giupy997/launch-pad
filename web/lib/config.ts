@@ -76,16 +76,16 @@ export const MIGRATION_TARGET: Record<number, string> = { [base.id]: "LitVM main
 
 // One address per chain: add future deployments here (multichain).
 export const LAUNCHPAD_ADDRESS: Record<number, `0x${string}` | undefined> = {
-  // v10 quoted in cbLTC (60 virtual), deploy block 52,172,805, owned by the timelock 0x8606eD231728A0977a72a9d1874219Ac7E873D04 (24 h);
-  // UniV2Migrator v2 0xe6358F4953EcCD49a2f133FCb50661854589E2ba → Uniswap v2 pools; zap below. The v9 pad 0xcaB7…42EF is retired (README).
-  [base.id]: "0xDd48A36aa65142A5CF111f485C2EFB26482b74C1",
+  // v11 quoted in cbLTC (60 virtual), deploy block 52,180,589, owned by the timelock 0xeDCe189855E9298C3f5b937fE9Ffe8D5261B9EB2 (24 h);
+  // UniV2Migrator v2 0x8fB7f1D18F4b2ECC79da94aBF51f95B93E07d218 → Uniswap v2 pools, opened at the curve's closing price; zap below.
+  // The v9 pad 0xcaB7…42EF (its pools taken) and the v10 pad 0xDd48A36aa65142A5CF111f485C2EFB26482b74C1 (never used) are retired (README).
+  [base.id]: "0xEfbB4ebdf5130cC4fC45899EeBA727fa2F55b5f4",
   [giwaSepolia.id]: "0x8E1a1308E3b176528Ee9278d7a531F185F9fBeFD",
   [robinhood.id]: "0x4A84c7B0dc45a473eA67f56617BC5903CA2c001c", // v7.4
-  // v9, the Base → LitVM rehearsal pad (the same address as Base's retired v9 pad: same deployer, same nonce); it holds
-  // Notus's twin migrated from Base at scale 1:100; UniV2Migrator v1 0x92329D494D4D098C95A87E381a4D60CA666edb1b → Lester
-  // Labs v2 router. Testnet only: to be redeployed from the v10 code before it matters.
-  // The v7.7 pad 0x4D3C…4025 (litecat, zass; the Litecoin ledger rehearsal) is parked.
-  [litvmTestnet.id]: "0xcaB79e85BfC71C30E5BA65d35e1a2e2D909C42EF",
+  // v11 rehearsal pad quoted in native zkLTC with a 0.05 zkLTC virtual reserve (a curve graduates with 0.16 zkLTC, faucet
+  // money); UniV2Migrator v2 0xD45e4011Dae718aAF95DB5BdCA8e7Ee3ca8F413F → Lester Labs' v2 router; deploy block 57,741,789. Parked: the v9
+  // rehearsal pad 0xcaB7…42EF (Notus's twin migrated from Base at 1:100, with the v1 migrator), the v7.x pads.
+  [litvmTestnet.id]: "0x39D104b3258B6A18c5d5d967CDA182Ded20Bef7F",
 };
 
 // Launchpad deployment blocks: where on-chain event scans start.
@@ -100,10 +100,10 @@ export function isHiddenToken(chainId: number, token: string): boolean {
 }
 
 export const LAUNCHPAD_DEPLOY_BLOCK: Record<number, bigint> = {
-  [base.id]: 52_172_805n,
+  [base.id]: 52_180_589n,
   [giwaSepolia.id]: 31_997_798n, // v7.1
   [robinhood.id]: 61_447_720n, // v7.4
-  [litvmTestnet.id]: 56_991_201n, // v9 rehearsal pad (the v7.7 pad, block 55_934_572, and the v7.6/v7.5 pads are parked)
+  [litvmTestnet.id]: 57_741_789n, // the v11 rehearsal pad (the v9 one, block 56_991_201, and the v7.x pads are parked)
 };
 
 // Quote assets offered at launch per chain. address null = native ETH.
@@ -241,7 +241,7 @@ export function rwaLogo(asset: QuoteAssetInfo): string | undefined {
 // Slipstream, where cbLTC's liquidity is (SlipstreamZapRouter speaks that
 // router's shape; both quoters answer QuoterV2's ABI).
 export const ZAP_ROUTER: Record<number, `0x${string}` | undefined> = {
-  [base.id]: "0xb743CA5D9d5f1E91f98cE2AF727E39694620331a", // SlipstreamZapRouter → Aerodrome, for the v10 pad
+  [base.id]: "0x072a77dC2a770504A1DA17e2fB6814C9cFf85254", // SlipstreamZapRouter → Aerodrome, for the v11 pad
   [robinhood.id]: "0xfd0C942E3DB34672715B862A8e19838bC9EDa7B5", // v7.4
 };
 export const UNISWAP_QUOTER: Record<number, `0x${string}` | undefined> = {
