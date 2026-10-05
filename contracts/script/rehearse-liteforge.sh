@@ -75,9 +75,12 @@ node script/snapshot-evm.mjs --rpc "$SRC_RPC" --launchpad "$SRC_PAD" --quote "$S
 echo "== 3. the zkLTC the coins need, against the deployer's"
 NEED=$(node -p "require('$FILE').totals.bridgeLtc")
 HAVE=$(cast balance "$DEPLOYER" --rpc-url "$DST_RPC" --ether)
-echo "   coins need $NEED zkLTC · deployer has $HAVE zkLTC (gas comes on top)"
-if awk -v n="$NEED" -v h="$HAVE" 'BEGIN { exit !(h < n + 0.05) }'; then
-  echo "   not enough zkLTC on Liteforge: fund $DEPLOYER, then rerun with TARGET=$TARGET"
+# gas on Liteforge is not nothing (deploying the pad and its migrator cost ~0.16 zkLTC):
+# the migration of a few coins and holders wants a margin on top of the coins' reserves
+GAS_MARGIN=${GAS_MARGIN:-0.05}
+echo "   coins need $NEED zkLTC · deployer has $HAVE zkLTC · gas margin $GAS_MARGIN zkLTC on top"
+if awk -v n="$NEED" -v h="$HAVE" -v g="$GAS_MARGIN" 'BEGIN { exit !(h < n + g) }'; then
+  echo "   not enough zkLTC on Liteforge: fund $DEPLOYER (the LitVM testnet faucet), then rerun with TARGET=$TARGET"
   exit 2
 fi
 
