@@ -17,7 +17,30 @@ MIGRATOR=0xD45e4011Dae718aAF95DB5BdCA8e7Ee3ca8F413F
 TREASURY=0x707f56C25e5d8cc12d08A3bf73f54dBeD0CD9A02
 ROUTER=0xD56a623890b083d876D47c3b1c5343b7f983FA62
 
+RPC=https://liteforge.rpc.caldera.xyz/infra-partner-http
+DEPLOY_BLOCK=57741789
+
 verified() { curl -sS -m 20 "$API/$1" | grep -q '"is_verified":true'; }
+
+# one field of a JSON answer on stdin, by dotted path ("items.0.height")
+json() {
+  node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{try{const j=JSON.parse(d);const v=process.argv[1].split(".").reduce((o,k)=>o==null?undefined:o[k],j);console.log(v==null?"":typeof v==="string"?v:JSON.stringify(v))}catch{console.log("")}})' "$1"
+}
+
+# how far the explorer has read, against the chain: a contract it has not
+# indexed yet is "not a smart-contract" to it, and verification must wait
+head=$(cast block-number --rpc-url "$RPC" 2>/dev/null || echo "?")
+seen=$(curl -sS -m 20 "https://liteforge.explorer.caldera.xyz/api/v2/blocks?type=block" | json items.0.height)
+echo "chain head $head · the explorer's latest block ${seen:-?} · the pad was deployed at $DEPLOY_BLOCK"
+for a in "$PAD" "$MIGRATOR"; do
+  code=$(cast code "$a" --rpc-url "$RPC" 2>/dev/null | head -c 12)
+  isc=$(curl -sS -m 20 "https://liteforge.explorer.caldera.xyz/api/v2/addresses/$a" | json is_contract)
+  echo "   $a: on chain $([ "$code" != "0x" ] && [ -n "$code" ] && echo "a contract" || echo "NO CODE") · to the explorer: ${isc:-unknown}"
+done
+if [ -n "$seen" ] && [ "$seen" != "?" ] && [ "$seen" -lt "$DEPLOY_BLOCK" ] 2>/dev/null; then
+  echo "the explorer has not reached the deploy block yet: rerun once it has"
+  exit 0
+fi
 
 verify() {  # address  file  "path:Name"  constructor args (0x…)
   local addr=$1 file=$2 name=$3 args=$4
