@@ -40,6 +40,7 @@ const only = flag("token") ? getAddress(flag("token")) : null;
 let chunk = BigInt(flag("chunk", "1999"));
 const PACE_MS = Number(flag("pace", "120"));
 const ZERO = "0x0000000000000000000000000000000000000000";
+const NATIVE_SYMBOL = { 8453: "ETH", 4441: "zkLTC", 4663: "ETH" };
 const TOTAL_SUPPLY = 1_000_000_000n * 10n ** 18n;
 const CURVE_SUPPLY = 800_000_000n * 10n ** 18n;
 
@@ -172,7 +173,7 @@ for (const token of list) {
   const symbol = await read(token, erc20Abi, "symbol");
   const native = quoteAsset === ZERO;
   const qDec = native ? 18 : Number(await read(quoteAsset, erc20Abi, "decimals"));
-  const qSym = native ? "native" : await read(quoteAsset, erc20Abi, "symbol");
+  const qSym = native ? (NATIVE_SYMBOL[chainId] ?? "native") : await read(quoteAsset, erc20Abi, "symbol");
   const isLtc = /ltc/i.test(qSym);
   const units = (amt) => Number(formatUnits(amt, qDec));
   const usd = (q) => (ltcUsd && isLtc ? ` ($${num(q * ltcUsd, q * ltcUsd >= 100 ? 0 : 2)})` : "");
@@ -240,7 +241,7 @@ for (const token of list) {
   }
   if (lockedHere > 0n) console.log(`   ${coins(lockedHere)} ${symbol} stay locked in the pad: the curve's virtual share, so the pool opened at the closing price`);
   const swept = await read(token, erc20Abi, "balanceOf", [treasury]);
-  if (swept > 0n) console.log(`   the treasury holds ${coins(swept)} ${symbol}, swept at the seeding (the pool already had liquidity)`);
+  if (swept > 0n) console.log(`   the treasury holds ${coins(swept)} ${symbol} (its own buys, or what the seeding left over)`);
 
   // ---- what happened in the pool
   process.stdout.write(`   reading the pool since block ${blockNo(seedBlock)}`);

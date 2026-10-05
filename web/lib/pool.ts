@@ -22,6 +22,11 @@ export const pairAbi = parseAbi([
   "function totalSupply() view returns (uint256)",
 ]);
 
+/** how often an incomplete read of the pool is asked again */
+const RETRY_MS = 5_000;
+const allOk = (reads: readonly { status: string }[] | undefined, n: number) =>
+  reads !== undefined && reads.length === n && reads.every((r) => r.status === "success");
+
 export type PoolInfo = {
   migrator: `0x${string}`;
   pair: `0x${string}`;
@@ -44,13 +49,15 @@ export type PoolInfo = {
  *  graduated coin the pad seeded no pool for (no migrator at the time, or a
  *  pad too old to say). */
 export function usePool(pad: `0x${string}`, token: `0x${string}`, chainId: number, enabled: boolean) {
+  // immutable once graduated, but a node that fails one read must not leave the
+  // page on "reading the pool" for good: an incomplete answer is asked again
   const via = useReadContract({
     address: pad,
     abi: launchpadAbi,
     functionName: "graduatedVia",
     args: [token],
     chainId,
-    query: { enabled, ...IMMUTABLE },
+    query: { enabled, ...IMMUTABLE, refetchInterval: (q) => (q.state.data ? false : RETRY_MS) },
   });
   const migrator = via.data && via.data !== ZERO_ADDRESS ? via.data : undefined;
 
@@ -62,7 +69,11 @@ export function usePool(pad: `0x${string}`, token: `0x${string}`, chainId: numbe
           { address: migrator, abi: migratorAbi, functionName: "router", chainId },
         ]
       : [],
-    query: { enabled: !!migrator, ...IMMUTABLE },
+    query: {
+      enabled: !!migrator,
+      ...IMMUTABLE,
+      refetchInterval: (q) => (allOk(q.state.data as readonly { status: string }[] | undefined, 3) ? false : RETRY_MS),
+    },
   });
   const firstSeat = (seat.data as readonly { status: string; result?: unknown }[] | undefined)?.[0];
   const pairRead = firstSeat?.status === "success" ? (firstSeat.result as `0x${string}`) : undefined;
@@ -104,9 +115,10 @@ export function usePool(pad: `0x${string}`, token: `0x${string}`, chainId: numbe
       lockedPct: lpTotal > 0n ? Number((lpOurs * 10_000n) / lpTotal) / 100 : 0,
     };
   }
+  // no pool at all: no migrator recorded, or the migrator knows no pair (a read that
+  // failed is retried above, not read as "no pool")
   const none =
-    enabled &&
-    (via.isError || via.data === ZERO_ADDRESS || seat.isError || (seat.data !== undefined && !pair) || live.isError);
+    enabled && (via.isError || via.data === ZERO_ADDRESS || seat.isError || (seated && !pair) || live.isError);
   const isPending = enabled && !data && !none;
   return { data, isPending, none };
 }
