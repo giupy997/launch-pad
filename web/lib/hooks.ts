@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { keepPreviousData } from "@tanstack/react-query";
 import { useChainId, useReadContract, useReadContracts } from "wagmi";
 import { launchpadAbi, launchTokenAbi } from "./abi";
@@ -23,6 +23,17 @@ export function useNativeSymbol(): string {
 /** Block explorer base URL for the current app chain. */
 export function useExplorer() {
   return useAppChain().blockExplorers.default.url;
+}
+
+/** `value`, but only once it has held still for `ms`: what a per-keystroke RPC
+ *  call (a quote) should read, so typing does not fire one call per key. */
+export function useDebounced<T>(value: T, ms: number): T {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setSettled(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return settled;
 }
 
 /** Launchpad address on the current app chain; undefined if not deployed yet. */

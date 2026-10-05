@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { encodePacked, erc20Abi, formatUnits, maxUint256, parseUnits } from "viem";
 import {
   useAccount,
@@ -19,6 +20,7 @@ import {
   parseCurve,
   type CurveInfo,
   useNativeSymbol,
+  useDebounced,
 } from "@/lib/hooks";
 import { fmtEth, fmtUnits, fmtTokens } from "@/lib/format";
 import { quoteBuy, quoteSell, parseFeeConfig, NO_TAX, feeLabel, splitParts, type FeeConfig } from "@/lib/curve";
@@ -233,15 +235,18 @@ export function TradeBox({
     if (spendable !== undefined) setAmount(fmtInput((spendable * BigInt(p)) / 100n, inputDecimals));
   }
 
-  // ETH -> quote estimate via the Uniswap quoter (pool route)
+  // ETH -> quote estimate via the Uniswap quoter (pool route): an RPC call, so it
+  // reads the amount once typing has paused, not once per key
+  const quotedIn = useDebounced(parsed, 250);
   const { data: quoterSim } = useSimulateContract({
     address: quoterAddr,
     abi: quoterAbi,
     functionName: "quoteExactInput",
-    args: zapPath ? [zapPath, parsed] : undefined,
+    args: zapPath ? [zapPath, quotedIn] : undefined,
     chainId: chain.id,
-    query: { enabled: zapMode && !curveZapMode && !!zapPath && parsed > 0n, refetchInterval: 10_000 },
+    query: { enabled: zapMode && !curveZapMode && !!zapPath && quotedIn > 0n, refetchInterval: 10_000, retry: 1, staleTime: 8_000 },
   });
+  const quoting = zapMode && !curveZapMode && parsed > 0n && (quotedIn !== parsed || quoterSim === undefined);
 
   // ETH -> pre-market estimate straight from its own curve (curve route): the pad's arithmetic, run here
   const preQuoteOut: bigint | undefined =
@@ -260,10 +265,13 @@ export function TradeBox({
 
   const { writeContract, data: hash, isPending, error, reset } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const queryClient = useQueryClient();
 
   // What the last signed transaction was. A confirmed approval refreshes the
   // allowance at once (not on the next poll) so the button turns into
-  // Buy/Sell; a confirmed trade refreshes the balances and clears the field.
+  // Buy/Sell; a confirmed trade refreshes everything the page reads — the
+  // curve, the balances, the trades, the volumes — now, not on the next poll,
+  // and clears the field.
   const [lastAction, setLastAction] = useState<"approve" | "trade">("trade");
   const handled = useRef<string | undefined>(undefined);
   useEffect(() => {
@@ -278,8 +286,9 @@ export function TradeBox({
       refetchEthBal();
       setPct(null);
       setAmount("");
+      refreshAfterTrade(queryClient);
     }
-  }, [isSuccess, hash, lastAction, refetchAllowance, refetchQuoteAllowance, refetchBalance, refetchQuoteBalance, refetchEthBal]);
+  }, [isSuccess, hash, lastAction, refetchAllowance, refetchQuoteAllowance, refetchBalance, refetchQuoteBalance, refetchEthBal, queryClient]);
 
   // Buy and Sell take different units, so the field and the last
   // transaction's outcome don't carry over from one side to the other.
@@ -462,6 +471,9 @@ export function TradeBox({
           )}
         </div>
 
+        {parsed > 0n && mode === "buy" && buyQuote === undefined && quoting && (
+          <p className="text-sm text-zinc-600">≈ quoting…</p>
+        )}
         {parsed > 0n && mode === "buy" && buyQuote !== undefined && (
           <p className="text-sm text-zinc-400">
             ≈ {fmtTokens(buyQuote as bigint)} {symbol}
@@ -564,6 +576,16 @@ function Tab({
       {children}
     </button>
   );
+}
+
+/** Everything a trade changes, asked again at once: wagmi's contract reads and
+ *  balances (the curve, the pool, the allowances), and the site's own scans
+ *  (trades, volumes, holders). Polls would get there in five to fifteen
+ *  seconds; a trade should show the moment it lands. */
+export function refreshAfterTrade(queryClient: ReturnType<typeof useQueryClient>) {
+  for (const key of ["readContract", "readContracts", "balance", "trades", "volumes-24h", "holders"]) {
+    void queryClient.invalidateQueries({ queryKey: [key] });
+  }
 }
 
 function safeParse(v: string, decimals: number): bigint {

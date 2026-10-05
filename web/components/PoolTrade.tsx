@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { erc20Abi, formatUnits, maxUint256, parseAbi, parseUnits } from "viem";
 import { useAccount, useBalance, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { launchTokenAbi } from "@/lib/abi";
@@ -8,6 +9,7 @@ import { useAppChain, useExplorer, useNativeSymbol } from "@/lib/hooks";
 import { fmtEth, fmtTokens, fmtUnits } from "@/lib/format";
 import type { PoolInfo } from "@/lib/pool";
 import { SlippageControl, useSlippageBps } from "@/components/SlippageControl";
+import { refreshAfterTrade } from "@/components/TradeBox";
 
 const routerAbi = parseAbi([
   "function swapExactTokensForTokens(uint256 amountIn, uint256 amountOutMin, address[] path, address to, uint256 deadline) returns (uint256[] amounts)",
@@ -119,6 +121,7 @@ export function PoolTrade({
 
   const { writeContract, data: hash, isPending, error, reset } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const queryClient = useQueryClient();
   const [lastAction, setLastAction] = useState<"approve" | "trade">("trade");
   const handled = useRef<string | undefined>(undefined);
   useEffect(() => {
@@ -133,8 +136,9 @@ export function PoolTrade({
       refetchEthBal();
       setPct(null);
       setAmount("");
+      refreshAfterTrade(queryClient); // the pool's reserves, the trades, the volume: now
     }
-  }, [isSuccess, hash, lastAction, refetchAllowance, refetchQuoteAllowance, refetchBalance, refetchQuoteBalance, refetchEthBal]);
+  }, [isSuccess, hash, lastAction, refetchAllowance, refetchQuoteAllowance, refetchBalance, refetchQuoteBalance, refetchEthBal, queryClient]);
 
   function switchMode(m: "buy" | "sell") {
     if (m === mode) return;

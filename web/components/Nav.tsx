@@ -46,7 +46,7 @@ export function Nav() {
           <Link
             key={it.href}
             href={it.href}
-            className={`rounded-full px-3.5 py-1.5 whitespace-nowrap transition-all duration-200 ${
+            className={`rounded-full px-3.5 py-1.5 whitespace-nowrap transition-colors duration-150 ${
               active
                 ? "bg-white text-black shadow-[0_0_20px_-6px_rgba(255,255,255,0.6)]"
                 : "text-zinc-400 hover:text-white hover:bg-white/[0.06]"
