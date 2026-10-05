@@ -210,7 +210,11 @@ LitVM (chain 4441, RPC `https://liteforge.rpc.caldera.xyz/infra-partner-http`,
 explorer `https://liteforge.explorer.caldera.xyz`, gas in zkLTC) is Litecoin's
 EVM layer 2: when LitVM mainnet goes live, the Litecoin ledger's coins migrate
 there automatically — same holders, same price, each coin's pool moved to a
-DEX — see [litecoin/README.md](litecoin/README.md#the-road-to-litvm).
+DEX — see [litecoin/README.md](litecoin/README.md#the-road-to-litvm). The
+mainnet pad opens its zkLTC curves with the same 60 of virtual reserve as
+Base's cbLTC ones (192 zkLTC raised to graduate), decided 2026-10-05; the
+Liteforge rehearsal pad runs at 0.05 so that graduations can be tried on
+faucet money.
 Per-chain launchpad addresses live in `web/lib/config.ts` (`LAUNCHPAD_ADDRESS`);
 chains without a deployment show a notice and disable trading. Robinhood
 Chain (Arbitrum Orbit, chain ID 4663, RPC `https://rpc.mainnet.chain.robinhood.com`,

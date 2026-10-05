@@ -80,8 +80,16 @@ and the chain to `web/lib/config.ts` and the site's CSP, as for any new chain.
 
 ```bash
 source ~/notus-litvm.env; cd ~/launch-pad/contracts && source .env
-UNIV2_ROUTER=<router> TREASURY=<treasury> forge script script/DeployLitVM.s.sol --rpc-url litvm --private-key "$PRIVATE_KEY" --broadcast
+UNIV2_ROUTER=<router> TREASURY=<treasury> NATIVE_VIRTUAL=60000000000000000000 \
+  forge script script/DeployLitVM.s.sol --rpc-url litvm --private-key "$PRIVATE_KEY" --broadcast
 ```
+
+`NATIVE_VIRTUAL` is the virtual reserve a zkLTC curve opens with: **60 zkLTC**,
+the same as Base's 60 cbLTC (decided 2026-10-05), so a coin reads the same on
+both sides of the migration — ~57 of opening market cap, 192 raised to
+graduate (~196 paid with the fees), 1,008 at graduation, the pool opened at
+that price with 190.48M coins. Migrated coins keep the virtual reserve they
+had on Base regardless; the figure is for the coins born on LitVM.
 
 Verify it (Blockscout, `script/standard-input.mjs` if the CLI stalls) and put
 its address in the env file. It is owned by the deployer for the migration

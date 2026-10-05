@@ -18,8 +18,10 @@ import {UniV2Migrator} from "../src/UniV2Migrator.sol";
 /// a native-quoted curve opens with, in wei of zkLTC (default the contract's
 /// 1.25): a testnet short of zkLTC wants a small one, so that a curve can be
 /// bought through graduation with faucet coins — 0.05 zkLTC raises 0.16 to
-/// graduate. The pad stays owned by the deployer: a rehearsal pad; the
-/// mainnet one gets a TimelockController like Base's (DeployBase.s.sol).
+/// graduate. Mainnet opens with 60 zkLTC (60e18), Base's figure: 192 zkLTC
+/// to graduate, 1,008 of market cap there. The pad stays owned by the
+/// deployer: a rehearsal pad, or the migration day's pad, which the
+/// TimelockController takes over right after (DeployTimelock.s.sol).
 ///
 /// Verify both on Blockscout from the same checkout that deployed (same
 /// foundry.toml, same solc), passing each constructor's ABI-encoded args
