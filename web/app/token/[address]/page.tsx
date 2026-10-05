@@ -66,7 +66,6 @@ export default function TokenPage({ params }: { params: Promise<{ address: strin
       { address: pad, abi: launchpadAbi, functionName: "burnPot", args: [token] },
       { address: pad, abi: launchpadAbi, functionName: "liquidityPot", args: [token] },
       { address: pad, abi: launchpadAbi, functionName: "burned", args: [token] },
-      { address: token, abi: launchTokenAbi, functionName: "balanceOf", args: [pad] }, // the unsold curve, or the lock
     ],
     query: { refetchInterval: 5_000 },
   });
@@ -104,7 +103,7 @@ export default function TokenPage({ params }: { params: Promise<{ address: strin
     );
 
   const [nameR, symbolR, feeModeR, feesR, feeBpsR, creatorShareR, holderShareR] = statics;
-  const [curveR, metaR, burnPotR, liqPotR, burnedR, padBalR] = dyn;
+  const [curveR, metaR, burnPotR, liqPotR, burnedR] = dyn;
   const feesToHolders = feeModeR?.status === "success" ? (feeModeR.result as boolean) : false;
   const big = (r: { status: string; result?: unknown } | undefined, fallback = 0n) =>
     r?.status === "success" ? (r.result as bigint) : fallback;
@@ -131,11 +130,8 @@ export default function TokenPage({ params }: { params: Promise<{ address: strin
   const livePool = curve.graduated ? pool.data : undefined;
   const price = livePool ? poolPriceOf(livePool, q.decimals) : priceOf(curve, q.decimals);
   const mcap = livePool ? poolMarketCapOf(livePool, q.decimals) : marketCapOf(curve, q.decimals);
-  // wallets holding the coin: the explorer's count less the contracts that hold some (the pad, the pool)
-  const holders =
-    holdersQ.data?.holders == null
-      ? null
-      : Math.max(0, holdersQ.data.holders - (big(padBalR) > 0n ? 1 : 0) - (livePool && livePool.tokenReserve > 0n ? 1 : 0));
+  // wallets holding the coin, as the explorer counts them (contracts such as the pad and the pool taken off by the route)
+  const holders = holdersQ.data?.holders ?? null;
   // this token is itself a Notus pre-market (a registered pair asset)
   const isPreMarket = isQuoteAsset(chain.id, token);
 
