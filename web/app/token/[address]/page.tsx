@@ -33,6 +33,7 @@ import { FeePanel } from "@/components/FeePanel";
 import { parseFeeConfig, NO_TAX, treasuryPct } from "@/lib/curve";
 import { useLtcPrice, fmtQuoteMoney, fmtQuoteMoneyNum, isLtcQuote } from "@/lib/price";
 import { poolMarketCapOf, poolPriceOf, usePool } from "@/lib/pool";
+import { useHolders } from "@/lib/holders";
 import { fmtNum } from "@/lib/format";
 import { useAccount } from "wagmi";
 
@@ -65,6 +66,7 @@ export default function TokenPage({ params }: { params: Promise<{ address: strin
       { address: pad, abi: launchpadAbi, functionName: "burnPot", args: [token] },
       { address: pad, abi: launchpadAbi, functionName: "liquidityPot", args: [token] },
       { address: pad, abi: launchpadAbi, functionName: "burned", args: [token] },
+      { address: token, abi: launchTokenAbi, functionName: "balanceOf", args: [pad] }, // the unsold curve, or the lock
     ],
     query: { refetchInterval: 5_000 },
   });
@@ -76,6 +78,7 @@ export default function TokenPage({ params }: { params: Promise<{ address: strin
     token,
     pool.data ? { token, pair: pool.data.pair, tokenIsZero: pool.data.tokenIsZero } : null
   );
+  const holdersQ = useHolders(chain.id, token);
   const isLoading = staticsLoading || dynLoading;
 
   if (isLoading || !statics || !dyn)
@@ -89,8 +92,8 @@ export default function TokenPage({ params }: { params: Promise<{ address: strin
               <div className="h-3 w-24 rounded bg-white/[0.06]" />
             </div>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {Array.from({ length: 4 }).map((_, i) => (
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            {Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className="h-16 rounded-lg bg-zinc-900" />
             ))}
           </div>
@@ -101,7 +104,7 @@ export default function TokenPage({ params }: { params: Promise<{ address: strin
     );
 
   const [nameR, symbolR, feeModeR, feesR, feeBpsR, creatorShareR, holderShareR] = statics;
-  const [curveR, metaR, burnPotR, liqPotR, burnedR] = dyn;
+  const [curveR, metaR, burnPotR, liqPotR, burnedR, padBalR] = dyn;
   const feesToHolders = feeModeR?.status === "success" ? (feeModeR.result as boolean) : false;
   const big = (r: { status: string; result?: unknown } | undefined, fallback = 0n) =>
     r?.status === "success" ? (r.result as bigint) : fallback;
@@ -128,6 +131,11 @@ export default function TokenPage({ params }: { params: Promise<{ address: strin
   const livePool = curve.graduated ? pool.data : undefined;
   const price = livePool ? poolPriceOf(livePool, q.decimals) : priceOf(curve, q.decimals);
   const mcap = livePool ? poolMarketCapOf(livePool, q.decimals) : marketCapOf(curve, q.decimals);
+  // wallets holding the coin: the explorer's count less the contracts that hold some (the pad, the pool)
+  const holders =
+    holdersQ.data?.holders == null
+      ? null
+      : Math.max(0, holdersQ.data.holders - (big(padBalR) > 0n ? 1 : 0) - (livePool && livePool.tokenReserve > 0n ? 1 : 0));
   // this token is itself a Notus pre-market (a registered pair asset)
   const isPreMarket = isQuoteAsset(chain.id, token);
 
@@ -214,7 +222,7 @@ export default function TokenPage({ params }: { params: Promise<{ address: strin
 
         {meta.livestream && <LiveStream url={meta.livestream} />}
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           <Stat
             label="Market cap"
             value={fmtQuoteMoneyNum(mcap, q.symbol, usd)}
@@ -234,6 +242,11 @@ export default function TokenPage({ params }: { params: Promise<{ address: strin
             />
           )}
           <Stat label="Sold" value={fmtTokens(curve.sold)} />
+          <Stat
+            label="Holders"
+            value={holders === null ? (holdersQ.isPending ? "…" : "—") : holders.toLocaleString("en-US")}
+            sub={holders === null ? undefined : "wallets with a balance"}
+          />
           <Stat label="Curve" value={curve.graduated ? "Graduated" : `${progress.toFixed(1)}%`} />
         </div>
 
