@@ -91,6 +91,11 @@ verify "$ZAP" SlipstreamZapRouter.standard-input.json "src/SlipstreamZapRouter.s
 verify "$TIMELOCK" TimelockController.standard-input.json "lib/openzeppelin-contracts/contracts/governance/TimelockController.sol:TimelockController" \
   "$(enc 'constructor(uint256,address[],address[],address)' "$DELAY" "[$PROPOSER]" "[$PROPOSER,0x0000000000000000000000000000000000000000]" 0x0000000000000000000000000000000000000000)"
 if [ -n "${FIRST_TOKEN:-}" ]; then
+  # the coin's name and symbol, from the chain unless given
+  RPC=${BASE_RPC:-https://mainnet.base.org}
+  FIRST_NAME=${FIRST_NAME:-$(cast call "$FIRST_TOKEN" "name()(string)" --rpc-url "$RPC" | sed -e 's/^"//' -e 's/"$//')}
+  FIRST_SYMBOL=${FIRST_SYMBOL:-$(cast call "$FIRST_TOKEN" "symbol()(string)" --rpc-url "$RPC" | sed -e 's/^"//' -e 's/"$//')}
+  echo "== the first coin: $FIRST_NAME ($FIRST_SYMBOL) at $FIRST_TOKEN"
   verify "$FIRST_TOKEN" LaunchToken.standard-input.json "src/LaunchToken.sol:LaunchToken" \
     "$(enc 'constructor(string,string,uint256,bool,address)' "$FIRST_NAME" "$FIRST_SYMBOL" 1000000000000000000000000000 false "$PAD")"
 fi

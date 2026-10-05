@@ -43,6 +43,11 @@ export function TradeFeed({
             >
               {t.type}
             </span>
+            {t.venue === "pool" && (
+              <span className="font-mono text-[10px] tracking-widest uppercase text-zinc-600" title="a swap in the coin's pool on the DEX">
+                pool
+              </span>
+            )}
             <a
               href={`${explorer}/address/${t.trader}`}
               target="_blank"

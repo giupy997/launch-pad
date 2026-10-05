@@ -40,7 +40,6 @@ export default function TokenPage({ params }: { params: Promise<{ address: strin
   const { address: addressParam } = use(params);
   const token = addressParam as `0x${string}`;
   const { address: user } = useAccount();
-  const { data: tradeData, isPending: tradesPending } = useTrades(token);
   const usd = useLtcPrice().data?.usd ?? null;
   const pad = useLaunchpadAddress() ?? ("0x0000000000000000000000000000000000000000" as `0x${string}`);
   const explorer = useExplorer();
@@ -69,9 +68,14 @@ export default function TokenPage({ params }: { params: Promise<{ address: strin
     ],
     query: { refetchInterval: 5_000 },
   });
-  // a graduated coin's pool: its price and reserves replace the curve's frozen ones
+  // a graduated coin's pool: its price and reserves replace the curve's frozen ones,
+  // and its swaps join the trades, the chart and the volume
   const graduatedNow = dyn?.[0]?.status === "success" && (dyn[0].result as readonly unknown[])[4] === true;
   const pool = usePool(pad, token, chain.id, graduatedNow);
+  const { data: tradeData, isPending: tradesPending } = useTrades(
+    token,
+    pool.data ? { token, pair: pool.data.pair, tokenIsZero: pool.data.tokenIsZero } : null
+  );
   const isLoading = staticsLoading || dynLoading;
 
   if (isLoading || !statics || !dyn)

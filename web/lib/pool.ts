@@ -3,6 +3,7 @@
 import { parseAbi } from "viem";
 import { useReadContract, useReadContracts } from "wagmi";
 import { launchpadAbi } from "./abi";
+import type { PoolRef } from "./events";
 import { IMMUTABLE, ZERO_ADDRESS } from "./hooks";
 
 /** What the site reads of a UniV2Migrator: the pool it seeded for a coin,
@@ -31,6 +32,8 @@ export type PoolInfo = {
   /** the pool's two sides, as (coin, quote) whatever their order in the pair */
   tokenReserve: bigint;
   quoteReserve: bigint;
+  /** whether the coin is the pair's token0 (its swaps' amount0 is the coin) */
+  tokenIsZero: boolean;
   /** the share of the pool's liquidity the pad's migrator holds locked, in percent */
   lockedPct: number;
 };
@@ -97,6 +100,7 @@ export function usePool(pad: `0x${string}`, token: `0x${string}`, chainId: numbe
       router: seatReads![2].result as `0x${string}`,
       tokenReserve: tokenIsZero ? reserve0 : reserve1,
       quoteReserve: tokenIsZero ? reserve1 : reserve0,
+      tokenIsZero,
       lockedPct: lpTotal > 0n ? Number((lpOurs * 10_000n) / lpTotal) / 100 : 0,
     };
   }
@@ -116,4 +120,47 @@ export function poolPriceOf(pool: PoolInfo, quoteDecimals: number): number {
 /** Fully diluted market cap at the pool's price: times the 1B supply. */
 export function poolMarketCapOf(pool: PoolInfo, quoteDecimals: number): number {
   return poolPriceOf(pool, quoteDecimals) * 1_000_000_000;
+}
+
+/** The pools of several graduated coins at once, for reading their swaps
+ *  along with the pad's trades (the explore page's volumes): the pad says
+ *  which migrator seeded each, the migrator which pair, the pair which side
+ *  the coin is. Immutable once graduated. Coins with no pool are left out. */
+export function usePools(pad: `0x${string}`, tokens: `0x${string}`[], chainId: number): { pools: PoolRef[]; ready: boolean } {
+  const vias = useReadContracts({
+    contracts: tokens.map((t) => ({ address: pad, abi: launchpadAbi, functionName: "graduatedVia" as const, args: [t] as const, chainId })),
+    query: { enabled: tokens.length > 0, ...IMMUTABLE },
+  });
+  type Read = { status: string; result?: unknown };
+  const viaReads = (vias.data as readonly Read[] | undefined) ?? [];
+  const seated = tokens
+    .map((token, i) => ({ token, migrator: viaReads[i]?.status === "success" ? (viaReads[i].result as `0x${string}`) : undefined }))
+    .filter((x): x is { token: `0x${string}`; migrator: `0x${string}` } => !!x.migrator && x.migrator !== ZERO_ADDRESS);
+  const pairs = useReadContracts({
+    contracts: seated.map((x) => ({ address: x.migrator, abi: migratorAbi, functionName: "pairOf" as const, args: [x.token] as const, chainId })),
+    query: { enabled: seated.length > 0, ...IMMUTABLE },
+  });
+  const pairReads = (pairs.data as readonly Read[] | undefined) ?? [];
+  const paired = seated
+    .map((x, i) => ({ ...x, pair: pairReads[i]?.status === "success" ? (pairReads[i].result as `0x${string}`) : undefined }))
+    .filter((x): x is { token: `0x${string}`; migrator: `0x${string}`; pair: `0x${string}` } => !!x.pair && x.pair !== ZERO_ADDRESS);
+  const sides = useReadContracts({
+    contracts: paired.map((x) => ({ address: x.pair, abi: pairAbi, functionName: "token0" as const, chainId })),
+    query: { enabled: paired.length > 0, ...IMMUTABLE },
+  });
+  const sideReads = (sides.data as readonly Read[] | undefined) ?? [];
+  // settled: every round that had something to read has answered (so a volume scan
+  // that waits for the pools runs once, with them, not once without and once with)
+  const ready =
+    tokens.length === 0 ||
+    (vias.data !== undefined && (seated.length === 0 || pairs.data !== undefined) && (paired.length === 0 || sides.data !== undefined));
+  const pools = paired
+    .map((x, i) => ({
+      token: x.token,
+      pair: x.pair,
+      token0: sideReads[i]?.status === "success" ? (sideReads[i].result as `0x${string}`) : undefined,
+    }))
+    .filter((x): x is { token: `0x${string}`; pair: `0x${string}`; token0: `0x${string}` } => !!x.token0)
+    .map((x) => ({ token: x.token, pair: x.pair, tokenIsZero: x.token0.toLowerCase() === x.token.toLowerCase() }));
+  return { pools, ready };
 }

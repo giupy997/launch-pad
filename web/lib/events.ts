@@ -24,7 +24,13 @@ export type Trade = {
   block: bigint;
   tx: `0x${string}`;
   timestamp: number; // unix seconds, 0 if unknown
+  /** where it happened: the pad's curve, or the coin's DEX pool once graduated */
+  venue: "curve" | "pool";
 };
+
+/** A graduated coin's pool, so its swaps read as the coin's trades: the pair
+ *  and which side of it the coin is. */
+export type PoolRef = { token: `0x${string}`; pair: `0x${string}`; tokenIsZero: boolean };
 
 const boughtEvent = parseAbiItem(
   "event Bought(address indexed token, address indexed buyer, uint256 ethIn, uint256 tokensOut, uint256 fee)"
@@ -35,6 +41,11 @@ const soldEvent = parseAbiItem(
 const tradeAbi = [boughtEvent, soldEvent] as const;
 const topicBought = encodeEventTopics({ abi: [boughtEvent] })[0];
 const topicSold = encodeEventTopics({ abi: [soldEvent] })[0];
+// a Uniswap v2 pair's swap: a graduated coin's trades, read from its pool
+const swapEvent = parseAbiItem(
+  "event Swap(address indexed sender, uint256 amount0In, uint256 amount1In, uint256 amount0Out, uint256 amount1Out, address indexed to)"
+);
+const topicSwap = encodeEventTopics({ abi: [swapEvent] })[0];
 
 // ---------------------------------------------------------------------------
 // Scanning the chain's logs. Public RPCs differ in what they take: on Base,
@@ -243,19 +254,22 @@ function stretches(ok: Range[]): Range[] {
   return out;
 }
 
-/** The pad's trade logs over [fromBlock, toBlock] — one token's, or (no
- *  token) every coin's. A first visit reads at most MAX_SPAN blocks back and
- *  flags the rest as truncated; the caches keep everything from there on.
- *  What comes back is one contiguous stretch [first, last]: the most recent
- *  one that was read (its top is where the next scan resumes). Blocks no
- *  node served are left out and flagged truncated. */
+/** The trade logs over [fromBlock, toBlock] — one token's, or (no token)
+ *  every coin's: the pad's Bought and Sold, plus the swaps of every pool in
+ *  `pools` (graduated coins trade there, and their trades go on). A first
+ *  visit reads at most MAX_SPAN blocks back and flags the rest as truncated;
+ *  the caches keep everything from there on. What comes back is one
+ *  contiguous stretch [first, last] every scan served: the most recent one
+ *  (its top is where the next scan resumes). Blocks a node did not serve are
+ *  left out and flagged truncated. */
 async function scanTrades(
   set: Node[],
   chainId: number,
   pad: `0x${string}`,
   token: `0x${string}` | null,
   fromBlock: bigint,
-  toBlock: bigint
+  toBlock: bigint,
+  pools: PoolRef[] = []
 ): Promise<{ trades: Trade[]; truncated: boolean; first: bigint; last: bigint }> {
   // a first visit reads this much history: about fifty requests at the chain's
   // configured range (~2.3 days on Base, ~1.3 on Liteforge's 250 ms blocks)
@@ -268,17 +282,35 @@ async function scanTrades(
   const start = toBlock - fromBlock + 1n > MAX_SPAN ? toBlock - MAX_SPAN + 1n : fromBlock;
   if (start > toBlock) return { trades: [], truncated: false, first: fromBlock, last: fromBlock - 1n };
   const ranges = splitRange(start, toBlock, chunkFor(chainId));
-  const { logs, ok, failed } = await getLogsAdaptive(set, chainId, { address: pad, topics }, ranges, CONCURRENCY);
-  if (!failed.length) return { trades: decodeTrades(logs), truncated: start > fromBlock, first: start, last: toBlock };
+  const scans = [
+    { logs: [] as RpcLog[], pool: null as PoolRef | null, filter: { address: pad, topics } },
+    ...pools.map((pool) => ({ logs: [] as RpcLog[], pool, filter: { address: pool.pair, topics: [topicSwap] } })),
+  ];
+  // the same ranges for the pad and every pool; a range counts as read only when every scan read it
+  const failedKeys = new Set<string>();
+  for (const scan of scans) {
+    const r = await getLogsAdaptive(set, chainId, scan.filter, ranges, CONCURRENCY);
+    scan.logs = r.logs;
+    for (const f of r.failed) failedKeys.add(`${f.lo}-${f.hi}`);
+  }
+  const decodeAll = (within?: Range) =>
+    sortTrades(
+      scans.flatMap((scan) => {
+        const logs = within
+          ? scan.logs.filter((l) => {
+              const bn = BigInt(l.blockNumber ?? "0x0");
+              return bn >= within.lo && bn <= within.hi;
+            })
+          : scan.logs;
+        return scan.pool ? decodeSwaps(logs, scan.pool) : decodeTrades(logs);
+      })
+    );
+  if (!failedKeys.size) return { trades: decodeAll(), truncated: start > fromBlock, first: start, last: toBlock };
 
-  const got = stretches(ok);
+  const got = stretches(ranges.filter((r) => !failedKeys.has(`${r.lo}-${r.hi}`)));
   if (!got.length) return { trades: [], truncated: start > fromBlock, first: fromBlock, last: fromBlock - 1n };
   const seg = got[got.length - 1];
-  const kept = logs.filter((l) => {
-    const bn = BigInt(l.blockNumber ?? "0x0");
-    return bn >= seg.lo && bn <= seg.hi;
-  });
-  return { trades: decodeTrades(kept), truncated: true, first: seg.lo, last: seg.hi };
+  return { trades: decodeAll(seg), truncated: true, first: seg.lo, last: seg.hi };
 }
 
 /** block timestamps for the most recent trades that lack one (bounded; a
@@ -305,24 +337,58 @@ async function stampTimestamps(set: Node[], trades: Trade[]) {
   }
 }
 
-function decodeTrades(logs: RpcLog[]): Trade[] {
-  return logs
-    .map((l) => {
-      const d = decodeEventLog({ abi: tradeAbi, data: l.data, topics: l.topics as [`0x${string}`, ...`0x${string}`[]] });
-      const base = {
-        token: (d.args as { token: `0x${string}` }).token,
-        block: BigInt(l.blockNumber ?? "0x0"),
-        tx: l.transactionHash as `0x${string}`,
-        timestamp: 0,
-      };
-      if (d.eventName === "Bought") {
-        const a = d.args as { buyer: `0x${string}`; ethIn: bigint; tokensOut: bigint };
-        return { type: "buy" as const, trader: a.buyer, eth: a.ethIn, tokens: a.tokensOut, ...base };
-      }
-      const a = d.args as { seller: `0x${string}`; tokensIn: bigint; ethOut: bigint };
-      return { type: "sell" as const, trader: a.seller, eth: a.ethOut, tokens: a.tokensIn, ...base };
-    })
-    .sort((a, b) => (a.block === b.block ? 0 : a.block < b.block ? -1 : 1));
+/** A trade with its place in the chain, for ordering trades from several logs. */
+type Keyed = { trade: Trade; block: bigint; index: number };
+
+function sortTrades(keyed: Keyed[]): Trade[] {
+  return keyed
+    .sort((a, b) => (a.block === b.block ? a.index - b.index : a.block < b.block ? -1 : 1))
+    .map((k) => k.trade);
+}
+
+function decodeTrades(logs: RpcLog[]): Keyed[] {
+  return logs.map((l) => {
+    const d = decodeEventLog({ abi: tradeAbi, data: l.data, topics: l.topics as [`0x${string}`, ...`0x${string}`[]] });
+    const block = BigInt(l.blockNumber ?? "0x0");
+    const base = {
+      token: (d.args as { token: `0x${string}` }).token,
+      block,
+      tx: l.transactionHash as `0x${string}`,
+      timestamp: 0,
+      venue: "curve" as const,
+    };
+    const trade: Trade =
+      d.eventName === "Bought"
+        ? (() => {
+            const a = d.args as { buyer: `0x${string}`; ethIn: bigint; tokensOut: bigint };
+            return { type: "buy" as const, trader: a.buyer, eth: a.ethIn, tokens: a.tokensOut, ...base };
+          })()
+        : (() => {
+            const a = d.args as { seller: `0x${string}`; tokensIn: bigint; ethOut: bigint };
+            return { type: "sell" as const, trader: a.seller, eth: a.ethOut, tokens: a.tokensIn, ...base };
+          })();
+    return { trade, block, index: Number(l.logIndex ?? 0) };
+  });
+}
+
+/** A pool's swaps as the coin's trades: quote in and coins out is a buy, coins
+ *  in and quote out a sell, by the recipient (the router's `to`: the wallet
+ *  behind the swap). Anything else (both sides in, a flash swap) is skipped. */
+function decodeSwaps(logs: RpcLog[], pool: PoolRef): Keyed[] {
+  const out: Keyed[] = [];
+  for (const l of logs) {
+    const d = decodeEventLog({ abi: [swapEvent], data: l.data, topics: l.topics as [`0x${string}`, ...`0x${string}`[]] });
+    const a = d.args as { amount0In: bigint; amount1In: bigint; amount0Out: bigint; amount1Out: bigint; to: `0x${string}` };
+    const [tokensIn, quoteIn] = pool.tokenIsZero ? [a.amount0In, a.amount1In] : [a.amount1In, a.amount0In];
+    const [tokensOut, quoteOut] = pool.tokenIsZero ? [a.amount0Out, a.amount1Out] : [a.amount1Out, a.amount0Out];
+    const block = BigInt(l.blockNumber ?? "0x0");
+    const base = { token: pool.token, trader: a.to, block, tx: l.transactionHash as `0x${string}`, timestamp: 0, venue: "pool" as const };
+    let trade: Trade | null = null;
+    if (quoteIn > 0n && tokensOut > 0n && tokensIn === 0n) trade = { type: "buy", eth: quoteIn, tokens: tokensOut, ...base };
+    else if (tokensIn > 0n && quoteOut > 0n && quoteIn === 0n) trade = { type: "sell", eth: quoteOut, tokens: tokensIn, ...base };
+    if (trade) out.push({ trade, block, index: Number(l.logIndex ?? 0) });
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -331,17 +397,25 @@ function decodeTrades(logs: RpcLog[]): Trade[] {
 // instead of re-scanning the whole history — the difference between tens of
 // seconds and milliseconds on the token page.
 
-const CACHE_PREFIX = "notus.trades.v2.";
+const CACHE_PREFIX = "notus.trades.v3."; // v3: the venue, and a graduated coin's pool swaps
 const CACHE_MAX_TRADES = 400; // enough for the chart + feed; keeps quota safe
 const VOLUME_MAX_TRADES = 3_000; // a day of the whole pad
 
 type TradeCache = { last: bigint; trades: Trade[]; truncated: boolean };
 
-function cacheKey(chainId: number, token: `0x${string}`): string {
-  return `${CACHE_PREFIX}${chainId}.${token.toLowerCase()}`;
+/** the pools a scan reads, as part of its cache key: a new pool (a graduation)
+ *  starts a fresh scan, so its swaps since the window's start are read */
+function poolsKey(pools: PoolRef[]): string {
+  return pools
+    .map((p) => p.pair.toLowerCase())
+    .sort()
+    .join(",");
 }
-function volumesKey(chainId: number): string {
-  return `${CACHE_PREFIX}${chainId}.all`;
+function cacheKey(chainId: number, token: `0x${string}`, pools: PoolRef[]): string {
+  return `${CACHE_PREFIX}${chainId}.${token.toLowerCase()}.${poolsKey(pools) || "curve"}`;
+}
+function volumesKey(chainId: number, pools: PoolRef[]): string {
+  return `${CACHE_PREFIX}${chainId}.all.${poolsKey(pools) || "curve"}`;
 }
 
 function loadCache(key: string): TradeCache | null {
@@ -351,12 +425,12 @@ function loadCache(key: string): TradeCache | null {
     const p = JSON.parse(raw) as {
       last: string;
       truncated: boolean;
-      trades: [string, `0x${string}`, string, string, string, `0x${string}`, number, `0x${string}`][];
+      trades: [string, `0x${string}`, string, string, string, `0x${string}`, number, `0x${string}`, string?][];
     };
     return {
       last: BigInt(p.last),
       truncated: p.truncated,
-      trades: p.trades.map(([type, trader, eth, tokens, block, tx, timestamp, token]) => ({
+      trades: p.trades.map(([type, trader, eth, tokens, block, tx, timestamp, token, venue]) => ({
         type: type as "buy" | "sell",
         token,
         trader,
@@ -365,6 +439,7 @@ function loadCache(key: string): TradeCache | null {
         block: BigInt(block),
         tx,
         timestamp,
+        venue: venue === "pool" ? ("pool" as const) : ("curve" as const),
       })),
     };
   } catch {
@@ -386,6 +461,7 @@ function saveCache(key: string, cache: TradeCache, max = CACHE_MAX_TRADES) {
       t.tx,
       t.timestamp,
       t.token,
+      t.venue,
     ]),
   });
   try {
@@ -403,30 +479,32 @@ function saveCache(key: string, cache: TradeCache, max = CACHE_MAX_TRADES) {
   }
 }
 
-/** All curve trades for a token, oldest first, with block timestamps for the
- *  most recent ones. No backend: reads straight from the chain, with a
- *  localStorage cache so only new blocks are scanned after the first visit. */
-export function useTrades(token: `0x${string}`) {
+/** All trades of a token, oldest first, with block timestamps for the most
+ *  recent ones: the curve's, and once graduated its pool's swaps too (pass
+ *  the pool). No backend: reads straight from the chain, with a localStorage
+ *  cache so only new blocks are scanned after the first visit. */
+export function useTrades(token: `0x${string}`, pool: PoolRef | null = null) {
   const chain = useAppChain();
   const pad = useLaunchpadAddress();
   const deployBlock = LAUNCHPAD_DEPLOY_BLOCK[chain.id] ?? 0n;
+  const pools = pool ? [pool] : [];
 
   return useQuery({
-    queryKey: ["trades", chain.id, token],
+    queryKey: ["trades", chain.id, token, pool?.pair ?? null],
     enabled: !!pad,
     refetchInterval: 15_000,
     placeholderData: (prev) => prev,
     queryFn: async (): Promise<{ trades: Trade[]; truncated: boolean }> => {
       if (!pad) return { trades: [], truncated: false };
       const set = scanNodes(chain);
-      const key = cacheKey(chain.id, token);
+      const key = cacheKey(chain.id, token, pools);
       const cached = loadCache(key);
       const latest = await firstNode(set, (c) => c.getBlockNumber());
 
       if (cached && latest <= cached.last) return cached;
 
       const from = cached ? cached.last + 1n : deployBlock;
-      const fresh = await scanTrades(set, chain.id, pad, token, from, latest);
+      const fresh = await scanTrades(set, chain.id, pad, token, from, latest, pools);
       // nothing new could be read: keep what we have, try again next tick
       if (fresh.last < from) return cached ?? { trades: [], truncated: fresh.truncated };
       const trades = cached ? [...cached.trades, ...fresh.trades] : fresh.trades;
@@ -441,23 +519,25 @@ export function useTrades(token: `0x${string}`) {
 }
 
 /** The last day's trading of every coin on the pad, summed per token in quote
- *  wei (what buyers paid plus what sellers received), for the explore cards.
+ *  wei (what buyers paid plus what sellers received), for the explore cards:
+ *  the curves' trades, and the pool swaps of the graduated coins in `pools`.
  *  One scan of the day on the first visit, then only the blocks mined since
  *  (a localStorage cache, like a token's), refreshed every minute. */
-export function useVolumes() {
+export function useVolumes(pools: PoolRef[] = [], ready = true) {
   const chain = useAppChain();
   const pad = useLaunchpadAddress();
   const deployBlock = LAUNCHPAD_DEPLOY_BLOCK[chain.id] ?? 0n;
+  const pk = poolsKey(pools);
   return useQuery({
-    queryKey: ["volumes-24h", chain.id],
-    enabled: !!pad,
+    queryKey: ["volumes-24h", chain.id, pk],
+    enabled: !!pad && ready, // once the pools are known, so the day is scanned once
     refetchInterval: 60_000,
     placeholderData: (prev) => prev,
     queryFn: async (): Promise<{ byToken: Record<string, bigint>; trades: number; partial: boolean }> => {
       const byToken: Record<string, bigint> = {};
       if (!pad) return { byToken, trades: 0, partial: false };
       const set = scanNodes(chain);
-      const key = volumesKey(chain.id);
+      const key = volumesKey(chain.id, pools);
       const cached = loadCache(key);
       const latest = await firstNode(set, (c) => c.getBlockNumber());
       const perDay = BigInt(Math.round(86_400 / (BLOCK_SECONDS[chain.id] ?? 2)));
@@ -468,7 +548,7 @@ export function useVolumes() {
       let partial = false;
       if (latest > last) {
         const from = last + 1n > dayStart ? last + 1n : dayStart;
-        const fresh = await scanTrades(set, chain.id, pad, null, from, latest);
+        const fresh = await scanTrades(set, chain.id, pad, null, from, latest, pools);
         if (fresh.last >= from) {
           trades = [...trades, ...fresh.trades];
           last = fresh.last;

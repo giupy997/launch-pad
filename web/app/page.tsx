@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useTokens, useAppChain, isQuoteAsset } from "@/lib/hooks";
+import { useTokens, useAppChain, isQuoteAsset, useLaunchpadAddress, ZERO_ADDRESS } from "@/lib/hooks";
 import { useVolumes } from "@/lib/events";
+import { usePools } from "@/lib/pool";
 import { useLtcPrice } from "@/lib/price";
 import { CHAIN_LABEL, MIGRATION_TARGET, QUOTE_ASSETS } from "@/lib/config";
 import { TokenCard } from "@/components/TokenCard";
@@ -15,7 +16,13 @@ type Sort = "newest" | "raised" | "progress";
 
 export default function Explore() {
   const { tokens: allTokens, isLoading, isError, count } = useTokens();
-  const { data: volumes } = useVolumes();
+  // the graduated coins' pools: their swaps count in the day's volume
+  const { pools, ready: poolsReady } = usePools(
+    useLaunchpadAddress() ?? ZERO_ADDRESS,
+    allTokens.filter((t) => t.curve.graduated).map((t) => t.address),
+    useAppChain().id
+  );
+  const { data: volumes } = useVolumes(pools, !isLoading && poolsReady);
   const chain = useAppChain();
   // money in dollars wherever the quote is LTC in one of its forms (cbLTC, zkLTC): a
   // market cap reads as a market cap, the quote amount stays beneath it
