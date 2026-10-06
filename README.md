@@ -3,7 +3,7 @@
 **https://notus-pad.fun** — a token launchpad on Base, quoted in cbLTC:
 Litecoin wrapped by Coinbase, one LTC in custody for every token, with a
 public proof of reserves. What it is, how keys are handled and how to reach
-us: [notus-pad.fun/about](https://notus-pad.fun/about).
+us: [notus-pad.fun/about](https://notus-pad.fun/about); email notuspad@gmail.com.
 
 The same Solidity contracts run on LitVM's Liteforge testnet (Litecoin's EVM
 layer; its mainnet is expected later in 2026) and have run on GIWA Sepolia and

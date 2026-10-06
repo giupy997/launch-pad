@@ -1,4 +1,5 @@
 # Notus — https://notus-pad.fun
+Contact: mailto:notuspad@gmail.com
 Contact: https://github.com/giupy997/launch-pad/security
 Contact: https://x.com/Notuspad
 Expires: 2027-09-28T00:00:00.000Z

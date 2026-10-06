@@ -95,6 +95,9 @@ export default function RootLayout({
                   <a className="underline hover:text-zinc-200" href="https://x.com/Notuspad" target="_blank" rel="noreferrer">
                     X
                   </a>
+                  <a className="underline hover:text-zinc-200" href="mailto:notuspad@gmail.com">
+                    Email
+                  </a>
                 </div>
               </div>
               <p className="text-xs leading-relaxed text-zinc-500">

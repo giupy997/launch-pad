@@ -8,6 +8,7 @@ export const metadata: Metadata = {
 };
 
 const X_URL = "https://x.com/Notuspad";
+const EMAIL = "notuspad@gmail.com";
 
 export default function AboutPage() {
   return (
@@ -136,7 +137,8 @@ export default function AboutPage() {
 
       <Section title="Contact and security" id="security">
         <li>
-          X: <a href={X_URL} target="_blank" rel="noreferrer" className="underline">@Notuspad</a>. Bugs and questions: the
+          Email: <a href={`mailto:${EMAIL}`} className="underline">{EMAIL}</a>. X:{" "}
+          <a href={X_URL} target="_blank" rel="noreferrer" className="underline">@Notuspad</a>. Bugs and questions: the
           repository&apos;s issues.
         </li>
         <li>
@@ -148,7 +150,7 @@ export default function AboutPage() {
           ) : (
             "the repository, once it is published"
           )}
-          , or a direct message on X. Please give us time to fix before disclosing. Machine-readable:{" "}
+          , an email to the address above, or a direct message on X. Please give us time to fix before disclosing. Machine-readable:{" "}
           <a href="/.well-known/security.txt" className="underline font-mono">/.well-known/security.txt</a>.
         </li>
       </Section>
