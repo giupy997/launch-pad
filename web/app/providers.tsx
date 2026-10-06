@@ -3,7 +3,7 @@
 import { QueryClient, useQueryClient, type Query } from "@tanstack/react-query";
 import { PersistQueryClientProvider, removeOldestQuery, type Persister } from "@tanstack/react-query-persist-client";
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
-import { WagmiProvider, deserialize, serialize, useAccount, type State } from "wagmi";
+import { WagmiProvider, deserialize, serialize, useAccount } from "wagmi";
 import { useState, type ReactNode, useEffect, useRef } from "react";
 import { config } from "@/lib/config";
 
@@ -61,13 +61,9 @@ function makePersister(): Persister {
   });
 }
 
-export function Providers({
-  children,
-  initialState,
-}: {
-  children: ReactNode;
-  initialState?: State;
-}) {
+// No initial wagmi state from the server: the pages are static, and the chain
+// a browser last used is read from wagmi's cookie on the client (lib/hooks.ts).
+export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -86,7 +82,7 @@ export function Providers({
     if (process.env.NODE_ENV === "development") (window as unknown as Record<string, unknown>).__qc = queryClient;
   }, [queryClient]);
   return (
-    <WagmiProvider config={config} initialState={initialState}>
+    <WagmiProvider config={config}>
       <PersistQueryClientProvider
         client={queryClient}
         persistOptions={{

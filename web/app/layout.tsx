@@ -1,9 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
-import { headers } from "next/headers";
-import { cookieToInitialState } from "wagmi";
 import "./globals.css";
-import { config } from "@/lib/config";
 import { Providers } from "./providers";
 import { HeaderWallet } from "@/components/HeaderWallet";
 import { SOURCE_URL } from "@/lib/site";
@@ -46,22 +43,19 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = { themeColor: "#07080b", colorScheme: "dark" };
 
-export default async function RootLayout({
+// No request headers are read here: the chain a browser last used is in
+// wagmi's cookie, which the client reads itself (lib/hooks.ts, useAppChain),
+// so every page prerenders as static and a click between sections needs no
+// server round trip.
+export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  // a malformed wagmi cookie (any subdomain can set one) must not 500 every page
-  let initialState: ReturnType<typeof cookieToInitialState>;
-  try {
-    initialState = cookieToInitialState(config, (await headers()).get("cookie"));
-  } catch {
-    initialState = undefined;
-  }
   return (
     <html lang="en">
       <body
         className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased bg-ink text-marble min-h-screen`}
       >
-        <Providers initialState={initialState}>
+        <Providers>
           <header className="sticky top-0 z-30 glass border-x-0 border-t-0">
             <div className="mx-auto max-w-6xl px-3 sm:px-5 py-3 flex items-center justify-between gap-2 sm:gap-4">
               <Link href="/" className="group flex items-center gap-3 shrink-0">

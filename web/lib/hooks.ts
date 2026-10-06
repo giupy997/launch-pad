@@ -1,16 +1,34 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useChainId, useReadContract, useReadContracts } from "wagmi";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { cookieToInitialState, useChainId, useReadContract, useReadContracts } from "wagmi";
 import { launchpadAbi, launchTokenAbi } from "./abi";
-import { APP_CHAINS, DEFAULT_CHAIN, LAUNCHPAD_ADDRESS, QUOTE_ASSETS, VISIBLE_CHAINS, isHiddenToken } from "./config";
+import { APP_CHAINS, DEFAULT_CHAIN, LAUNCHPAD_ADDRESS, QUOTE_ASSETS, VISIBLE_CHAINS, config, isHiddenToken } from "./config";
 
 /** Any chain the app is wired for (the pages still special-case Robinhood's assets). */
 export type AppChain = (typeof APP_CHAINS)[number];
 
-/** The app chain currently selected (falls back to GIWA Sepolia). */
+// The chain this browser last used, from wagmi's own cookie. The server reads
+// no request headers (so every page prerenders as static), and wagmi itself
+// picks the cookie up only after mount: until then it answers the default
+// chain. Read as an external store with an "unknown" server snapshot, the
+// cookie's chain is in the first frame the browser paints, with the HTML
+// still matching the server's.
+const subscribeNever = () => () => {};
+function cookieChainId(): number | undefined {
+  try {
+    return cookieToInitialState(config, document.cookie)?.chainId;
+  } catch {
+    return undefined; // no cookie, or a malformed one
+  }
+}
+
+/** The app chain currently selected (the default chain when none is). */
 export function useAppChain(): AppChain {
-  const chainId = useChainId();
+  const wagmiId = useChainId();
+  const cookieId = useSyncExternalStore(subscribeNever, cookieChainId, () => undefined);
+  // wagmi's word once it says anything but the default; before that, the cookie's
+  const chainId = wagmiId !== DEFAULT_CHAIN.id ? wagmiId : (cookieId ?? wagmiId);
   return VISIBLE_CHAINS.find((c) => c.id === chainId) ?? DEFAULT_CHAIN;
 }
 
