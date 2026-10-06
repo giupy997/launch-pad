@@ -7,3 +7,27 @@
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
+
+# One address. Several hostnames answering with the same pages read, to the
+# link scanners, like clones of one another: in October 2026 Google Safe
+# Browsing flagged the retired domain and the hosting provider's default
+# subdomain as "social engineering" while notus-pad.fun stayed clean. So the
+# default subdomain sends every visit to notus-pad.fun, and the retired domain
+# answers 404 with a plain page, whatever the domain list on Netlify says.
+[[redirects]]
+  from = "https://loquacious-scone-c402b4.netlify.app/*"
+  to = "https://notus-pad.fun/:splat"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "https://notuspad.com/*"
+  to = "/retired.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "https://www.notuspad.com/*"
+  to = "/retired.html"
+  status = 404
+  force = true
