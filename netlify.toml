@@ -11,13 +11,16 @@
 # One address. Several hostnames answering with the same pages read, to the
 # link scanners, like clones of one another: in October 2026 Google Safe
 # Browsing flagged the retired domain and the hosting provider's default
-# subdomain as "social engineering" while notus-pad.fun stayed clean. So the
-# default subdomain sends every visit to notus-pad.fun, and the retired domain
-# answers 404 with a plain page, whatever the domain list on Netlify says.
+# subdomain as "social engineering" while notus-pad.fun stayed clean. Both
+# now answer 404 with a plain page, whatever the domain list on Netlify says,
+# and do not redirect: a review of a flagged host then finds nothing there,
+# instead of being sent on to notus-pad.fun. (Netlify may redirect a
+# non-primary domain to the primary one before these rules run; removing the
+# retired domain from the site settles that.)
 [[redirects]]
   from = "https://loquacious-scone-c402b4.netlify.app/*"
-  to = "https://notus-pad.fun/:splat"
-  status = 301
+  to = "/retired.html"
+  status = 404
   force = true
 
 [[redirects]]
