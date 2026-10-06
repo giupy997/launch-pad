@@ -32,3 +32,6 @@ litecoin/migration/rehearsal-*
 
 # throwaway tests written by review agents
 contracts/test/_review_*
+
+# private handoff notes for the owner: never in the public repository
+HANDOFF.md
