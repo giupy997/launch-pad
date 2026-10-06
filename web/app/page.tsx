@@ -6,8 +6,9 @@ import { useTokens, useAppChain, isQuoteAsset, useLaunchpadAddress, ZERO_ADDRESS
 import { useVolumes } from "@/lib/events";
 import { usePools } from "@/lib/pool";
 import { useLtcPrice } from "@/lib/price";
-import { CHAIN_LABEL, MIGRATION_TARGET, QUOTE_ASSETS } from "@/lib/config";
+import { CHAIN_LABEL, LAUNCHPAD_ADDRESS, MIGRATION_TARGET, QUOTE_ASSETS, VISIBLE_CHAINS } from "@/lib/config";
 import { TokenCard } from "@/components/TokenCard";
+import { WarmTokens } from "@/components/WarmTokens";
 import { NotDeployedNotice } from "@/components/NotDeployedNotice";
 import { MigrationNotice } from "@/components/MigrationNotice";
 import { SeasonStrip } from "@/components/SeasonStrip";
@@ -15,7 +16,7 @@ import { SeasonStrip } from "@/components/SeasonStrip";
 type Sort = "newest" | "raised" | "progress";
 
 export default function Explore() {
-  const { tokens: allTokens, isLoading, isError, count } = useTokens();
+  const { tokens: allTokens, isLoading, isError } = useTokens();
   // the graduated coins' pools: their swaps count in the day's volume
   const { pools, ready: poolsReady } = usePools(
     useLaunchpadAddress() ?? ZERO_ADDRESS,
@@ -108,7 +109,7 @@ export default function Explore() {
       <section>
         <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
           <h2 className="display text-3xl text-white">
-            Tokens {count > 0 && <span className="text-zinc-600">({tokens.length})</span>}
+            Tokens {!isLoading && tokens.length > 0 && <span className="text-zinc-600">({tokens.length})</span>}
           </h2>
           <div className="flex gap-2 w-full sm:w-auto">
             <input
@@ -161,6 +162,9 @@ export default function Explore() {
             <TokenCard key={t.address} token={t} volume24h={volumes?.byToken[t.address.toLowerCase()] ?? (volumes ? 0n : undefined)} usd={usd} />
           ))}
         </div>
+        {/* once this chain's list is in, the other chains' lists are read ahead, so a switch shows them at once */}
+        {!isLoading &&
+          VISIBLE_CHAINS.filter((c) => c.id !== chain.id && LAUNCHPAD_ADDRESS[c.id]).map((c) => <WarmTokens key={c.id} chainId={c.id} />)}
       </section>
 
       {target && (

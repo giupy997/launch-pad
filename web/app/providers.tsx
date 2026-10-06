@@ -1,7 +1,9 @@
 "use client";
 
-import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
-import { WagmiProvider, useAccount, type State } from "wagmi";
+import { QueryClient, useQueryClient, type Query } from "@tanstack/react-query";
+import { PersistQueryClientProvider, removeOldestQuery, type Persister } from "@tanstack/react-query-persist-client";
+import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
+import { WagmiProvider, deserialize, serialize, useAccount, type State } from "wagmi";
 import { useState, type ReactNode, useEffect, useRef } from "react";
 import { config } from "@/lib/config";
 
@@ -20,6 +22,43 @@ function AccountEffects() {
     if (was !== undefined && was !== address) void queryClient.invalidateQueries();
   }, [address, queryClient]);
   return null;
+}
+
+// What the browser keeps between visits: the chains' public state — token
+// lists, names, curves, metadata, pools — so a page, or a switch to the other
+// chain, shows the last known picture at once and refreshes it behind. The
+// reads bound to a wallet are not kept: a stale balance or allowance shown as
+// fact misleads. (wagmi's serializer carries the bigints.)
+const WALLET_BOUND = new Set(["balanceOf", "allowance", "cashbackOf", "creatorFees", "balances", "pendingCashback", "cashbackDebt"]);
+type ReadKey = { functionName?: unknown; contracts?: readonly { functionName?: unknown }[] } | undefined;
+function keepQuery(query: Query): boolean {
+  if (query.state.status !== "success") return false;
+  const [kind, params] = query.queryKey as [unknown, ReadKey];
+  if (kind === "readContract") return typeof params?.functionName === "string" && !WALLET_BOUND.has(params.functionName);
+  if (kind === "readContracts")
+    return (
+      !!params?.contracts?.length &&
+      params.contracts.every((c) => typeof c.functionName === "string" && !WALLET_BOUND.has(c.functionName))
+    );
+  return false;
+}
+const PERSIST = { key: "notus.queries.v1", maxAge: 24 * 60 * 60 * 1000, buster: "1" } as const;
+function makePersister(): Persister {
+  let storage: Storage | undefined;
+  try {
+    storage = typeof window === "undefined" ? undefined : window.localStorage;
+  } catch {
+    storage = undefined; // storage blocked: nothing is kept, the page works as before
+  }
+  // without storage (the server render) the persister does nothing
+  return createSyncStoragePersister({
+    storage,
+    key: PERSIST.key,
+    throttleTime: 1_000,
+    serialize,
+    deserialize,
+    retry: removeOldestQuery,
+  });
 }
 
 export function Providers({
@@ -41,16 +80,25 @@ export function Providers({
         },
       })
   );
+  const [persister] = useState(makePersister);
   // the query client on window for poking at in development, set after render
   useEffect(() => {
     if (process.env.NODE_ENV === "development") (window as unknown as Record<string, unknown>).__qc = queryClient;
   }, [queryClient]);
   return (
     <WagmiProvider config={config} initialState={initialState}>
-      <QueryClientProvider client={queryClient}>
+      <PersistQueryClientProvider
+        client={queryClient}
+        persistOptions={{
+          persister,
+          maxAge: PERSIST.maxAge,
+          buster: PERSIST.buster,
+          dehydrateOptions: { shouldDehydrateQuery: keepQuery },
+        }}
+      >
         <AccountEffects />
         {children}
-      </QueryClientProvider>
+      </PersistQueryClientProvider>
     </WagmiProvider>
   );
 }
