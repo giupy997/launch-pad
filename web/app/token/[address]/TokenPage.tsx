@@ -253,7 +253,6 @@ export function TokenPage({ address }: { address: string }) {
             token={token}
             symbol={symbol}
             fees={fees}
-            platformFeeBps={platformFeeBps}
             treasury={treasury}
             burnPot={big(burnPotR)}
             liquidityPot={big(liqPotR)}

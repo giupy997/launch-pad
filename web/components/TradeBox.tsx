@@ -533,7 +533,7 @@ export function TradeBox({
 
       <SlippageControl bps={slippageBps} onChange={setSlippageBps} />
       <p className="text-xs text-zinc-600">
-        {sideFeeLabel(platformFeeBps, mode === "buy" ? fees.buyTaxBps : fees.sellTaxBps, mode)} ·{" "}
+        {sideFeeLabel(mode === "buy" ? fees.buyTaxBps : fees.sellTaxBps, mode)} ·{" "}
         {splitParts(fees)
           .map((p) => `${p.bps / 100}% ${p.label}`)
           .join(" · ")}{" "}

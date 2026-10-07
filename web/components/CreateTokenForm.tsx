@@ -387,7 +387,7 @@ export function CreateTokenForm() {
         </div>
 
         <div className="rounded-lg border border-white/10 px-4 py-3 font-mono text-[11px] tracking-wide text-zinc-400 uppercase">
-          {feesLine(platformFeeBps, { buyTaxBps, sellTaxBps })} →{" "}
+          {feesLine({ buyTaxBps, sellTaxBps })} →{" "}
           <span className="text-white">{splitText}</span> · {treasury} treasury
         </div>
 
@@ -495,7 +495,7 @@ export function CreateTokenForm() {
           </p>
 
           <div className="divide-y divide-white/[0.06] font-mono text-xs">
-            <Row k="Fees" v={feesLine(platformFeeBps, { buyTaxBps, sellTaxBps })} />
+            <Row k="Fees" v={feesLine({ buyTaxBps, sellTaxBps })} />
             <Row k="Fee split" v={`${splitText} · ${treasury} treasury`} strong />
             <Row k="Holders earn" v={holdersOn ? `Cashback in ${quote.symbol}` : "—"} />
             <Row k="Supply" v="1B fixed" />

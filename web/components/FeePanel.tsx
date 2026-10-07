@@ -15,7 +15,6 @@ export function FeePanel({
   token,
   symbol,
   fees,
-  platformFeeBps,
   treasury,
   burnPot,
   liquidityPot,
@@ -27,7 +26,6 @@ export function FeePanel({
   token: `0x${string}`;
   symbol: string;
   fees: FeeConfig;
-  platformFeeBps: bigint;
   treasury: string;
   burnPot: bigint;
   liquidityPot: bigint;
@@ -59,7 +57,7 @@ export function FeePanel({
   return (
     <div className="card p-5 space-y-3">
       <div className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">Fees</div>
-      <div className="font-mono text-xs text-zinc-300">{feesLine(platformFeeBps, fees)}</div>
+      <div className="font-mono text-xs text-zinc-300">{feesLine(fees)}</div>
       <div className="space-y-1.5">
         {parts.map((p) => (
           <div key={p.key} className="flex items-center gap-3 text-xs">
