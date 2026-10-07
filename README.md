@@ -80,19 +80,41 @@ and at `/litecoin`, out of the menu.
   Litecoin wallet or by a Litecoin browser extension (Litescribe, Enkrypt).
   See [litecoin/README.md](litecoin/README.md)
 - `web/` — Next.js 16 + React 19 + wagmi v2 + viem frontend
-  - `/` Explore: on-chain token list (multicall, 5s refresh) with search
-    and sorting
+  - `/` Explore: King of the Hill (the coin on its curve closest to
+    graduating, with the shape of its day, its price, volume and holders),
+    the Contenders behind it, then every coin under Trending / New /
+    Graduated tabs with a sort menu (recently graduated, last trade, market
+    cap, 24h volume, bonding progress, newest, oldest), a search box and a
+    choice of cards or rows; every figure computed once per coin from the
+    on-chain list (multicall, 5s refresh) and the day's trades, each coin
+    formatted in its own quote
   - `/create`: token creation with logo (1:1) and social links, a searchable
     pair picker over all 64 quote assets (grouped Pre-IPO / ETFs & commodities
     / Stocks, with official logos) and the irrevocable fee-destination choice
-  - `/token/[address]`: curve stats, progress bar, buy/sell box with
-    on-chain quotes, automatic approve and 1% slippage guard; price chart
-    and trade feed built client-side from on-chain events (no indexer:
-    one full-range `eth_getLogs` where the RPC allows it, chunked otherwise,
-    with an incremental localStorage cache so revisits only scan new
-    blocks); embedded livestream
-    player (YouTube/Twitch allowlist) with LIVE badges in Explore; creator
-    panel to go live and redirect fees
+  - `/token/[address]`: a header with the contract address first (copied
+    in a tap), the creator, when the coin was launched, its buy and sell tax,
+    the pool fee once graduated and the day's volume, with the market cap and
+    the 24h change on the right; curve stats and progress bar; buy/sell box
+    with on-chain quotes, automatic approve and 1% slippage guard; price
+    chart; under it two tabs, Trades and Holders. The trades come from
+    `/api/trades` (the pad's events scanned once on the server, cached at the
+    edge, the browser then reading only the blocks mined since into its
+    localStorage cache; the browser scans by itself when the server does not
+    answer). The holders come from `/api/holders` (`web/lib/holders/count.ts`):
+    the coin's Transfer logs read from the chain, in one `eth_getLogs` where
+    a node takes the whole span and in rounds of ranges otherwise, then every
+    balance in one multicall, contracts (the pad, the pool) named rather than
+    counted; the addresses seen, the block read up to and the last count
+    live in the Netlify Blobs store `holders`, so a request reads only new
+    blocks, `partial: true` while an old coin's history is still being read,
+    `&debug=1` for what a count did and the nodes' last refusals. Embedded
+    livestream player (YouTube/Twitch allowlist) with LIVE badges in Explore;
+    creator panel to go live and redirect fees
+  - `/api/*` routes and Netlify's CDN: the CDN leaves the query string out of
+    its cache key unless a response says otherwise, so every route whose
+    answer depends on the query (`holders`, `trades`, `img`, `points`) sends
+    `netlify-vary: query`; without it every coin is served the first coin's
+    answer. The browser also checks the chain and coin an answer names.
   - `/swap`: ETH ↔ token swaps on the curve; token → token routed
     through ETH in two transactions
   - `/bridge`: chain-aware — on GIWA, in-app ETH deposits Ethereum
