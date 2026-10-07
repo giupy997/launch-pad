@@ -42,7 +42,9 @@ async function fetchServed(chainId: number, token: `0x${string}` | "all", pools:
     if (pools.length) q.set("pools", pools.map((p) => `${p.token}:${p.pair}:${p.tokenIsZero ? 1 : 0}`).join(","));
     const r = await fetch(`/api/trades?${q}`, { signal: AbortSignal.timeout(SERVER_TIMEOUT_MS) });
     if (!r.ok) return null;
-    const j = (await r.json()) as { first: string; last: string; truncated: boolean; trades: PackedTrade[] };
+    const j = (await r.json()) as { chain: number; token: string; first: string; last: string; truncated: boolean; trades: PackedTrade[] };
+    // an answer for another coin or chain (a cache gone wrong) is no answer: the browser scans by itself
+    if (j.chain !== chainId || j.token.toLowerCase() !== token.toLowerCase()) return null;
     return { trades: unpackTrades(j.trades), first: BigInt(j.first), last: BigInt(j.last), truncated: j.truncated };
   } catch {
     return null;

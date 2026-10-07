@@ -16,7 +16,7 @@ export type HoldersInfo = { holders: number | null; transfers: number | null; la
 
 const NONE: HoldersInfo = { holders: null, transfers: null, launched: null, partial: false, top: [] };
 
-type Wire = Partial<Omit<HoldersInfo, "top">> & { top?: { a: string; b: string; c: boolean }[] };
+type Wire = Partial<Omit<HoldersInfo, "top">> & { chain?: number; token?: string; top?: { a: string; b: string; c: boolean }[] };
 
 export function useHolders(chainId: number, token: `0x${string}`, enabled = true) {
   return useQuery({
@@ -27,6 +27,8 @@ export function useHolders(chainId: number, token: `0x${string}`, enabled = true
         const r = await fetch(`/api/holders?chain=${chainId}&token=${token}`);
         if (r.ok) {
           const j = (await r.json()) as Wire;
+          // an answer for another coin or chain (a cache gone wrong) is no answer
+          if ((j.token && j.token.toLowerCase() !== token.toLowerCase()) || (j.chain !== undefined && j.chain !== chainId)) return NONE;
           return {
             ...NONE,
             ...j,

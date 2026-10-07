@@ -30,6 +30,7 @@ export async function GET(req: NextRequest) {
       "content-type": type,
       "cache-control": "public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400",
       "netlify-cdn-cache-control": "public, s-maxage=604800, stale-while-revalidate=86400",
+      "netlify-vary": "query", // the CDN's key leaves the query out by default: every logo would be the first one
       "x-content-type-options": "nosniff",
       "content-security-policy": "default-src 'none'; sandbox",
     },

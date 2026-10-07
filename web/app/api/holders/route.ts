@@ -5,9 +5,13 @@ import { countHolders } from "@/lib/holders/count";
 import { recentScanErrors } from "@/lib/trades/scan";
 
 const TOKEN = /^0x[0-9a-fA-F]{40}$/;
+// Netlify's CDN leaves the query string out of its cache key unless told
+// otherwise: without `netlify-vary` every coin would be served the first
+// coin's answer.
 const cache = (seconds: number) => ({
   "cache-control": `public, max-age=${seconds}, s-maxage=${seconds}, stale-while-revalidate=${seconds * 4}`,
   "netlify-cdn-cache-control": `public, s-maxage=${seconds}, stale-while-revalidate=${seconds * 4}`,
+  "netlify-vary": "query",
 });
 const none = { holders: null, transfers: null, launched: null, partial: false, top: [] };
 // a fresh timeout for every fetch: one signal shared by all would be spent eight seconds after the module loaded
@@ -36,7 +40,8 @@ export async function GET(req: NextRequest) {
   if (onChain) {
     try {
       const { holders, launched, partial, top, debug: did } = await countHolders(onChain, token as `0x${string}`);
-      const body = { holders, transfers: null, launched, partial, top };
+      // the chain and coin answered for, so the browser can tell a stray answer apart
+      const body = { chain, token: token.toLowerCase(), holders, transfers: null, launched, partial, top };
       if (debug) return NextResponse.json({ ...body, debug: { ...did, errors: recentScanErrors.slice(-12) } }, { headers: { "cache-control": "no-store" } });
       return NextResponse.json(body, { headers: cache(partial ? 5 : 60) });
     } catch (e) {
@@ -84,7 +89,10 @@ export async function GET(req: NextRequest) {
       contracts = (p.items ?? []).filter((i) => i.address?.is_contract === true && i.value !== "0").length;
     }
     const holders = total === null ? null : Math.max(0, total - contracts);
-    return NextResponse.json({ holders, transfers: num(c.transfers_count), launched, partial: false, top: [] }, { headers: cache(60) });
+    return NextResponse.json(
+      { chain, token: token.toLowerCase(), holders, transfers: num(c.transfers_count), launched, partial: false, top: [] },
+      { headers: cache(60) }
+    );
   } catch {
     return NextResponse.json({ ...none, launched }, { headers: cache(30) });
   }

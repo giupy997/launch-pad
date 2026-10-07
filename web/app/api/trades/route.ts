@@ -16,9 +16,13 @@ const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
 const POOL = /^(0x[0-9a-fA-F]{40}):(0x[0-9a-fA-F]{40}):([01])$/;
 const KEEP = { token: 1_000, all: 3_000 }; // trades an answer carries at most, the most recent
 const CONCURRENCY = 4; // ranges in flight: a server, but on public nodes
+// Netlify's CDN leaves the query string out of its cache key unless told
+// otherwise: without `netlify-vary` every coin would be served the first
+// coin's trades.
 const cache = (seconds: number) => ({
   "cache-control": `public, max-age=${seconds}, s-maxage=${seconds}, stale-while-revalidate=${seconds * 4}`,
   "netlify-cdn-cache-control": `public, s-maxage=${seconds}, stale-while-revalidate=${seconds * 4}`,
+  "netlify-vary": "query",
 });
 
 type Held = { first: bigint; last: bigint; trades: Trade[]; truncated: boolean };
