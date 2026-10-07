@@ -35,7 +35,13 @@ export function HolderList({
     <div className="rounded-xl border border-white/10 bg-black">
       {shown.length === 0 && (
         <p className="px-4 py-6 text-sm text-zinc-600">
-          {loading || partial ? "Reading the chain…" : total === null ? "The chain is not answering right now; trying again." : "No holders yet."}
+          {loading || partial
+            ? "Reading the chain…"
+            : total === null
+              ? "The chain is not answering right now; trying again."
+              : total > 0
+                ? `${total.toLocaleString("en-US")} wallet${total === 1 ? "" : "s"} hold the coin; the list is not available on this chain.`
+                : "No holders yet."}
         </p>
       )}
       <ol className="divide-y divide-white/[0.06]">

@@ -38,8 +38,9 @@ type Served = { trades: Trade[]; first: bigint; last: bigint; truncated: boolean
  *  answer, in which case the browser scans by itself as it always could */
 async function fetchServed(chainId: number, token: `0x${string}` | "all", pools: PoolRef[]): Promise<Served | null> {
   try {
-    const q = new URLSearchParams({ chain: String(chainId), token });
-    if (pools.length) q.set("pools", pools.map((p) => `${p.token}:${p.pair}:${p.tokenIsZero ? 1 : 0}`).join(","));
+    // lowercase throughout: one entry at the edge however the addresses are written
+    const q = new URLSearchParams({ chain: String(chainId), token: token.toLowerCase() });
+    if (pools.length) q.set("pools", pools.map((p) => `${p.token}:${p.pair}:${p.tokenIsZero ? 1 : 0}`.toLowerCase()).join(","));
     const r = await fetch(`/api/trades?${q}`, { signal: AbortSignal.timeout(SERVER_TIMEOUT_MS) });
     if (!r.ok) return null;
     const j = (await r.json()) as { chain: number; token: string; first: string; last: string; truncated: boolean; trades: PackedTrade[] };
@@ -267,6 +268,22 @@ export function useVolumes(pools: PoolRef[] = [], ready = true) {
       saveCache(key, { last, trades, truncated: false }, VOLUME_MAX_TRADES);
       return sum(trades, partial, latest);
     },
+  });
+}
+
+/** The trades with a time for each: a trade whose block's time was never read
+ *  (only the most recent ones get theirs) is placed by its distance in blocks
+ *  from the nearest trade that has one, at the chain's pace. A new array where
+ *  anything was missing; the trades themselves are not touched. */
+export function withEstimatedTimes(trades: Trade[], blockSeconds: number): Trade[] {
+  const anchors = trades.filter((x) => x.timestamp > 0);
+  if (anchors.length === 0 || anchors.length === trades.length) return trades;
+  const oldest = anchors[0];
+  const newest = anchors[anchors.length - 1];
+  return trades.map((x) => {
+    if (x.timestamp > 0) return x;
+    const a = x.block < oldest.block ? oldest : newest;
+    return { ...x, timestamp: Math.max(1, a.timestamp + Math.round(Number(x.block - a.block) * blockSeconds)) };
   });
 }
 

@@ -4,14 +4,12 @@ import Link from "next/link";
 import { TokenLogo } from "@/components/TokenLogo";
 import { fmtAgo } from "@/lib/format";
 import { fmtQuoteMoney, fmtQuoteMoneyNum } from "@/lib/price";
-import { useNow } from "@/lib/useNow";
 import { Change } from "./Change";
 import type { Coin } from "./types";
 
 /** One coin as a row of the list view: the same figures as a card, in a line. */
-export function TokenRow({ coin, usd }: { coin: Coin; usd: number | null }) {
+export function TokenRow({ coin, usd, now }: { coin: Coin; usd: number | null; /** unix seconds, the list's one clock */ now: number }) {
   const { token: t, stats, quote } = coin;
-  const now = useNow(30_000);
   return (
     <Link
       href={`/token/${t.address}`}

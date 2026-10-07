@@ -64,7 +64,7 @@ export function fmtAgo(seconds: number, now = Math.floor(Date.now() / 1000)): st
 export function fmtChange(pct: number | null): string {
   if (pct === null || !Number.isFinite(pct)) return "—";
   const abs = Math.abs(pct);
-  const digits = abs >= 100 ? 0 : abs >= 10 ? 0 : 1;
+  const digits = abs >= 10 ? 0 : 1;
   const body = abs >= 1_000 ? `${(abs / 1_000).toFixed(1)}K` : abs.toFixed(digits);
   return `${pct > 0 ? "+" : pct < 0 ? "−" : ""}${body}%`;
 }

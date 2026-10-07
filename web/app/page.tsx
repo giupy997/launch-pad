@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useMemo } from "react";
 import { useTokens, useAppChain, isQuoteAsset, useLaunchpadAddress, ZERO_ADDRESS, quoteInfo, marketCapOf, priceOf, curveProgress } from "@/lib/hooks";
 import { useVolumes, useTrades, pricePoints } from "@/lib/events";
 import { usePools } from "@/lib/pool";
@@ -24,13 +25,10 @@ export default function Explore() {
   const pad = useLaunchpadAddress() ?? ZERO_ADDRESS;
   // Pre-markets are pair assets, bought for users by the zap when they trade
   // a paired token — never listed as tokens to buy on their own.
-  const tokens = allTokens.filter((t) => !t.isPreMarket && !isQuoteAsset(chain.id, t.address));
+  const tokens = useMemo(() => allTokens.filter((t) => !t.isPreMarket && !isQuoteAsset(chain.id, t.address)), [allTokens, chain.id]);
   // the graduated coins' pools: their swaps count in the day's volume, their reserves price them
-  const { pools, reserves, ready: poolsReady } = usePools(
-    pad,
-    tokens.filter((t) => t.curve.graduated).map((t) => t.address),
-    chain.id
-  );
+  const graduatedAddrs = useMemo(() => tokens.filter((t) => t.curve.graduated).map((t) => t.address), [tokens]);
+  const { pools, reserves, ready: poolsReady } = usePools(pad, graduatedAddrs, chain.id);
   const { data: volumes } = useVolumes(pools, !isLoading && poolsReady);
   // money in dollars wherever the quote is LTC in one of its forms (cbLTC, zkLTC): a
   // market cap reads as a market cap, the quote amount stays beneath it
@@ -44,8 +42,10 @@ export default function Explore() {
   // a v8 pad: its coins move to another chain when the day comes
   const target = MIGRATION_TARGET[chain.id];
 
-  // every figure the sections rank by, once per coin
-  const coins: Coin[] = tokens.map((t) => {
+  // every figure the sections rank by, once per coin, and only when something they rest on changed
+  const coins: Coin[] = useMemo(
+    () =>
+      tokens.map((t) => {
     const q = quoteInfo(chain.id, t.curve.quoteAsset);
     const key = t.address.toLowerCase();
     const r = t.curve.graduated ? reserves[key] : undefined;
@@ -66,7 +66,9 @@ export default function Explore() {
       },
       quote: { symbol: q.symbol, decimals: q.decimals },
     };
-  });
+      }),
+    [tokens, reserves, volumes, chain.id]
+  );
 
   // the king: the coin on its curve closest to graduating; its holders and its day's price line
   const king = coins.filter((c) => !c.token.curve.graduated).sort((a, b) => b.stats.progress - a.stats.progress)[0] ?? null;

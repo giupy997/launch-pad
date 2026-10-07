@@ -15,14 +15,14 @@ import {
   isQuoteAsset,
   IMMUTABLE,
 } from "@/lib/hooks";
-import { PRE_IPO_DISCLAIMER, isHiddenToken } from "@/lib/config";
+import { BLOCK_SECONDS, PRE_IPO_DISCLAIMER, isHiddenToken } from "@/lib/config";
 import { fmtUnits, fmtTokens } from "@/lib/format";
 import { TradeBox } from "@/components/TradeBox";
 import { TokenHeader } from "@/components/TokenHeader";
 import { useNow } from "@/lib/useNow";
 import { PriceChart } from "@/components/PriceChart";
 import { TokenActivity } from "@/components/TokenActivity";
-import { useTrades, pricePoints } from "@/lib/events";
+import { useTrades, pricePoints, withEstimatedTimes } from "@/lib/events";
 import { safeLink } from "@/lib/sanitize";
 import { LiveStream } from "@/components/LiveStream";
 import { CreatorPanel } from "@/components/CreatorPanel";
@@ -126,14 +126,14 @@ export function TokenPage({ address }: { address: string }) {
   // count, named in the list); `partial` while the route is still reading an old coin's history: so far, growing
   const holders = holdersQ.data?.holders ?? null;
   const holdersPartial = holdersQ.data?.partial ?? false;
-  // the day, from the coin's own trades: what traded, and the price a day ago
-  // (the last trade before then when the history reaches back that far, else
-  // the earliest trade known: the explore page's opening, the same figure)
+  // the day, from the coin's own trades, each placed in time (one without its
+  // block's time by its distance from one that has it): what traded, and the
+  // change since the day's first trade, the explore page's figure
   const dayAgo = now - 86_400;
-  const trades = tradeData?.trades ?? [];
-  const volume24h = tradeData ? trades.filter((x) => x.timestamp >= dayAgo).reduce((sum, x) => sum + x.eth, 0n) : undefined;
-  const before = [...trades].reverse().find((x) => x.timestamp > 0 && x.timestamp < dayAgo);
-  const open = before ?? trades.find((x) => x.timestamp > 0);
+  const trades = withEstimatedTimes(tradeData?.trades ?? [], BLOCK_SECONDS[chain.id] ?? 2);
+  const day = trades.filter((x) => x.timestamp >= dayAgo);
+  const volume24h = tradeData ? day.reduce((sum, x) => sum + x.eth, 0n) : undefined;
+  const open = day[0];
   const openPrice = open && open.tokens > 0n ? Number(open.eth) / 10 ** q.decimals / (Number(open.tokens) / 1e18) : null;
   const change24h = openPrice ? ((price - openPrice) / openPrice) * 100 : null;
   // when the coin was created: its first trade when the whole history is here, else the route's word (the mint's block)
@@ -227,7 +227,7 @@ export function TokenPage({ address }: { address: string }) {
           format={(v) => fmtQuoteMoneyNum(v, q.symbol, usd)}
         />
         <TokenActivity
-          trades={{ trades: tradeData?.trades ?? [], symbol, quoteSymbol: q.symbol, quoteDecimals: q.decimals, truncated: tradeData?.truncated ?? false, loading: tradesPending }}
+          trades={{ trades, symbol, quoteSymbol: q.symbol, quoteDecimals: q.decimals, truncated: tradeData?.truncated ?? false, loading: tradesPending }}
           holders={{
             list: holdersQ.data?.top ?? [],
             total: holders,
@@ -239,7 +239,6 @@ export function TokenPage({ address }: { address: string }) {
               [curve.creator.toLowerCase()]: "Creator",
               [pad.toLowerCase()]: "Bonding curve",
               ...(pool.data ? { [pool.data.pair.toLowerCase()]: "Liquidity pool" } : {}),
-              "0x000000000000000000000000000000000000dead": "Burned",
             },
             explorer,
           }}

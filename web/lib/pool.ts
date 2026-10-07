@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { parseAbi } from "viem";
 import { useReadContract, useReadContracts } from "wagmi";
 import { launchpadAbi } from "./abi";
@@ -150,48 +151,64 @@ export function usePools(
     query: { enabled: tokens.length > 0, ...IMMUTABLE },
   });
   type Read = { status: string; result?: unknown };
-  const viaReads = (vias.data as readonly Read[] | undefined) ?? [];
-  const seated = tokens
-    .map((token, i) => ({ token, migrator: viaReads[i]?.status === "success" ? (viaReads[i].result as `0x${string}`) : undefined }))
-    .filter((x): x is { token: `0x${string}`; migrator: `0x${string}` } => !!x.migrator && x.migrator !== ZERO_ADDRESS);
+  // every list below keeps its identity while the reads it comes from do, so a page can memoise on it
+  const viaReads = vias.data as readonly Read[] | undefined;
+  const seated = useMemo(
+    () =>
+      tokens
+        .map((token, i) => ({ token, migrator: viaReads?.[i]?.status === "success" ? (viaReads[i].result as `0x${string}`) : undefined }))
+        .filter((x): x is { token: `0x${string}`; migrator: `0x${string}` } => !!x.migrator && x.migrator !== ZERO_ADDRESS),
+    [tokens, viaReads]
+  );
   const pairs = useReadContracts({
     contracts: seated.map((x) => ({ address: x.migrator, abi: migratorAbi, functionName: "pairOf" as const, args: [x.token] as const, chainId })),
     query: { enabled: seated.length > 0, ...IMMUTABLE },
   });
-  const pairReads = (pairs.data as readonly Read[] | undefined) ?? [];
-  const paired = seated
-    .map((x, i) => ({ ...x, pair: pairReads[i]?.status === "success" ? (pairReads[i].result as `0x${string}`) : undefined }))
-    .filter((x): x is { token: `0x${string}`; migrator: `0x${string}`; pair: `0x${string}` } => !!x.pair && x.pair !== ZERO_ADDRESS);
+  const pairReads = pairs.data as readonly Read[] | undefined;
+  const paired = useMemo(
+    () =>
+      seated
+        .map((x, i) => ({ ...x, pair: pairReads?.[i]?.status === "success" ? (pairReads[i].result as `0x${string}`) : undefined }))
+        .filter((x): x is { token: `0x${string}`; migrator: `0x${string}`; pair: `0x${string}` } => !!x.pair && x.pair !== ZERO_ADDRESS),
+    [seated, pairReads]
+  );
   const sides = useReadContracts({
     contracts: paired.map((x) => ({ address: x.pair, abi: pairAbi, functionName: "token0" as const, chainId })),
     query: { enabled: paired.length > 0, ...IMMUTABLE },
   });
-  const sideReads = (sides.data as readonly Read[] | undefined) ?? [];
+  const sideReads = sides.data as readonly Read[] | undefined;
   // settled: every round that had something to read has answered (so a volume scan
   // that waits for the pools runs once, with them, not once without and once with)
   const ready =
     tokens.length === 0 ||
     (vias.data !== undefined && (seated.length === 0 || pairs.data !== undefined) && (paired.length === 0 || sides.data !== undefined));
-  const pools = paired
-    .map((x, i) => ({
-      token: x.token,
-      pair: x.pair,
-      token0: sideReads[i]?.status === "success" ? (sideReads[i].result as `0x${string}`) : undefined,
-    }))
-    .filter((x): x is { token: `0x${string}`; pair: `0x${string}`; token0: `0x${string}` } => !!x.token0)
-    .map((x) => ({ token: x.token, pair: x.pair, tokenIsZero: x.token0.toLowerCase() === x.token.toLowerCase() }));
+  const pools = useMemo(
+    () =>
+      paired
+        .map((x, i) => ({
+          token: x.token,
+          pair: x.pair,
+          token0: sideReads?.[i]?.status === "success" ? (sideReads[i].result as `0x${string}`) : undefined,
+        }))
+        .filter((x): x is { token: `0x${string}`; pair: `0x${string}`; token0: `0x${string}` } => !!x.token0)
+        .map((x) => ({ token: x.token, pair: x.pair, tokenIsZero: x.token0.toLowerCase() === x.token.toLowerCase() })),
+    [paired, sideReads]
+  );
   // what each pool holds, polled: the price and market cap of a graduated coin
   const live = useReadContracts({
     contracts: pools.map((x) => ({ address: x.pair, abi: pairAbi, functionName: "getReserves" as const, chainId })),
     query: { enabled: pools.length > 0, refetchInterval: 15_000 },
   });
-  const liveReads = (live.data as readonly Read[] | undefined) ?? [];
-  const reserves: Record<string, PoolReserves> = {};
-  pools.forEach((x, i) => {
-    const r = liveReads[i];
-    if (r?.status !== "success") return;
-    const [r0, r1] = r.result as readonly [bigint, bigint, number];
-    reserves[x.token.toLowerCase()] = x.tokenIsZero ? { tokenReserve: r0, quoteReserve: r1 } : { tokenReserve: r1, quoteReserve: r0 };
-  });
+  const liveReads = live.data as readonly Read[] | undefined;
+  const reserves = useMemo(() => {
+    const out: Record<string, PoolReserves> = {};
+    pools.forEach((x, i) => {
+      const r = liveReads?.[i];
+      if (r?.status !== "success") return;
+      const [r0, r1] = r.result as readonly [bigint, bigint, number];
+      out[x.token.toLowerCase()] = x.tokenIsZero ? { tokenReserve: r0, quoteReserve: r1 } : { tokenReserve: r1, quoteReserve: r0 };
+    });
+    return out;
+  }, [pools, liveReads]);
   return { pools, ready, reserves };
 }

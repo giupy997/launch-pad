@@ -6,6 +6,7 @@ import { KingOfTheHill } from "./KingOfTheHill";
 import { Contenders } from "./Contenders";
 import { ExploreControls, type Sort, type Tab, type View } from "./ExploreControls";
 import { TokenRow } from "./TokenRow";
+import { useNow } from "@/lib/useNow";
 import type { Coin } from "./types";
 
 const num = (v: bigint | undefined) => (v === undefined ? 0 : Number(v));
@@ -58,6 +59,7 @@ export function ExploreView({
   const [sort, setSort] = useState<Sort>("volume");
   const [view, setView] = useState<View>("grid");
   const [query, setQuery] = useState("");
+  const now = useNow(30_000); // one clock for every row's "last trade"
   // a tab brings its natural order; the sort menu may then change it
   const setTab = (t: Tab) => {
     setTabState(t);
@@ -136,7 +138,7 @@ export function ExploreView({
         ) : (
           <div className="space-y-2">
             {list.map((c) => (
-              <TokenRow key={c.token.address} coin={c} usd={usd} />
+              <TokenRow key={c.token.address} coin={c} usd={usd} now={now} />
             ))}
           </div>
         )}
