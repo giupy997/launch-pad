@@ -86,19 +86,26 @@ function client(t: ScanTarget): PublicClient {
   });
 }
 
-/** the balances of `addrs`, in order; a read that fails counts as zero */
+/** the balances of `addrs`, in order: one multicall where the chain has
+ *  one, single reads where it has none or the multicall itself fails; a
+ *  single read that fails counts as zero (the caller checks that not every
+ *  balance came back so) */
 async function readBalances(c: PublicClient, chainId: number, token: `0x${string}`, addrs: `0x${string}`[]): Promise<bigint[]> {
   const mc = MULTICALL3[chainId];
   const out: bigint[] = [];
   for (let i = 0; i < addrs.length; i += BALANCES_PER_CALL) {
     const slice = addrs.slice(i, i + BALANCES_PER_CALL);
     const contracts = slice.map((a) => ({ address: token, abi: erc20Abi, functionName: "balanceOf" as const, args: [a] as const }));
+    let got: bigint[] | null = null;
     if (mc) {
-      const res = await c.multicall({ multicallAddress: mc, allowFailure: true, contracts });
-      out.push(...res.map((r) => (r.status === "success" ? (r.result as bigint) : 0n)));
-    } else {
-      out.push(...(await Promise.all(contracts.map((x) => c.readContract(x).catch(() => 0n)))));
+      try {
+        const res = await c.multicall({ multicallAddress: mc, allowFailure: true, contracts });
+        got = res.map((r) => (r.status === "success" ? (r.result as bigint) : 0n));
+      } catch {
+        got = null; // the single reads, below
+      }
     }
+    out.push(...(got ?? (await Promise.all(contracts.map((x) => c.readContract(x).catch(() => 0n))))));
   }
   return out;
 }
@@ -172,7 +179,9 @@ export async function countHolders(chain: PointsChain, token: `0x${string}`): Pr
     throw new Error("too many addresses to count this way");
   }
   // no transfer since the last count: the balances are as they were, the count stands
-  const standing = moved === 0 && state.count && state.count.at === state.last ? state.count : null;
+  // (a count of nobody over addresses that were seen is not trusted: it is made again)
+  const standing =
+    moved === 0 && state.count && state.count.at === state.last && (state.count.holders > 0 || state.candidates.length === 0) ? state.count : null;
   if (standing) {
     if (at !== state.last) await save(key, { last: at, candidates: list, launched, count: { ...standing, at } });
     return { holders: standing.holders, launched, partial, top: standing.top, debug: debug() };
@@ -185,6 +194,9 @@ export async function countHolders(chain: PointsChain, token: `0x${string}`): Pr
     .map((a, i) => ({ a, b: balances[i] ?? 0n }))
     .filter((x) => x.b > 0n)
     .sort((x, y) => (y.b > x.b ? 1 : y.b < x.b ? -1 : 0));
+  // the pad was sent the mint, so somebody always holds: every balance at zero means the reads failed,
+  // and a zero must not be cached as a count (the state above is kept, the next request reads the balances again)
+  if (list.length > 0 && holding.length === 0) throw new Error("no balance could be read");
   // the largest balances are where the contracts sit: the pad's unsold supply, the pool
   const probe = holding.slice(0, PROBE);
   const codes = await Promise.all(probe.map((x) => c.getCode({ address: x.a }).catch(() => undefined)));
