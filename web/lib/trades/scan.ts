@@ -334,6 +334,31 @@ export async function scanTrades(
   return { trades: decodeAll(seg), truncated: true, first: seg.lo, last: seg.hi };
 }
 
+/** The logs of `filter` over [fromBlock, toBlock], read as scanTrades reads
+ *  the pad's: the most recent contiguous stretch every node served, with
+ *  where it starts and ends, `complete` when nothing was left out. A caller
+ *  that keeps a cursor moves it on only when the stretch starts at its
+ *  `fromBlock`, or a gap would be skipped for good. */
+export async function scanLogs(
+  t: ScanTarget,
+  filter: { address: `0x${string}`; topics: (`0x${string}` | `0x${string}`[])[] },
+  fromBlock: bigint,
+  toBlock: bigint,
+  concurrency = 3
+): Promise<{ logs: RpcLog[]; first: bigint; last: bigint; complete: boolean }> {
+  if (fromBlock > toBlock) return { logs: [], first: fromBlock, last: fromBlock - 1n, complete: true };
+  const r = await getLogsAdaptive(scanNodes(t), t, filter, splitRange(fromBlock, toBlock, chunkFor(t)), concurrency);
+  if (!r.failed.length) return { logs: r.logs, first: fromBlock, last: toBlock, complete: true };
+  const got = stretches(r.ok);
+  if (!got.length) return { logs: [], first: fromBlock, last: fromBlock - 1n, complete: false };
+  const seg = got[got.length - 1];
+  const within = r.logs.filter((l) => {
+    const bn = BigInt(l.blockNumber ?? "0x0");
+    return bn >= seg.lo && bn <= seg.hi;
+  });
+  return { logs: within, first: seg.lo, last: seg.hi, complete: false };
+}
+
 /** block timestamps for the most recent trades that lack one (bounded; a
  *  block that can't be read now stays unstamped for the next pass) */
 export async function stampTimestamps(t: ScanTarget, trades: Trade[]) {

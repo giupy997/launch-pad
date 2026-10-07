@@ -1,5 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { EXPLORER_API } from "@/lib/explorers";
+import { POINTS_CHAINS } from "@/lib/points/chains";
+import { countHolders } from "@/lib/holders/count";
 
 const TOKEN = /^0x[0-9a-fA-F]{40}$/;
 const cache = (seconds: number) => ({
@@ -19,7 +21,20 @@ export async function GET(req: NextRequest) {
   const chain = Number(req.nextUrl.searchParams.get("chain"));
   const token = req.nextUrl.searchParams.get("token") ?? "";
   const api = EXPLORER_API[chain];
-  if (!api || !TOKEN.test(token)) return NextResponse.json({ error: "unknown chain or token" }, { status: 400 });
+  const onChain = Object.values(POINTS_CHAINS).find((c) => c.chainId === chain);
+  if ((!api && !onChain) || !TOKEN.test(token)) return NextResponse.json({ error: "unknown chain or token" }, { status: 400 });
+  // The chain itself first (lib/holders/count.ts): Base's explorer answers
+  // servers with a browser challenge, Liteforge's lags by hours. The explorer
+  // stays as the fallback for a count the nodes could not give.
+  if (onChain) {
+    try {
+      const { holders, launched } = await countHolders(onChain, token as `0x${string}`);
+      return NextResponse.json({ holders, transfers: null, launched }, { headers: cache(60) });
+    } catch {
+      /* the explorer, below */
+    }
+  }
+  if (!api) return NextResponse.json(none, { headers: cache(30) });
   try {
     const [counters, page, addr] = await Promise.all([
       fetch(`${api}/tokens/${token}/counters`, opts),
