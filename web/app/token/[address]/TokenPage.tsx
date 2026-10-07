@@ -122,18 +122,21 @@ export function TokenPage({ address }: { address: string }) {
   const livePool = curve.graduated ? pool.data : undefined;
   const price = livePool ? poolPriceOf(livePool, q.decimals) : priceOf(curve, q.decimals);
   const mcap = livePool ? poolMarketCapOf(livePool, q.decimals) : marketCapOf(curve, q.decimals);
-  // wallets holding the coin, as the explorer counts them (contracts such as the pad and the pool taken off by the route)
+  // wallets holding the coin, counted from the chain by the route (contracts such as the pad and the pool taken off);
+  // `partial` while the route is still reading an old coin's history: the count so far, growing
   const holders = holdersQ.data?.holders ?? null;
+  const holdersPartial = holdersQ.data?.partial ?? false;
   // the day, from the coin's own trades: what traded, and the price a day ago
-  // (the last trade before then; a coin younger than a day opens at its first)
-  const dayAgo = Math.floor(now / 1000) - 86_400;
+  // (the last trade before then when the history reaches back that far, else
+  // the earliest trade known: the explore page's opening, the same figure)
+  const dayAgo = now - 86_400;
   const trades = tradeData?.trades ?? [];
   const volume24h = tradeData ? trades.filter((x) => x.timestamp >= dayAgo).reduce((sum, x) => sum + x.eth, 0n) : undefined;
   const before = [...trades].reverse().find((x) => x.timestamp > 0 && x.timestamp < dayAgo);
-  const open = before ?? (tradeData && !tradeData.truncated ? trades[0] : undefined);
+  const open = before ?? trades.find((x) => x.timestamp > 0);
   const openPrice = open && open.tokens > 0n ? Number(open.eth) / 10 ** q.decimals / (Number(open.tokens) / 1e18) : null;
   const change24h = openPrice ? ((price - openPrice) / openPrice) * 100 : null;
-  // when the coin was created: its first trade when the whole history is here, else the explorer's word
+  // when the coin was created: its first trade when the whole history is here, else the route's word (the mint's block)
   const launched = (tradeData && !tradeData.truncated && trades[0]?.timestamp) || holdersQ.data?.launched || null;
   // this token is itself a Notus pre-market (a registered pair asset)
   const isPreMarket = isQuoteAsset(chain.id, token);
@@ -202,8 +205,8 @@ export function TokenPage({ address }: { address: string }) {
           <Stat label="Sold" value={fmtTokens(curve.sold)} />
           <Stat
             label="Holders"
-            value={holders === null ? (holdersQ.isPending ? "…" : "—") : holders.toLocaleString("en-US")}
-            sub={holders === null ? undefined : "wallets with a balance"}
+            value={holders === null ? (holdersQ.isPending ? "…" : "—") : `${holdersPartial ? "≥ " : ""}${holders.toLocaleString("en-US")}`}
+            sub={holders === null ? undefined : holdersPartial ? "still counting" : "wallets with a balance"}
           />
           <Stat label="Curve" value={curve.graduated ? "Graduated" : `${progress.toFixed(1)}%`} />
         </div>

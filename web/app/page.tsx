@@ -64,6 +64,7 @@ export default function Explore() {
         lastTrade: day?.last.timestamp || null,
         progress: t.curve.graduated ? 100 : curveProgress(t.curve),
       },
+      quote: { symbol: q.symbol, decimals: q.decimals },
     };
   });
 
@@ -71,7 +72,7 @@ export default function Explore() {
   const king = coins.filter((c) => !c.token.curve.graduated).sort((a, b) => b.stats.progress - a.stats.progress)[0] ?? null;
   const kingHolders = useHolders(chain.id, king?.token.address ?? ZERO_ADDRESS, !!king);
   const kingTrades = useTrades(king?.token.address ?? ZERO_ADDRESS, null, !!king);
-  const kingPoints = pricePoints(kingTrades.data?.trades ?? [], quote.decimals);
+  const kingPoints = pricePoints(kingTrades.data?.trades ?? [], king?.quote.decimals ?? quote.decimals);
 
   return (
     <div className="space-y-10">
@@ -126,11 +127,19 @@ export default function Explore() {
 
       <ExploreView
         coins={coins}
-        quote={quote}
         usd={usd}
         loading={isLoading}
         error={isError}
-        king={king ? { coin: king, holders: kingHolders.isPending ? undefined : (kingHolders.data?.holders ?? null), points: kingPoints } : null}
+        king={
+          king
+            ? {
+                coin: king,
+                holders: kingHolders.isPending ? undefined : (kingHolders.data?.holders ?? null),
+                holdersPartial: kingHolders.data?.partial ?? false,
+                points: kingPoints,
+              }
+            : null
+        }
       />
 
       {/* once this chain's list is in, the other chains' lists are read ahead, so a switch shows them at once */}

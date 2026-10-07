@@ -5,16 +5,16 @@ import { TokenLogo } from "@/components/TokenLogo";
 import { fmtUnits } from "@/lib/format";
 import { fmtQuoteMoneyNum } from "@/lib/price";
 import { Change } from "./Change";
-import type { Coin, Quote } from "./types";
+import type { Coin } from "./types";
 
 /** The largest coins, four tiles with the logo given room. */
-export function TopByMarketCap({ coins, quote, usd }: { coins: Coin[]; quote: Quote; usd: number | null }) {
+export function TopByMarketCap({ coins, usd }: { coins: Coin[]; usd: number | null }) {
   if (coins.length === 0) return null;
   return (
     <section>
       <div className="label mb-3">Top by market cap</div>
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-        {coins.map(({ token: t, stats }) => (
+        {coins.map(({ token: t, stats, quote }) => (
           <Link key={t.address} href={`/token/${t.address}`} className="card card-hover block overflow-hidden">
             <div className="flex h-28 sm:h-36 items-center justify-center bg-gradient-to-b from-white/[0.06] to-transparent">
               <TokenLogo uri={t.meta.logoURI} symbol={t.symbol} size={72} />

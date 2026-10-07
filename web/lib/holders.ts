@@ -2,10 +2,14 @@
 
 import { useQuery } from "@tanstack/react-query";
 
-/** How many addresses hold a token, as the chain's explorer counts them (the
- *  pad and the pool included: the caller takes them off), through the site's
- *  own route. null while unknown or when the explorer does not answer. */
-export type HoldersInfo = { holders: number | null; transfers: number | null; launched: number | null };
+/** How many wallets hold a token, through the site's own route: counted from
+ *  the chain (contracts such as the pad and the pool taken off), or by the
+ *  chain's explorer where the chain is not indexed. null while unknown or
+ *  when nothing answers. `partial` while an old coin's history is still
+ *  being read: the count so far, asked again in seconds. */
+export type HoldersInfo = { holders: number | null; transfers: number | null; launched: number | null; partial: boolean };
+
+const NONE: HoldersInfo = { holders: null, transfers: null, launched: null, partial: false };
 
 export function useHolders(chainId: number, token: `0x${string}`, enabled = true) {
   return useQuery({
@@ -14,11 +18,11 @@ export function useHolders(chainId: number, token: `0x${string}`, enabled = true
     queryFn: async (): Promise<HoldersInfo> => {
       try {
         const r = await fetch(`/api/holders?chain=${chainId}&token=${token}`);
-        if (r.ok) return (await r.json()) as HoldersInfo;
+        if (r.ok) return { ...NONE, ...((await r.json()) as Partial<HoldersInfo>) };
       } catch {}
-      return { holders: null, transfers: null, launched: null };
+      return NONE;
     },
     staleTime: 60_000,
-    refetchInterval: 60_000,
+    refetchInterval: (q) => (q.state.data?.partial ? 6_000 : 60_000),
   });
 }

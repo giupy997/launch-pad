@@ -213,14 +213,19 @@ export function useVolumes(pools: PoolRef[] = [], ready = true) {
       const t = targetFor(chain);
       const key = volumesKey(chain.id, pools);
       const cached = loadCache(key);
-      const perDay = BigInt(Math.round(86_400 / (BLOCK_SECONDS[chain.id] ?? 2)));
-      // trades come oldest first: the first seen is the day's opening, the last its close
-      const sum = (trades: Trade[], partial: boolean): Volumes => {
+      const blockSeconds = BLOCK_SECONDS[chain.id] ?? 2;
+      const perDay = BigInt(Math.round(86_400 / blockSeconds));
+      // trades come oldest first: the first seen is the day's opening, the last its close.
+      // A trade without its block's time (the browser's own scan reads none, the server
+      // stamps the most recent) is placed by its distance from the head, at the chain's pace.
+      const sum = (trades: Trade[], partial: boolean, head: bigint): Volumes => {
+        const nowSec = Math.floor(Date.now() / 1000);
+        const when = (x: Trade) => x.timestamp || Math.max(0, nowSec - Math.round(Number(head > x.block ? head - x.block : 0n) * blockSeconds));
         for (const x of trades) {
           const k = x.token.toLowerCase();
           byToken[k] = (byToken[k] ?? 0n) + x.eth;
           const d = days[k];
-          const point = { eth: x.eth, tokens: x.tokens, timestamp: x.timestamp };
+          const point = { eth: x.eth, tokens: x.tokens, timestamp: when(x) };
           if (!d) days[k] = { volume: x.eth, first: point, last: { ...point, block: x.block }, trades: 1 };
           else {
             d.volume += x.eth;
@@ -237,7 +242,7 @@ export function useVolumes(pools: PoolRef[] = [], ready = true) {
         if (served) {
           // the server's answer is the day itself: what it says is what there is
           saveCache(key, { last: served.last, trades: served.trades, truncated: false }, VOLUME_MAX_TRADES);
-          return sum(served.trades, served.truncated);
+          return sum(served.trades, served.truncated, served.last);
         }
       }
 
@@ -258,7 +263,7 @@ export function useVolumes(pools: PoolRef[] = [], ready = true) {
       }
       trades = trades.filter((x) => x.block >= dayStart);
       saveCache(key, { last, trades, truncated: false }, VOLUME_MAX_TRADES);
-      return sum(trades, partial);
+      return sum(trades, partial, latest);
     },
   });
 }

@@ -6,11 +6,11 @@ import { fmtAgo } from "@/lib/format";
 import { fmtQuoteMoney, fmtQuoteMoneyNum } from "@/lib/price";
 import { useNow } from "@/lib/useNow";
 import { Change } from "./Change";
-import type { Coin, Quote } from "./types";
+import type { Coin } from "./types";
 
 /** One coin as a row of the list view: the same figures as a card, in a line. */
-export function TokenRow({ coin, quote, usd }: { coin: Coin; quote: Quote; usd: number | null }) {
-  const { token: t, stats } = coin;
+export function TokenRow({ coin, usd }: { coin: Coin; usd: number | null }) {
+  const { token: t, stats, quote } = coin;
   const now = useNow(30_000);
   return (
     <Link

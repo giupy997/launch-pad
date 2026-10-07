@@ -17,6 +17,7 @@ export type CoinStats = {
   progress: number;
 };
 
-export type Coin = { token: TokenInfo; stats: CoinStats };
-
+/** what a coin is quoted in: its market cap, price and volume are in this */
 export type Quote = { symbol: string; decimals: number };
+
+export type Coin = { token: TokenInfo; stats: CoinStats; quote: Quote };

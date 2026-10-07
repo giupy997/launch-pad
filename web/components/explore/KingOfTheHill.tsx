@@ -6,24 +6,26 @@ import { fmtNum } from "@/lib/format";
 import { fmtQuoteMoney, fmtQuoteMoneyNum } from "@/lib/price";
 import { Sparkline } from "./Sparkline";
 import { Change } from "./Change";
-import type { Coin, Quote } from "./types";
+import type { Coin } from "./types";
 
 /** The coin closest to graduating: the one to watch, with the shape of its
  *  day and its three figures. */
 export function KingOfTheHill({
   coin,
-  quote,
   usd,
   holders,
+  holdersPartial,
   points,
 }: {
   coin: Coin;
-  quote: Quote;
   usd: number | null;
+  /** wallets holding it: undefined while asked, null when unknown */
   holders: number | null | undefined;
+  /** the count is still being made: what it shows is so far */
+  holdersPartial: boolean;
   points: number[];
 }) {
-  const { token: t, stats } = coin;
+  const { token: t, stats, quote } = coin;
   return (
     <Link href={`/token/${t.address}`} className="card card-hover block p-5 sm:p-6">
       <div className="flex items-center justify-between gap-3">
@@ -66,7 +68,9 @@ export function KingOfTheHill({
         </div>
         <div>
           <div className="label">Holders</div>
-          <div className="mt-1 font-mono text-sm text-zinc-200">{holders === undefined ? "…" : holders === null ? "—" : holders.toLocaleString("en-US")}</div>
+          <div className="mt-1 font-mono text-sm text-zinc-200">
+            {holders === undefined ? "…" : holders === null ? "—" : `${holdersPartial ? "≥ " : ""}${holders.toLocaleString("en-US")}`}
+          </div>
         </div>
       </div>
     </Link>

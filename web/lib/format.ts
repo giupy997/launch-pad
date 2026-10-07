@@ -48,9 +48,10 @@ export function shortAddr(a: string): string {
   return `${a.slice(0, 6)}…${a.slice(-4)}`;
 }
 
-/** A moment as "3 days ago", "4 min ago", "just now", from unix seconds. */
-export function fmtAgo(seconds: number, nowMs = Date.now()): string {
-  const d = Math.max(0, Math.floor(nowMs / 1000) - seconds);
+/** A moment as "3 days ago", "4 min ago", "just now", from unix seconds;
+ *  `now` in unix seconds too (what useNow gives), the clock when left out. */
+export function fmtAgo(seconds: number, now = Math.floor(Date.now() / 1000)): string {
+  const d = Math.max(0, now - seconds);
   if (d < 45) return "just now";
   if (d < 3_600) return `${Math.max(1, Math.round(d / 60))} min ago`;
   if (d < 86_400) return `${Math.round(d / 3_600)} h ago`;

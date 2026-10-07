@@ -4,10 +4,10 @@ import Link from "next/link";
 import { TokenLogo } from "@/components/TokenLogo";
 import { fmtQuoteMoneyNum } from "@/lib/price";
 import { Change } from "./Change";
-import type { Coin, Quote } from "./types";
+import type { Coin } from "./types";
 
 /** The coins behind the king, nearest to graduation first. */
-export function Contenders({ coins, quote, usd }: { coins: Coin[]; quote: Quote; usd: number | null }) {
+export function Contenders({ coins, usd }: { coins: Coin[]; usd: number | null }) {
   return (
     <div className="card p-5 sm:p-6">
       <div className="flex items-center justify-between gap-3">
@@ -18,7 +18,7 @@ export function Contenders({ coins, quote, usd }: { coins: Coin[]; quote: Quote;
         <p className="mt-4 text-sm text-zinc-500">No other coin on its curve yet.</p>
       ) : (
         <ol className="mt-3 divide-y divide-white/[0.06]">
-          {coins.map(({ token: t, stats }, i) => (
+          {coins.map(({ token: t, stats, quote }, i) => (
             <li key={t.address}>
               <Link href={`/token/${t.address}`} className="group flex items-center gap-3 py-2.5">
                 <span className="w-4 font-mono text-xs text-zinc-600">{i + 1}</span>

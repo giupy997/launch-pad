@@ -7,7 +7,7 @@ import { Contenders } from "./Contenders";
 import { TopByMarketCap } from "./TopByMarketCap";
 import { ExploreControls, type Sort, type Tab, type View } from "./ExploreControls";
 import { TokenRow } from "./TokenRow";
-import type { Coin, Quote } from "./types";
+import type { Coin } from "./types";
 
 const num = (v: bigint | undefined) => (v === undefined ? 0 : Number(v));
 const byProgress = (a: Coin, b: Coin) => b.stats.progress - a.stats.progress;
@@ -43,19 +43,17 @@ function sortCoins(list: Coin[], sort: Sort): Coin[] {
  *  Pure rendering: the page computes the figures (see types.ts). */
 export function ExploreView({
   coins,
-  quote,
   usd,
   loading,
   error,
   king,
 }: {
   coins: Coin[];
-  quote: Quote;
   usd: number | null;
   loading: boolean;
   error: boolean;
-  /** the coin closest to graduating, with its holders and the day's price line */
-  king: { coin: Coin; holders: number | null | undefined; points: number[] } | null;
+  /** the coin closest to graduating, with its holders (so far, while `holdersPartial`) and the day's price line */
+  king: { coin: Coin; holders: number | null | undefined; holdersPartial: boolean; points: number[] } | null;
 }) {
   const [tab, setTabState] = useState<Tab>("trending");
   const [sort, setSort] = useState<Sort>("volume");
@@ -85,11 +83,11 @@ export function ExploreView({
     <div className="space-y-10">
       {king && (
         <section className="grid gap-4 lg:grid-cols-[1fr_360px]">
-          <KingOfTheHill coin={king.coin} quote={quote} usd={usd} holders={king.holders} points={king.points} />
-          <Contenders coins={contenders} quote={quote} usd={usd} />
+          <KingOfTheHill coin={king.coin} usd={usd} holders={king.holders} holdersPartial={king.holdersPartial} points={king.points} />
+          <Contenders coins={contenders} usd={usd} />
         </section>
       )}
-      {top.length > 1 && <TopByMarketCap coins={top} quote={quote} usd={usd} />}
+      {top.length > 1 && <TopByMarketCap coins={top} usd={usd} />}
 
       <section className="space-y-5">
         <ExploreControls
@@ -142,7 +140,7 @@ export function ExploreView({
         ) : (
           <div className="space-y-2">
             {list.map((c) => (
-              <TokenRow key={c.token.address} coin={c} quote={quote} usd={usd} />
+              <TokenRow key={c.token.address} coin={c} usd={usd} />
             ))}
           </div>
         )}

@@ -335,10 +335,10 @@ export async function scanTrades(
 }
 
 /** The logs of `filter` over [fromBlock, toBlock], read as scanTrades reads
- *  the pad's: the most recent contiguous stretch every node served, with
- *  where it starts and ends, `complete` when nothing was left out. A caller
- *  that keeps a cursor moves it on only when the stretch starts at its
- *  `fromBlock`, or a gap would be skipped for good. */
+ *  the pad's. `complete` when every range came back; else one contiguous
+ *  stretch of what did, with where it starts and ends: the one starting at
+ *  `fromBlock` when there is one, so a caller that keeps a cursor moves it
+ *  on without skipping a gap for good, else the most recent. */
 export async function scanLogs(
   t: ScanTarget,
   filter: { address: `0x${string}`; topics: (`0x${string}` | `0x${string}`[])[] },
@@ -351,7 +351,7 @@ export async function scanLogs(
   if (!r.failed.length) return { logs: r.logs, first: fromBlock, last: toBlock, complete: true };
   const got = stretches(r.ok);
   if (!got.length) return { logs: [], first: fromBlock, last: fromBlock - 1n, complete: false };
-  const seg = got[got.length - 1];
+  const seg = got[0].lo === fromBlock ? got[0] : got[got.length - 1];
   const within = r.logs.filter((l) => {
     const bn = BigInt(l.blockNumber ?? "0x0");
     return bn >= seg.lo && bn <= seg.hi;
