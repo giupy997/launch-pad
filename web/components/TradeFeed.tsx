@@ -11,6 +11,7 @@ export function TradeFeed({
   quoteDecimals = 18,
   truncated,
   loading = false,
+  header = true,
 }: {
   trades: Trade[];
   symbol: string;
@@ -19,6 +20,8 @@ export function TradeFeed({
   truncated: boolean;
   /** the first scan of the chain is still running: not "no trades" yet */
   loading?: boolean;
+  /** the title bar with the count; off when a tab above already says it */
+  header?: boolean;
 }) {
   const explorer = useExplorer();
   const native = useNativeSymbol();
@@ -27,9 +30,11 @@ export function TradeFeed({
 
   return (
     <div className="rounded-xl border border-white/10 bg-black">
-      <div className="px-4 py-3 border-b border-white/[0.06] font-mono text-[10px] tracking-widest uppercase text-zinc-500">
-        Trades {trades.length > 0 && `(${trades.length}${truncated ? "+" : ""})`}
-      </div>
+      {header && (
+        <div className="px-4 py-3 border-b border-white/[0.06] font-mono text-[10px] tracking-widest uppercase text-zinc-500">
+          Trades {trades.length > 0 && `(${trades.length}${truncated ? "+" : ""})`}
+        </div>
+      )}
       {recent.length === 0 && (
         <p className="px-4 py-6 text-sm text-zinc-600">{loading ? "Reading the chain…" : "No trades yet."}</p>
       )}

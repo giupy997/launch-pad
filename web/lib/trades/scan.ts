@@ -9,6 +9,8 @@ import {
   type RpcLog,
 } from "viem";
 
+export type { RpcLog };
+
 // The pad's trades, read from the chain's logs. This module runs in the
 // browser (lib/events.ts, the hooks) and on the server (app/api/trades, which
 // scans once for everyone and lets the edge cache the answer): it imports no
@@ -98,6 +100,13 @@ function noteThrottle(n: Node) {
   throttledUntil.set(n.url, Date.now() + THROTTLE_COOLDOWN_MS);
 }
 
+/** the last few failures, node and message, for a route's debug answer */
+export const recentScanErrors: string[] = [];
+function noteError(url: string, e: unknown) {
+  recentScanErrors.push(`${new Date().toISOString().slice(11, 19)} ${url}: ${errorText(e).replace(/\s+/g, " ").trim().slice(0, 200)}`);
+  if (recentScanErrors.length > 20) recentScanErrors.shift();
+}
+
 /** the first node that answers; the last error when none does */
 async function firstNode<T>(set: Node[], fn: (c: PublicClient) => Promise<T>): Promise<T> {
   let last: unknown;
@@ -106,6 +115,7 @@ async function firstNode<T>(set: Node[], fn: (c: PublicClient) => Promise<T>): P
       return await fn(n.client);
     } catch (e) {
       last = e;
+      noteError(n.url, e);
       if (isThrottle(e)) noteThrottle(n);
     }
   }
@@ -234,6 +244,7 @@ async function getLogsAdaptive(
             settled = true;
             break;
           } catch (e) {
+            noteError(n.url, e);
             if (isThrottle(e)) noteThrottle(n);
             else if (isRangeError(e)) {
               tooBig = true;
@@ -332,6 +343,43 @@ export async function scanTrades(
   if (!got.length) return { trades: [], truncated: start > fromBlock, first: fromBlock, last: fromBlock - 1n };
   const seg = got[got.length - 1];
   return { trades: decodeAll(seg), truncated: true, first: seg.lo, last: seg.hi };
+}
+
+/** The logs of `filter` over [fromBlock, toBlock] in one request, from the
+ *  first node that takes the whole span: a sparse filter (one coin's
+ *  transfers) answers small however long the span, and the chunked scan is
+ *  spared. null when no node takes it within `timeoutMs` (a refusal over the
+ *  range, a node that does not answer): the caller falls back to scanLogs. */
+export async function scanLogsWide(
+  t: ScanTarget,
+  filter: { address: `0x${string}`; topics: (`0x${string}` | `0x${string}`[])[] },
+  fromBlock: bigint,
+  toBlock: bigint,
+  timeoutMs = 8_000
+): Promise<RpcLog[] | null> {
+  if (fromBlock > toBlock) return [];
+  const deadline = Date.now() + timeoutMs;
+  for (const n of nodesInOrder(scanNodes(t))) {
+    const left = deadline - Date.now();
+    if (left <= 0) break;
+    try {
+      const got = await Promise.race([
+        n.client.request({
+          method: "eth_getLogs",
+          params: [{ ...filter, fromBlock: numberToHex(fromBlock), toBlock: numberToHex(toBlock) }],
+        }) as Promise<RpcLog[]>,
+        sleep(left).then(() => {
+          throw new Error("no answer in time");
+        }),
+      ]);
+      if (Array.isArray(got)) return got;
+      noteError(n.url, new Error(`eth_getLogs answered ${typeof got}`));
+    } catch (e) {
+      noteError(n.url, e);
+      if (isThrottle(e)) noteThrottle(n);
+    }
+  }
+  return null;
 }
 
 /** The logs of `filter` over [fromBlock, toBlock], read as scanTrades reads

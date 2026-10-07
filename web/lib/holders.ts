@@ -2,14 +2,21 @@
 
 import { useQuery } from "@tanstack/react-query";
 
-/** How many wallets hold a token, through the site's own route: counted from
- *  the chain (contracts such as the pad and the pool taken off), or by the
- *  chain's explorer where the chain is not indexed. null while unknown or
- *  when nothing answers. `partial` while an old coin's history is still
- *  being read: the count so far, asked again in seconds. */
-export type HoldersInfo = { holders: number | null; transfers: number | null; launched: number | null; partial: boolean };
+/** One holder of a coin: the balance in wei, and whether the address is a
+ *  contract (the pad with the unsold supply, the pool) rather than a wallet. */
+export type Holder = { address: `0x${string}`; balance: bigint; contract: boolean };
 
-const NONE: HoldersInfo = { holders: null, transfers: null, launched: null, partial: false };
+/** Who holds a token, through the site's own route: counted from the chain
+ *  (contracts such as the pad and the pool taken off the count, named in
+ *  `top`), or by the chain's explorer where the chain is not indexed (a count
+ *  alone). null while unknown or when nothing answers. `partial` while an old
+ *  coin's history is still being read: the count so far, asked again in
+ *  seconds. */
+export type HoldersInfo = { holders: number | null; transfers: number | null; launched: number | null; partial: boolean; top: Holder[] };
+
+const NONE: HoldersInfo = { holders: null, transfers: null, launched: null, partial: false, top: [] };
+
+type Wire = Partial<Omit<HoldersInfo, "top">> & { top?: { a: string; b: string; c: boolean }[] };
 
 export function useHolders(chainId: number, token: `0x${string}`, enabled = true) {
   return useQuery({
@@ -18,7 +25,14 @@ export function useHolders(chainId: number, token: `0x${string}`, enabled = true
     queryFn: async (): Promise<HoldersInfo> => {
       try {
         const r = await fetch(`/api/holders?chain=${chainId}&token=${token}`);
-        if (r.ok) return { ...NONE, ...((await r.json()) as Partial<HoldersInfo>) };
+        if (r.ok) {
+          const j = (await r.json()) as Wire;
+          return {
+            ...NONE,
+            ...j,
+            top: (j.top ?? []).map((h) => ({ address: h.a as `0x${string}`, balance: BigInt(h.b), contract: !!h.c })),
+          };
+        }
       } catch {}
       return NONE;
     },

@@ -21,7 +21,7 @@ import { TradeBox } from "@/components/TradeBox";
 import { TokenHeader } from "@/components/TokenHeader";
 import { useNow } from "@/lib/useNow";
 import { PriceChart } from "@/components/PriceChart";
-import { TradeFeed } from "@/components/TradeFeed";
+import { TokenActivity } from "@/components/TokenActivity";
 import { useTrades, pricePoints } from "@/lib/events";
 import { safeLink } from "@/lib/sanitize";
 import { LiveStream } from "@/components/LiveStream";
@@ -83,8 +83,8 @@ export function TokenPage({ address }: { address: string }) {
               <div className="h-3 w-24 rounded bg-white/[0.06]" />
             </div>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            {Array.from({ length: 5 }).map((_, i) => (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="h-16 rounded-lg bg-zinc-900" />
             ))}
           </div>
@@ -122,8 +122,8 @@ export function TokenPage({ address }: { address: string }) {
   const livePool = curve.graduated ? pool.data : undefined;
   const price = livePool ? poolPriceOf(livePool, q.decimals) : priceOf(curve, q.decimals);
   const mcap = livePool ? poolMarketCapOf(livePool, q.decimals) : marketCapOf(curve, q.decimals);
-  // wallets holding the coin, counted from the chain by the route (contracts such as the pad and the pool taken off);
-  // `partial` while the route is still reading an old coin's history: the count so far, growing
+  // who holds the coin, counted from the chain by the route (contracts such as the pad and the pool taken off the
+  // count, named in the list); `partial` while the route is still reading an old coin's history: so far, growing
   const holders = holdersQ.data?.holders ?? null;
   const holdersPartial = holdersQ.data?.partial ?? false;
   // the day, from the coin's own trades: what traded, and the price a day ago
@@ -183,7 +183,7 @@ export function TokenPage({ address }: { address: string }) {
 
         {meta.livestream && <LiveStream url={meta.livestream} />}
 
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <Stat
             label="Price"
             value={`${fmtNum(price)} ${q.symbol}`}
@@ -203,11 +203,6 @@ export function TokenPage({ address }: { address: string }) {
             />
           )}
           <Stat label="Sold" value={fmtTokens(curve.sold)} />
-          <Stat
-            label="Holders"
-            value={holders === null ? (holdersQ.isPending ? "…" : "—") : `${holdersPartial ? "≥ " : ""}${holders.toLocaleString("en-US")}`}
-            sub={holders === null ? undefined : holdersPartial ? "still counting" : "wallets with a balance"}
-          />
           <Stat label="Curve" value={curve.graduated ? "Graduated" : `${progress.toFixed(1)}%`} />
         </div>
 
@@ -231,13 +226,23 @@ export function TokenPage({ address }: { address: string }) {
           label="Market cap"
           format={(v) => fmtQuoteMoneyNum(v, q.symbol, usd)}
         />
-        <TradeFeed
-          trades={tradeData?.trades ?? []}
-          symbol={symbol}
-          quoteSymbol={q.symbol}
-          quoteDecimals={q.decimals}
-          truncated={tradeData?.truncated ?? false}
-          loading={tradesPending}
+        <TokenActivity
+          trades={{ trades: tradeData?.trades ?? [], symbol, quoteSymbol: q.symbol, quoteDecimals: q.decimals, truncated: tradeData?.truncated ?? false, loading: tradesPending }}
+          holders={{
+            list: holdersQ.data?.top ?? [],
+            total: holders,
+            partial: holdersPartial,
+            loading: holdersQ.isPending,
+            symbol,
+            // the addresses the page knows by name; the pad and the pool after the creator, so a contract keeps its name
+            labels: {
+              [curve.creator.toLowerCase()]: "Creator",
+              [pad.toLowerCase()]: "Bonding curve",
+              ...(pool.data ? { [pool.data.pair.toLowerCase()]: "Liquidity pool" } : {}),
+              "0x000000000000000000000000000000000000dead": "Burned",
+            },
+            explorer,
+          }}
         />
       </div>
 

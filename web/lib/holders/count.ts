@@ -2,31 +2,40 @@ import "server-only";
 import { createPublicClient, erc20Abi, fallback, http, toEventSelector, type PublicClient } from "viem";
 import { getStore } from "@netlify/blobs";
 import type { PointsChain } from "../points/chains";
-import { latestBlock, scanLogs, type ScanTarget } from "../trades/scan";
+import { latestBlock, scanLogs, scanLogsWide, type RpcLog, type ScanTarget } from "../trades/scan";
 
-// How many wallets hold a coin, counted from the chain itself: every address
-// the coin was ever transferred to (its Transfer logs, from the pad's deploy
-// block on), then the balance of each, read in one multicall where the chain
-// has one. Contracts among the largest balances (the pad with the unsold
-// supply, the pool) are not wallets and are taken off. No explorer in the
-// loop: Base's sits behind a browser challenge, Liteforge's lags by hours.
+// Who holds a coin, counted from the chain itself: every address the coin
+// was ever transferred to (its Transfer logs, from the pad's deploy block
+// on), then the balance of each, read in one multicall where the chain has
+// one. Contracts among the largest balances (the pad with the unsold supply,
+// the pool) are not wallets: they are taken off the count and named in the
+// list. No explorer in the loop: Base's sits behind a browser challenge,
+// Liteforge's lags by hours.
 //
-// The addresses seen, the block read up to and the last count are kept in
-// Netlify Blobs, so a request reads only the blocks mined since the last one,
-// however old the coin, and asks for no balance at all when no transfer
-// happened since; without Blobs (a local run) they live in the instance's
-// memory. A long history is read over several requests, each within the
-// function's time: `partial` says the count stands for what was read so far.
+// The transfers are asked for in one request first (one coin's are few, and
+// a node that takes the whole span answers at once), else in rounds of
+// ranges within a time budget. The addresses seen, the block read up to and
+// the last count are kept in Netlify Blobs, so a request reads only the
+// blocks mined since the last one, however old the coin, and asks for no
+// balance at all when no transfer happened since; without Blobs (a local
+// run) they live in the instance's memory. `partial` says the count stands
+// for what was read so far: the next request reads on.
 
 const TRANSFER = toEventSelector("Transfer(address,address,uint256)");
 const ZERO = "0x0000000000000000000000000000000000000000";
 const DEAD = "0x000000000000000000000000000000000000dead";
 const MULTICALL3: Record<number, `0x${string}`> = { 8453: "0xcA11bde05977b3631167028862bE2a173976CA11" };
 const CONCURRENCY = 4; // getLogs in flight: a server, but on public nodes
+const WIDE_MS = 4_000; // the one-request read gives up after this, and the rounds take over
 const CHUNKS_PER_ROUND = 16n; // getLogs ranges per round of the scan
 const SCAN_BUDGET_MS = 5_500; // no round starts past this: the balances and the save need the rest of the function's ten seconds
 const BALANCES_PER_CALL = 500;
 const MAX_ADDRESSES = 50_000;
+const TOP = 100; // holders the answer names, largest first
+const PROBE = 8; // the largest balances, checked for code: where the contracts sit
+
+/** one holder as the answer carries it: address, balance in wei (a decimal string), whether it is a contract */
+export type TopHolder = { a: string; b: string; c: boolean };
 
 type State = {
   /** the last block whose transfers are in `candidates` */
@@ -35,8 +44,8 @@ type State = {
   candidates: string[];
   /** the coin's creation, unix seconds, from its mint */
   launched: number | null;
-  /** the count made with the transfers read up to `at` */
-  count?: { holders: number; at: string };
+  /** the count made with the transfers read up to `at`, and the largest holders then */
+  count?: { holders: number; at: string; top: TopHolder[] };
 };
 const memory = new Map<string, State>();
 
@@ -94,12 +103,13 @@ async function readBalances(c: PublicClient, chainId: number, token: `0x${string
   return out;
 }
 
+/** what a request did, for the route's debug answer */
+export type CountDebug = { latest: string; from: string; last: string; wide: boolean; moved: number; candidates: number; ms: number };
+export type HolderCount = { holders: number; launched: number | null; partial: boolean; top: TopHolder[]; debug: CountDebug };
+
 /** `partial` says the history has not all been read yet: the count stands
  *  for what was read so far, and the next request reads on. */
-export async function countHolders(
-  chain: PointsChain,
-  token: `0x${string}`
-): Promise<{ holders: number; launched: number | null; partial: boolean }> {
+export async function countHolders(chain: PointsChain, token: `0x${string}`): Promise<HolderCount> {
   const started = Date.now();
   const t: ScanTarget = { chainId: chain.chainId, urls: chain.rpcs, chunk: chain.chunk };
   const c = client(t);
@@ -110,16 +120,12 @@ export async function countHolders(
   let last = BigInt(state.last);
   let launched = state.launched;
   let moved = 0; // transfers read this request: each one changes a balance
+  let wide = false;
+  const filter = { address: token, topics: [TRANSFER] };
+  const debug = (): CountDebug => ({ latest: latest.toString(), from: state.last, last: last.toString(), wide, moved, candidates: candidates.size, ms: Date.now() - started });
 
-  // the blocks since the last request, a round of ranges at a time while the budget lasts
-  while (last < latest && Date.now() - started < SCAN_BUDGET_MS) {
-    const from = last + 1n;
-    const span = chain.chunk * CHUNKS_PER_ROUND;
-    const to = latest - from + 1n > span ? from + span - 1n : latest;
-    const r = await scanLogs(t, { address: token, topics: [TRANSFER] }, from, to, CONCURRENCY);
-    // the cursor moves on only over a stretch that starts where it stood: a gap would be skipped for good
-    if (r.first !== from || r.last < from) break;
-    for (const l of r.logs) {
+  const absorb = async (logs: RpcLog[]) => {
+    for (const l of logs) {
       const to = topicAddress(l.topics[2]);
       if (to && to !== ZERO && to !== DEAD) candidates.add(to);
       // the coin's birth: its first transfer out of nowhere, the mint to the pad
@@ -132,7 +138,28 @@ export async function countHolders(
         }
       }
     }
-    moved += r.logs.length;
+    moved += logs.length;
+  };
+
+  // the whole stretch in one request, from a node that takes it. A first read
+  // that comes back empty is not believed: every coin has at least its mint.
+  if (last < latest) {
+    const all = await scanLogsWide(t, filter, last + 1n, latest, WIDE_MS);
+    if (all && (all.length > 0 || candidates.size > 0)) {
+      await absorb(all);
+      last = latest;
+      wide = true;
+    }
+  }
+  // else the blocks since the last request, a round of ranges at a time while the budget lasts
+  while (last < latest && Date.now() - started < SCAN_BUDGET_MS) {
+    const from = last + 1n;
+    const span = chain.chunk * CHUNKS_PER_ROUND;
+    const to = latest - from + 1n > span ? from + span - 1n : latest;
+    const r = await scanLogs(t, filter, from, to, CONCURRENCY);
+    // the cursor moves on only over a stretch that starts where it stood: a gap would be skipped for good
+    if (r.first !== from || r.last < from) break;
+    await absorb(r.logs);
     last = r.last;
     if (!r.complete) break; // a node left ranges out: the rest on the next request, not now
   }
@@ -145,10 +172,10 @@ export async function countHolders(
     throw new Error("too many addresses to count this way");
   }
   // no transfer since the last count: the balances are as they were, the count stands
-  const standing = moved === 0 && state.count && state.count.at === state.last ? state.count.holders : null;
-  if (standing !== null) {
-    if (at !== state.last) await save(key, { last: at, candidates: list, launched, count: { holders: standing, at } });
-    return { holders: standing, launched, partial };
+  const standing = moved === 0 && state.count && state.count.at === state.last ? state.count : null;
+  if (standing) {
+    if (at !== state.last) await save(key, { last: at, candidates: list, launched, count: { ...standing, at } });
+    return { holders: standing.holders, launched, partial, top: standing.top, debug: debug() };
   }
 
   // what was read is kept before the balances are asked for: a function cut short loses none of it
@@ -159,11 +186,12 @@ export async function countHolders(
     .filter((x) => x.b > 0n)
     .sort((x, y) => (y.b > x.b ? 1 : y.b < x.b ? -1 : 0));
   // the largest balances are where the contracts sit: the pad's unsold supply, the pool
-  const probe = holding.slice(0, 8);
+  const probe = holding.slice(0, PROBE);
   const codes = await Promise.all(probe.map((x) => c.getCode({ address: x.a }).catch(() => undefined)));
-  const contracts = probe.filter((_, i) => codes[i] && codes[i] !== "0x").length;
-  const holders = Math.max(0, holding.length - contracts);
+  const isContract = new Set(probe.filter((_, i) => codes[i] && codes[i] !== "0x").map((x) => x.a));
+  const holders = Math.max(0, holding.length - isContract.size);
+  const top = holding.slice(0, TOP).map((x) => ({ a: x.a, b: x.b.toString(), c: isContract.has(x.a) }));
 
-  await save(key, { last: at, candidates: list, launched, count: { holders, at } });
-  return { holders, launched, partial };
+  await save(key, { last: at, candidates: list, launched, count: { holders, at, top } });
+  return { holders, launched, partial, top, debug: debug() };
 }
