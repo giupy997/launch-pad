@@ -71,6 +71,9 @@ const nextConfig = {
     ];
   },
   poweredByHeader: false,
+  // next dev writes AGENTS.md and CLAUDE.md into web/ for coding agents; the
+  // repository keeps its own notes, so the generated pair stays off
+  agentRules: false,
   // The usual hardening headers; the site frames nothing and needs no
   // camera, microphone, location or payment API.
   async headers() {
