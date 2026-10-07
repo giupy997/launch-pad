@@ -64,8 +64,11 @@ body::after {
   .card-hover {
     @apply transition-[transform,border-color] duration-150 ease-out hover:border-white/25 hover:-translate-y-0.5;
   }
+  /* the header and the bottom bar: frosted on wide screens; on phones a solid
+     tint instead, since a blur under a fixed bar is repainted on every scroll
+     frame and makes the page drag */
   .glass {
-    @apply border border-white/10 bg-[rgb(var(--ink))]/80 backdrop-blur-md;
+    @apply border border-white/10 bg-[rgb(var(--ink))]/95 md:bg-[rgb(var(--ink))]/80 md:backdrop-blur-md;
   }
   .btn-primary {
     @apply inline-flex items-center justify-center gap-2 rounded-full bg-white font-semibold text-black transition-[background-color,transform,opacity] duration-150 shadow-[0_0_0_1px_rgba(255,255,255,0.2),0_10px_30px_-12px_rgba(255,255,255,0.45)] hover:bg-zinc-100 active:translate-y-px disabled:opacity-40 disabled:shadow-none disabled:hover:bg-white;
