@@ -18,7 +18,7 @@ import { TokenLogo } from "@/components/TokenLogo";
 import { processLogoFile, dataUriBytes } from "@/lib/image";
 import { fmtTokens, fmtUnits } from "@/lib/format";
 import { FeeSplitEditor, splitTotal, type SplitPct } from "@/components/FeeSplitEditor";
-import { feeLabel, treasuryPct } from "@/lib/curve";
+import { feesLine, treasuryPct } from "@/lib/curve";
 
 const inputCls =
   "w-full rounded-lg input px-3 py-2 text-sm focus:border-white outline-none placeholder:text-zinc-600";
@@ -387,7 +387,7 @@ export function CreateTokenForm() {
         </div>
 
         <div className="rounded-lg border border-white/10 px-4 py-3 font-mono text-[11px] tracking-wide text-zinc-400 uppercase">
-          Buy {feeLabel(platformFeeBps, buyTaxBps)} · Sell {feeLabel(platformFeeBps, sellTaxBps)} →{" "}
+          {feesLine(platformFeeBps, { buyTaxBps, sellTaxBps })} →{" "}
           <span className="text-white">{splitText}</span> · {treasury} treasury
         </div>
 
@@ -495,7 +495,7 @@ export function CreateTokenForm() {
           </p>
 
           <div className="divide-y divide-white/[0.06] font-mono text-xs">
-            <Row k="Trading fees" v={`${feeLabel(platformFeeBps, buyTaxBps)} buy · ${feeLabel(platformFeeBps, sellTaxBps)} sell`} />
+            <Row k="Fees" v={feesLine(platformFeeBps, { buyTaxBps, sellTaxBps })} />
             <Row k="Fee split" v={`${splitText} · ${treasury} treasury`} strong />
             <Row k="Holders earn" v={holdersOn ? `Cashback in ${quote.symbol}` : "—"} />
             <Row k="Supply" v="1B fixed" />

@@ -23,7 +23,7 @@ import {
   useDebounced,
 } from "@/lib/hooks";
 import { fmtEth, fmtUnits, fmtTokens } from "@/lib/format";
-import { quoteBuy, quoteSell, parseFeeConfig, NO_TAX, feeLabel, splitParts, type FeeConfig } from "@/lib/curve";
+import { quoteBuy, quoteSell, parseFeeConfig, NO_TAX, sideFeeLabel, splitParts, type FeeConfig } from "@/lib/curve";
 import { SlippageControl, useSlippageBps } from "@/components/SlippageControl";
 import { PoolCard } from "@/components/PoolCard";
 import { QUOTE_ASSETS, ZAP_ROUTER, UNISWAP_QUOTER, WETH9, USDG } from "@/lib/config";
@@ -533,7 +533,7 @@ export function TradeBox({
 
       <SlippageControl bps={slippageBps} onChange={setSlippageBps} />
       <p className="text-xs text-zinc-600">
-        {mode === "buy" ? "Buy" : "Sell"} fee {feeLabel(platformFeeBps, mode === "buy" ? fees.buyTaxBps : fees.sellTaxBps)} ·{" "}
+        {sideFeeLabel(platformFeeBps, mode === "buy" ? fees.buyTaxBps : fees.sellTaxBps, mode)} ·{" "}
         {splitParts(fees)
           .map((p) => `${p.bps / 100}% ${p.label}`)
           .join(" · ")}{" "}

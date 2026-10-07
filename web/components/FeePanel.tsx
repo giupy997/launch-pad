@@ -3,7 +3,7 @@
 import { useAccount, useReadContracts, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { launchpadAbi } from "@/lib/abi";
 import { useLaunchpadAddress, useAppChain } from "@/lib/hooks";
-import { feeLabel, splitParts, type FeeConfig } from "@/lib/curve";
+import { feesLine, splitParts, type FeeConfig } from "@/lib/curve";
 import { fmtUnits, fmtTokens } from "@/lib/format";
 
 const TOTAL_SUPPLY = 1_000_000_000n * 10n ** 18n;
@@ -59,9 +59,7 @@ export function FeePanel({
   return (
     <div className="card p-5 space-y-3">
       <div className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">Fees</div>
-      <div className="font-mono text-xs text-zinc-300">
-        Buy {feeLabel(platformFeeBps, fees.buyTaxBps)} · Sell {feeLabel(platformFeeBps, fees.sellTaxBps)}
-      </div>
+      <div className="font-mono text-xs text-zinc-300">{feesLine(platformFeeBps, fees)}</div>
       <div className="space-y-1.5">
         {parts.map((p) => (
           <div key={p.key} className="flex items-center gap-3 text-xs">

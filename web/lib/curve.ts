@@ -50,11 +50,19 @@ export function treasuryPct(platformFeeBps: bigint, potShareBps: bigint): string
   return `${pct.toFixed(3).replace(/\.?0+$/, "")}%`;
 }
 
-/** "1%" or "1% + 3% tax" for a side of the trade. */
-export function feeLabel(platformFeeBps: bigint, taxBps: number): string {
-  const pct = (bps: number) => `${(bps / 100).toString().replace(/\.0+$/, "")}%`;
-  const base = pct(Number(platformFeeBps));
-  return taxBps > 0 ? `${base} + ${pct(taxBps)} tax` : base;
+const pctText = (bps: number) => `${(bps / 100).toString().replace(/\.0+$/, "")}%`;
+
+/** One side of a trade as text: "1% buy tax + 1% trading fee", or the trading fee alone when the coin adds no tax on that side. */
+export function sideFeeLabel(platformFeeBps: bigint, taxBps: number, side: "buy" | "sell"): string {
+  const base = `${pctText(Number(platformFeeBps))} trading fee`;
+  return taxBps > 0 ? `${pctText(taxBps)} ${side} tax + ${base}` : base;
+}
+
+/** Both sides in one line: "1% buy tax · 1% sell tax + 1% trading fee"; a side without a tax is left out, and with none the trading fee stands alone. */
+export function feesLine(platformFeeBps: bigint, fees: { buyTaxBps: number; sellTaxBps: number }): string {
+  const taxes = [fees.buyTaxBps > 0 ? `${pctText(fees.buyTaxBps)} buy tax` : null, fees.sellTaxBps > 0 ? `${pctText(fees.sellTaxBps)} sell tax` : null].filter(Boolean);
+  const base = `${pctText(Number(platformFeeBps))} trading fee`;
+  return taxes.length ? `${taxes.join(" · ")} + ${base}` : base;
 }
 
 /** The non-zero shares of a coin's pot, in display order. */
