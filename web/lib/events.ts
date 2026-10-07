@@ -483,7 +483,7 @@ function saveCache(key: string, cache: TradeCache, max = CACHE_MAX_TRADES) {
  *  recent ones: the curve's, and once graduated its pool's swaps too (pass
  *  the pool). No backend: reads straight from the chain, with a localStorage
  *  cache so only new blocks are scanned after the first visit. */
-export function useTrades(token: `0x${string}`, pool: PoolRef | null = null) {
+export function useTrades(token: `0x${string}`, pool: PoolRef | null = null, enabled = true) {
   const chain = useAppChain();
   const pad = useLaunchpadAddress();
   const deployBlock = LAUNCHPAD_DEPLOY_BLOCK[chain.id] ?? 0n;
@@ -491,7 +491,8 @@ export function useTrades(token: `0x${string}`, pool: PoolRef | null = null) {
 
   return useQuery({
     queryKey: ["trades", chain.id, token, pool?.pair ?? null],
-    enabled: !!pad,
+    // a page may hold the scan (dozens of eth_getLogs) until its own reads are in
+    enabled: !!pad && enabled,
     refetchInterval: 15_000,
     placeholderData: (prev) => prev,
     queryFn: async (): Promise<{ trades: Trade[]; truncated: boolean }> => {
