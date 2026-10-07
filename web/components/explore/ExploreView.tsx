@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import { TokenCard } from "@/components/TokenCard";
 import { KingOfTheHill } from "./KingOfTheHill";
 import { Contenders } from "./Contenders";
-import { TopByMarketCap } from "./TopByMarketCap";
 import { ExploreControls, type Sort, type Tab, type View } from "./ExploreControls";
 import { TokenRow } from "./TokenRow";
 import type { Coin } from "./types";
@@ -38,9 +37,9 @@ function sortCoins(list: Coin[], sort: Sort): Coin[] {
   }
 }
 
-/** The explore page below the hero: the king and its contenders, the largest
- *  coins, then every coin under tabs, a sort and a choice of cards or rows.
- *  Pure rendering: the page computes the figures (see types.ts). */
+/** The explore page below the hero: the king and its contenders, then every
+ *  coin under tabs, a sort and a choice of cards or rows. Pure rendering:
+ *  the page computes the figures (see types.ts). */
 export function ExploreView({
   coins,
   usd,
@@ -70,7 +69,6 @@ export function ExploreView({
     .filter((c) => !c.token.curve.graduated && c !== king?.coin)
     .sort(byProgress)
     .slice(0, 5);
-  const top = [...coins].sort((a, b) => b.stats.mcap - a.stats.mcap).slice(0, 4);
 
   const q = query.trim().toLowerCase();
   const list = useMemo(() => {
@@ -87,8 +85,6 @@ export function ExploreView({
           <Contenders coins={contenders} usd={usd} />
         </section>
       )}
-      {top.length > 1 && <TopByMarketCap coins={top} usd={usd} />}
-
       <section className="space-y-5">
         <ExploreControls
           tab={tab}
