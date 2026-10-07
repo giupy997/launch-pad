@@ -115,6 +115,9 @@ and at `/litecoin`, out of the menu.
     answer depends on the query (`holders`, `trades`, `img`, `points`) sends
     `netlify-vary: query`; without it every coin is served the first coin's
     answer. The browser also checks the chain and coin an answer names.
+  - `/api/health`: one answer for an uptime monitor, 200 while Base's nodes
+    and the Blobs store answer, 503 otherwise, with every check's result (the
+    testnet's nodes and the points service are reported, not decisive)
   - `/swap`: ETH ↔ token swaps on the curve; token → token routed
     through ETH in two transactions
   - `/bridge`: chain-aware — on GIWA, in-app ETH deposits Ethereum
