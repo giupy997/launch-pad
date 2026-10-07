@@ -89,6 +89,7 @@ export function TokenHeader(p: TokenHeaderProps) {
               )}
               {p.quote.symbol}
             </span>
+            {p.badges.preIpoQuote && <Badge>Pre-IPO</Badge>}
           </div>
           <div className="mt-1.5 font-mono text-[11px] text-zinc-500">
             {inDollars ? `${fmtNum(p.mcap)} ${p.quote.symbol} · ` : ""}

@@ -20,6 +20,7 @@ const ZERO = "0x0000000000000000000000000000000000000000";
 const DEAD = "0x000000000000000000000000000000000000dead";
 const MULTICALL3: Record<number, `0x${string}`> = { 8453: "0xcA11bde05977b3631167028862bE2a173976CA11" };
 const CONCURRENCY = 4; // getLogs in flight: a server, but on public nodes
+const CHUNKS_PER_REQUEST = 40n; // a long history is read over several requests, within the function's time
 const BALANCES_PER_CALL = 500;
 const MAX_ADDRESSES = 50_000;
 
@@ -81,7 +82,12 @@ async function readBalances(t: ScanTarget, token: `0x${string}`, addrs: `0x${str
   return out;
 }
 
-export async function countHolders(chain: PointsChain, token: `0x${string}`): Promise<{ holders: number; launched: number | null }> {
+/** `partial` says the history has not all been read yet: the count stands
+ *  for what was read so far, and the next request reads on. */
+export async function countHolders(
+  chain: PointsChain,
+  token: `0x${string}`
+): Promise<{ holders: number; launched: number | null; partial: boolean }> {
   const t: ScanTarget = { chainId: chain.chainId, urls: chain.rpcs, chunk: chain.chunk };
   const key = `${chain.chainId}.${token.toLowerCase()}`;
   const latest = await latestBlock(t);
@@ -90,9 +96,13 @@ export async function countHolders(chain: PointsChain, token: `0x${string}`): Pr
   let last = BigInt(state.last);
   let launched = state.launched;
 
+  let partial = false;
   if (latest > last) {
     const from = last + 1n;
-    const r = await scanLogs(t, { address: token, topics: [TRANSFER] }, from, latest, CONCURRENCY);
+    const span = chain.chunk * CHUNKS_PER_REQUEST;
+    const to = latest - from + 1n > span ? from + span - 1n : latest;
+    partial = to < latest;
+    const r = await scanLogs(t, { address: token, topics: [TRANSFER] }, from, to, CONCURRENCY);
     for (const l of r.logs) {
       const to = topicAddress(l.topics[2]);
       if (to && to !== ZERO && to !== DEAD) candidates.add(to);
@@ -109,6 +119,7 @@ export async function countHolders(chain: PointsChain, token: `0x${string}`): Pr
     if (candidates.size > MAX_ADDRESSES) throw new Error("too many addresses to count this way");
     // the cursor moves on only over a stretch that starts where it stood
     if (r.first === from) last = r.last;
+    else partial = true;
   }
 
   const list = [...candidates] as `0x${string}`[];
@@ -123,5 +134,5 @@ export async function countHolders(chain: PointsChain, token: `0x${string}`): Pr
   const contracts = probe.filter((_, i) => codes[i] && codes[i] !== "0x").length;
 
   await save(key, { last: last.toString(), candidates: list, launched });
-  return { holders: Math.max(0, holding.length - contracts), launched };
+  return { holders: Math.max(0, holding.length - contracts), launched, partial };
 }

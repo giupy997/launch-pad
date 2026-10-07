@@ -28,8 +28,8 @@ export async function GET(req: NextRequest) {
   // stays as the fallback for a count the nodes could not give.
   if (onChain) {
     try {
-      const { holders, launched } = await countHolders(onChain, token as `0x${string}`);
-      return NextResponse.json({ holders, transfers: null, launched }, { headers: cache(60) });
+      const { holders, launched, partial } = await countHolders(onChain, token as `0x${string}`);
+      return NextResponse.json({ holders, transfers: null, launched }, { headers: cache(partial ? 5 : 60) });
     } catch {
       /* the explorer, below */
     }
