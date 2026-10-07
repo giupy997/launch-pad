@@ -47,3 +47,23 @@ export function fmtTokens(wei: bigint): string {
 export function shortAddr(a: string): string {
   return `${a.slice(0, 6)}…${a.slice(-4)}`;
 }
+
+/** A moment as "3 days ago", "4 min ago", "just now", from unix seconds. */
+export function fmtAgo(seconds: number, nowMs = Date.now()): string {
+  const d = Math.max(0, Math.floor(nowMs / 1000) - seconds);
+  if (d < 45) return "just now";
+  if (d < 3_600) return `${Math.max(1, Math.round(d / 60))} min ago`;
+  if (d < 86_400) return `${Math.round(d / 3_600)} h ago`;
+  if (d < 30 * 86_400) return `${Math.round(d / 86_400)} days ago`.replace(/^1 days/, "1 day");
+  if (d < 365 * 86_400) return `${Math.round(d / (30 * 86_400))} months ago`.replace(/^1 months/, "1 month");
+  return `${Math.round(d / (365 * 86_400))} years ago`.replace(/^1 years/, "1 year");
+}
+
+/** A change as "+6.9%" or "−20%"; null (unknown) as a dash. */
+export function fmtChange(pct: number | null): string {
+  if (pct === null || !Number.isFinite(pct)) return "—";
+  const abs = Math.abs(pct);
+  const digits = abs >= 100 ? 0 : abs >= 10 ? 0 : 1;
+  const body = abs >= 1_000 ? `${(abs / 1_000).toFixed(1)}K` : abs.toFixed(digits);
+  return `${pct > 0 ? "+" : pct < 0 ? "−" : ""}${body}%`;
+}

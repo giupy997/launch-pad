@@ -16,9 +16,10 @@ import {
   IMMUTABLE,
 } from "@/lib/hooks";
 import { PRE_IPO_DISCLAIMER, isHiddenToken } from "@/lib/config";
-import { fmtUnits, fmtTokens, shortAddr } from "@/lib/format";
+import { fmtUnits, fmtTokens } from "@/lib/format";
 import { TradeBox } from "@/components/TradeBox";
-import { TokenLogo } from "@/components/TokenLogo";
+import { TokenHeader } from "@/components/TokenHeader";
+import { useNow } from "@/lib/useNow";
 import { PriceChart } from "@/components/PriceChart";
 import { TradeFeed } from "@/components/TradeFeed";
 import { useTrades, pricePoints } from "@/lib/events";
@@ -29,7 +30,7 @@ import { CashbackCard } from "@/components/CashbackCard";
 import { MigrationNotice } from "@/components/MigrationNotice";
 import { FeePanel } from "@/components/FeePanel";
 import { parseFeeConfig, NO_TAX, treasuryPct } from "@/lib/curve";
-import { useLtcPrice, fmtQuoteMoney, fmtQuoteMoneyNum, isLtcQuote } from "@/lib/price";
+import { useLtcPrice, fmtQuoteMoney, fmtQuoteMoneyNum, fmtUsd, isLtcQuote } from "@/lib/price";
 import { poolMarketCapOf, poolPriceOf, usePool } from "@/lib/pool";
 import { useHolders } from "@/lib/holders";
 import { fmtNum } from "@/lib/format";
@@ -68,6 +69,7 @@ export function TokenPage({ address }: { address: string }) {
     !!dyn && (!graduatedNow || !!pool.data || pool.none)
   );
   const holdersQ = useHolders(chain.id, token);
+  const now = useNow(60_000);
   const isLoading = staticsLoading || dynLoading;
 
   if (isLoading || !statics || !dyn)
@@ -122,6 +124,17 @@ export function TokenPage({ address }: { address: string }) {
   const mcap = livePool ? poolMarketCapOf(livePool, q.decimals) : marketCapOf(curve, q.decimals);
   // wallets holding the coin, as the explorer counts them (contracts such as the pad and the pool taken off by the route)
   const holders = holdersQ.data?.holders ?? null;
+  // the day, from the coin's own trades: what traded, and the price a day ago
+  // (the last trade before then; a coin younger than a day opens at its first)
+  const dayAgo = Math.floor(now / 1000) - 86_400;
+  const trades = tradeData?.trades ?? [];
+  const volume24h = tradeData ? trades.filter((x) => x.timestamp >= dayAgo).reduce((sum, x) => sum + x.eth, 0n) : undefined;
+  const before = [...trades].reverse().find((x) => x.timestamp > 0 && x.timestamp < dayAgo);
+  const open = before ?? (tradeData && !tradeData.truncated ? trades[0] : undefined);
+  const openPrice = open && open.tokens > 0n ? Number(open.eth) / 10 ** q.decimals / (Number(open.tokens) / 1e18) : null;
+  const change24h = openPrice ? ((price - openPrice) / openPrice) * 100 : null;
+  // when the coin was created: its first trade when the whole history is here, else the explorer's word
+  const launched = (tradeData && !tradeData.truncated && trades[0]?.timestamp) || holdersQ.data?.launched || null;
   // this token is itself a Notus pre-market (a registered pair asset)
   const isPreMarket = isQuoteAsset(chain.id, token);
 
@@ -142,77 +155,36 @@ export function TokenPage({ address }: { address: string }) {
           </div>
         )}
         <MigrationNotice token={token} symbol={symbol} compact />
-        <div className="flex items-start gap-4">
-          <TokenLogo uri={meta.logoURI} symbol={symbol} size={72} />
-          <div>
-            <h1 className="text-3xl font-bold">
-              {name}{" "}
-              <span className="font-mono text-lg text-zinc-400">${symbol}</span>
-              {curve.graduated && (
-                <span className="ml-3 font-mono text-xs tracking-widest uppercase border border-white rounded-full px-2 py-0.5 align-middle">
-                  Graduated
-                </span>
-              )}
-              {isPreMarket && (
-                <span
-                  title="Registered pair asset: new tokens can launch against it"
-                  className="ml-3 font-mono text-xs tracking-widest uppercase bg-white text-black rounded-full px-2 py-0.5 align-middle"
-                >
-                  ◆ Pre-IPO market
-                </span>
-              )}
-              {feesToHolders && (
-                <span
-                  title={`${fees.holdersBps / 100}% of the fee pot goes to holders as cashback`}
-                  className="ml-3 font-mono text-xs tracking-widest uppercase border border-white rounded-full px-2 py-0.5 align-middle"
-                >
-                  ✦ Rewards
-                </span>
-              )}
-            </h1>
-            <p className="mt-1 text-sm text-zinc-500">
-              <a href={`${explorer}/address/${token}`} target="_blank" className="underline">
-                {shortAddr(token)}
-              </a>{" "}
-              · creator {shortAddr(curve.creator)} · paired with{" "}
-              <span className="text-zinc-300">{q.symbol}</span>
-              {q.preIpo && (
-                <span className="ml-2 font-mono text-[10px] tracking-widest uppercase border border-white rounded-full px-2 py-0.5 text-white">
-                  Pre-IPO
-                </span>
-              )}
-            </p>
-            {(q.synthetic || isPreMarket) && (
-              <p className="mt-1 text-[11px] text-zinc-600">{PRE_IPO_DISCLAIMER}</p>
-            )}
-            {meta.description && (
-              <p className="mt-2 text-sm text-zinc-400 max-w-lg">{meta.description}</p>
-            )}
-            {links.length > 0 && (
-              <div className="mt-2 flex gap-2">
-                {links.map((l) => (
-                  <a
-                    key={l.label}
-                    href={l.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="rounded-full border border-white/15 px-3 py-1 text-xs text-zinc-300 hover:border-white hover:text-white"
-                  >
-                    {l.label} ↗
-                  </a>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+        <TokenHeader
+          token={token}
+          name={name}
+          symbol={symbol}
+          logoURI={meta.logoURI}
+          description={meta.description || undefined}
+          disclaimer={q.synthetic || isPreMarket ? PRE_IPO_DISCLAIMER : null}
+          badges={{ graduated: curve.graduated, preMarket: isPreMarket, rewards: feesToHolders, live: !!meta.livestream, preIpoQuote: q.preIpo }}
+          creator={curve.creator}
+          launched={launched}
+          quote={{ symbol: q.symbol, decimals: q.decimals, logo: isLtcQuote(q.symbol) ? "/chains/litecoin.svg" : undefined }}
+          usd={usd}
+          mcap={mcap}
+          price={price}
+          change24h={change24h}
+          volume24h={volume24h}
+          buyTaxBps={fees.buyTaxBps}
+          sellTaxBps={fees.sellTaxBps}
+          poolFeeBps={curve.graduated ? 30 : null}
+          explorer={explorer}
+          links={links}
+        />
 
         {meta.livestream && <LiveStream url={meta.livestream} />}
 
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           <Stat
-            label="Market cap"
-            value={fmtQuoteMoneyNum(mcap, q.symbol, usd)}
-            sub={`${usd && isLtcQuote(q.symbol) ? `${fmtNum(mcap)} ${q.symbol} · ` : ""}${fmtNum(price)} ${q.symbol} per coin${livePool ? " · pool" : ""}`}
+            label="Price"
+            value={`${fmtNum(price)} ${q.symbol}`}
+            sub={`${usd && isLtcQuote(q.symbol) ? `${price * usd < 0.01 ? "<$0.01" : fmtUsd(price * usd)} per coin · ` : ""}${livePool ? "the pool's" : "on the curve"}`}
           />
           {curve.graduated ? (
             <Stat

@@ -184,6 +184,18 @@ export function useTrades(token: `0x${string}`, pool: PoolRef | null = null, ena
  *  The server's scan of the day when the browser is cold, then only the
  *  blocks mined since (a localStorage cache, like a token's), refreshed every
  *  minute. */
+/** A coin's day, from its trades of the last 24 hours. */
+export type DaySummary = {
+  /** what buyers paid plus what sellers received, in quote wei */
+  volume: bigint;
+  /** the day's first trade: the price then (quote wei per `tokens` wei) is the day's opening */
+  first: { eth: bigint; tokens: bigint; timestamp: number };
+  /** the day's last trade */
+  last: { eth: bigint; tokens: bigint; timestamp: number; block: bigint };
+  trades: number;
+};
+export type Volumes = { byToken: Record<string, bigint>; days: Record<string, DaySummary>; trades: number; partial: boolean };
+
 export function useVolumes(pools: PoolRef[] = [], ready = true) {
   const chain = useAppChain();
   const pad = useLaunchpadAddress();
@@ -194,19 +206,29 @@ export function useVolumes(pools: PoolRef[] = [], ready = true) {
     enabled: !!pad && ready, // once the pools are known, so the day is scanned once
     refetchInterval: 60_000,
     placeholderData: (prev) => prev,
-    queryFn: async (): Promise<{ byToken: Record<string, bigint>; trades: number; partial: boolean }> => {
+    queryFn: async (): Promise<Volumes> => {
       const byToken: Record<string, bigint> = {};
-      if (!pad) return { byToken, trades: 0, partial: false };
+      const days: Record<string, DaySummary> = {};
+      if (!pad) return { byToken, days, trades: 0, partial: false };
       const t = targetFor(chain);
       const key = volumesKey(chain.id, pools);
       const cached = loadCache(key);
       const perDay = BigInt(Math.round(86_400 / (BLOCK_SECONDS[chain.id] ?? 2)));
-      const sum = (trades: Trade[], partial: boolean) => {
+      // trades come oldest first: the first seen is the day's opening, the last its close
+      const sum = (trades: Trade[], partial: boolean): Volumes => {
         for (const x of trades) {
           const k = x.token.toLowerCase();
           byToken[k] = (byToken[k] ?? 0n) + x.eth;
+          const d = days[k];
+          const point = { eth: x.eth, tokens: x.tokens, timestamp: x.timestamp };
+          if (!d) days[k] = { volume: x.eth, first: point, last: { ...point, block: x.block }, trades: 1 };
+          else {
+            d.volume += x.eth;
+            d.last = { ...point, block: x.block };
+            d.trades += 1;
+          }
         }
-        return { byToken, trades: trades.length, partial };
+        return { byToken, days, trades: trades.length, partial };
       };
 
       let latest: bigint | null = cached ? await latestBlock(t) : null;

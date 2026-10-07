@@ -138,7 +138,13 @@ export function poolMarketCapOf(pool: PoolInfo, quoteDecimals: number): number {
  *  along with the pad's trades (the explore page's volumes): the pad says
  *  which migrator seeded each, the migrator which pair, the pair which side
  *  the coin is. Immutable once graduated. Coins with no pool are left out. */
-export function usePools(pad: `0x${string}`, tokens: `0x${string}`[], chainId: number): { pools: PoolRef[]; ready: boolean } {
+export type PoolReserves = { tokenReserve: bigint; quoteReserve: bigint };
+
+export function usePools(
+  pad: `0x${string}`,
+  tokens: `0x${string}`[],
+  chainId: number
+): { pools: PoolRef[]; ready: boolean; reserves: Record<string, PoolReserves> } {
   const vias = useReadContracts({
     contracts: tokens.map((t) => ({ address: pad, abi: launchpadAbi, functionName: "graduatedVia" as const, args: [t] as const, chainId })),
     query: { enabled: tokens.length > 0, ...IMMUTABLE },
@@ -174,5 +180,18 @@ export function usePools(pad: `0x${string}`, tokens: `0x${string}`[], chainId: n
     }))
     .filter((x): x is { token: `0x${string}`; pair: `0x${string}`; token0: `0x${string}` } => !!x.token0)
     .map((x) => ({ token: x.token, pair: x.pair, tokenIsZero: x.token0.toLowerCase() === x.token.toLowerCase() }));
-  return { pools, ready };
+  // what each pool holds, polled: the price and market cap of a graduated coin
+  const live = useReadContracts({
+    contracts: pools.map((x) => ({ address: x.pair, abi: pairAbi, functionName: "getReserves" as const, chainId })),
+    query: { enabled: pools.length > 0, refetchInterval: 15_000 },
+  });
+  const liveReads = (live.data as readonly Read[] | undefined) ?? [];
+  const reserves: Record<string, PoolReserves> = {};
+  pools.forEach((x, i) => {
+    const r = liveReads[i];
+    if (r?.status !== "success") return;
+    const [r0, r1] = r.result as readonly [bigint, bigint, number];
+    reserves[x.token.toLowerCase()] = x.tokenIsZero ? { tokenReserve: r0, quoteReserve: r1 } : { tokenReserve: r1, quoteReserve: r0 };
+  });
+  return { pools, ready, reserves };
 }
