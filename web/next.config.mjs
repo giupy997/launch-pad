@@ -90,10 +90,12 @@ const nextConfig = {
   },
   webpack: (config) => {
     // wagmi's connector index pulls in Coinbase's Base Account SDK, whose
-    // optional x402 payment peers are not installed. Nothing here uses them:
-    // resolve them to empty modules instead of failing the build.
+    // optional x402 payment peers are not installed, and MetaMask's SDK, whose
+    // React Native storage is for phones' apps. Nothing here uses them:
+    // resolve them to empty modules instead of warning on every build.
     config.resolve.alias = {
       ...config.resolve.alias,
+      "@react-native-async-storage/async-storage": false,
       "@x402/core": false,
       "@x402/evm": false,
       "@x402/express": false,
