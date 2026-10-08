@@ -47,7 +47,7 @@ route that bridges LTC to zkLTC, and a Uniswap v2 router (Lester Labs on
 Liteforge — find their mainnet router, or deploy without one and
 `setMigrator` later through the timelock; graduations stay manual until then).
 
-On our side: the deployer key (`contracts/.env`, `PRIVATE_KEY`) holding zkLTC
+On our side: the deployer key (the `notus` keystore, `cast wallet import`) holding zkLTC
 for gas — bridge a little first; the mainnet desk healthy
 (`https://desk.notus-pad.fun/main/health` says `"ok":true`), with more than
 one explorer source; a backup of `/etc/notus/desk-main.key`; Litecoin past
@@ -91,7 +91,7 @@ Push, pull on the VPS.
 
 ```bash
 source ~/notus-mainnet.env; cd ~/launch-pad && git pull && cd contracts && source .env
-${UNIV2_ROUTER:+UNIV2_ROUTER=$UNIV2_ROUTER} TREASURY="$TREASURY" forge script script/DeployLitVM.s.sol --rpc-url litvm --private-key "$PRIVATE_KEY" --broadcast
+${UNIV2_ROUTER:+UNIV2_ROUTER=$UNIV2_ROUTER} TREASURY="$TREASURY" forge script script/DeployLitVM.s.sol --rpc-url litvm --account notus --broadcast
 ```
 
 (The first word passes the router only when the env file has one: the script
@@ -102,7 +102,7 @@ pad from the same transaction:
 
 ```bash
 source ~/notus-mainnet.env; cd ~/launch-pad/contracts && source .env
-TIMELOCK_DELAY=172800 LAUNCHPAD="$LAUNCHPAD" forge script script/DeployTimelock.s.sol --rpc-url litvm --private-key "$PRIVATE_KEY" --broadcast
+TIMELOCK_DELAY=172800 LAUNCHPAD="$LAUNCHPAD" forge script script/DeployTimelock.s.sol --rpc-url litvm --account notus --broadcast
 cast call "$LAUNCHPAD" "owner()(address)" --rpc-url litvm     # must print the timelock
 ```
 
@@ -112,7 +112,7 @@ deployer unless `PROPOSER` was set:
 
 ```bash
 source ~/notus-mainnet.env; cd ~/launch-pad/contracts && source .env
-Z=0x0000000000000000000000000000000000000000; PROPOSER=$(cast wallet address --private-key "$PRIVATE_KEY")
+Z=0x0000000000000000000000000000000000000000; PROPOSER=$(cast wallet address --account notus)
 MIGRATOR=$(cast call "$LAUNCHPAD" "migrator()(address)" --rpc-url litvm)
 forge verify-contract --chain "$CHAIN_ID" --verifier blockscout --verifier-url "$BLOCKSCOUT/api/" --watch \
   --constructor-args "$(cast abi-encode 'constructor(address,address)' "$TREASURY" $Z)" "$LAUNCHPAD" src/Launchpad.sol:Launchpad
@@ -206,7 +206,7 @@ holds the amount plus gas:
 
 ```bash
 source ~/notus-mainnet.env; cd ~/launch-pad/contracts && source .env
-cast balance "$(cast wallet address --private-key "$PRIVATE_KEY")" --rpc-url litvm --ether
+cast balance "$(cast wallet address --account notus)" --rpc-url litvm --ether
 ```
 
 ## 7. Schedule: 48 hours in the open
@@ -214,7 +214,7 @@ cast balance "$(cast wallet address --private-key "$PRIVATE_KEY")" --rpc-url lit
 ```bash
 source ~/notus-mainnet.env; cd ~/launch-pad/contracts && source .env
 LAUNCHPAD="$LAUNCHPAD" TIMELOCK="$TIMELOCK" MODE=schedule MIGRATION_FILE=../litecoin/migration/main-$FREEZE.json \
-  forge script script/MigrateFromLedger.s.sol --rpc-url litvm --private-key "$PRIVATE_KEY" --broadcast
+  forge script script/MigrateFromLedger.s.sol --rpc-url litvm --account notus --broadcast
 ```
 
 For each operation the log says `calls`, `ready at` (unix time) and `LTC
@@ -230,7 +230,7 @@ After the delay:
 ```bash
 source ~/notus-mainnet.env; cd ~/launch-pad/contracts && source .env
 LAUNCHPAD="$LAUNCHPAD" TIMELOCK="$TIMELOCK" MODE=execute MIGRATION_FILE=../litecoin/migration/main-$FREEZE.json \
-  forge script script/MigrateFromLedger.s.sol --rpc-url litvm --private-key "$PRIVATE_KEY" --broadcast
+  forge script script/MigrateFromLedger.s.sol --rpc-url litvm --account notus --broadcast
 ```
 
 `executed operation i` for each, then either `ticker -> token map written to
@@ -260,9 +260,9 @@ timelock (48 hours between the two):
 ```bash
 source ~/notus-mainnet.env; cd ~/launch-pad/contracts && source .env
 Z32=0x0000000000000000000000000000000000000000000000000000000000000000; SALT=$(cast keccak "notus-close-migration"); DATA=$(cast calldata "closeMigration()")
-cast send "$TIMELOCK" "schedule(address,uint256,bytes,bytes32,bytes32,uint256)" "$LAUNCHPAD" 0 "$DATA" $Z32 "$SALT" 172800 --rpc-url litvm --private-key "$PRIVATE_KEY"
+cast send "$TIMELOCK" "schedule(address,uint256,bytes,bytes32,bytes32,uint256)" "$LAUNCHPAD" 0 "$DATA" $Z32 "$SALT" 172800 --rpc-url litvm --account notus
 # 48 hours later:
-cast send "$TIMELOCK" "execute(address,uint256,bytes,bytes32,bytes32)" "$LAUNCHPAD" 0 "$DATA" $Z32 "$SALT" --rpc-url litvm --private-key "$PRIVATE_KEY"
+cast send "$TIMELOCK" "execute(address,uint256,bytes,bytes32,bytes32)" "$LAUNCHPAD" 0 "$DATA" $Z32 "$SALT" --rpc-url litvm --account notus
 ```
 
 Commit the freeze into the rules — `freezeHeight: <FREEZE>` in

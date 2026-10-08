@@ -22,7 +22,7 @@ VIRTUAL=50000000000000000000000000 # 50M tokens
 create() { # name symbol description
   echo "creating pre-market $2 ($1)..."
   cast send "$PAD" "$SIG" "$1" "$2" "(\"\",\"\",\"\",\"\",\"\",\"$3\")" $VIRTUAL \
-    --rpc-url $RPC --private-key "$PRIVATE_KEY"
+    --rpc-url $RPC --account notus
 }
 
 create "OpenAI Pre-Market"    "OPENAI" "OpenAI pre-IPO community market. $DISCLAIMER"
@@ -32,6 +32,6 @@ create "Stripe Pre-Market"    "STRIPE" "Stripe pre-IPO community market. $DISCLA
 
 echo "whitelisting SPCX (official Robinhood SpaceX token, virtual 30 shares)..."
 cast send "$PAD" 'setQuoteAsset(address,uint256)' 0x4a0E65A3EcceC6dBe60AE065F2e7bb85Fae35eEa 30000000000000000000 \
-  --rpc-url $RPC --private-key "$PRIVATE_KEY"
+  --rpc-url $RPC --account notus
 
 echo "done — 4 pre-markets live as pair assets + SPCX whitelisted"

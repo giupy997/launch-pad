@@ -10,7 +10,9 @@
 #
 #   cd ~/launch-pad/contracts && bash script/rehearse-liteforge.sh      # reads .env itself
 #
-# Needs foundry, web/'s node_modules (viem), PRIVATE_KEY in the environment,
+# Needs foundry, web/'s node_modules (viem), the deployer's signer (the
+# encrypted keystore ACCOUNT, default `notus`, asking its password at each
+# signature; or PRIVATE_KEY in the environment for a throwaway test key),
 # and zkLTC on Liteforge for the deployer: the coins' real reserves (step 3
 # prints the figure against the balance and stops when it is short; fund the
 # address and rerun with TARGET=<the pad it deployed> to skip step 1).
@@ -23,15 +25,16 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export PATH="$HOME/.foundry/bin:$PATH"
-# .env sets PRIVATE_KEY without exporting it, so a `source` in the shell does
-# not reach this process: read it here when it is missing
+# .env may set PRIVATE_KEY (a test key) without exporting it, so a `source` in
+# the shell does not reach this process: read it here when it is missing
 if [ -z "${PRIVATE_KEY:-}" ] && [ -f .env ]; then
   set -a
   # shellcheck disable=SC1091
   source .env
   set +a
 fi
-: "${PRIVATE_KEY:?PRIVATE_KEY is not set and contracts/.env has none}"
+# how to sign: a raw key when one is given, else the encrypted keystore
+if [ -n "${PRIVATE_KEY:-}" ]; then SIGNER=("${SIGNER[@]}"); else SIGNER=(--account "${ACCOUNT:-notus}"); fi
 # the Base nodes the site uses, in order: the snapshot falls through them when one throttles
 SRC_RPC=${SRC_RPC:-https://mainnet.base.org,https://base-rpc.publicnode.com,https://base.drpc.org,https://1rpc.io/base}
 DST_RPC=${DST_RPC:-https://liteforge.rpc.caldera.xyz/infra-partner-http}
@@ -44,7 +47,7 @@ SCALE=${SCALE:-1}
 MIG=../litecoin/migration
 FILE=$MIG/liteforge-rehearsal.json
 mkdir -p "$MIG"
-DEPLOYER=$(cast wallet address --private-key "$PRIVATE_KEY")
+DEPLOYER=$(cast wallet address "${SIGNER[@]}")
 echo "deployer $DEPLOYER · source $SRC_PAD on Base · destination Liteforge"
 
 echo "== 0. build"
@@ -54,7 +57,7 @@ echo "== 1. the receiving pad on Liteforge"
 if [ -z "${TARGET:-}" ]; then
   ROUTER=$(cast call $OLD_MIGRATOR "router()(address)" --rpc-url "$DST_RPC")
   echo "   DEX router (Lester Labs' Uniswap v2): $ROUTER"
-  OUT=$(UNIV2_ROUTER=$ROUTER TREASURY=$DEPLOYER forge script script/DeployLitVM.s.sol --rpc-url "$DST_RPC" --private-key "$PRIVATE_KEY" --broadcast 2>&1)
+  OUT=$(UNIV2_ROUTER=$ROUTER TREASURY=$DEPLOYER forge script script/DeployLitVM.s.sol --rpc-url "$DST_RPC" "${SIGNER[@]}" --broadcast 2>&1)
   echo "$OUT" | grep -E "Launchpad:|UniV2Migrator:|Deploy block:|Error|revert|Reason" || true
   TARGET=$(echo "$OUT" | awk '/Launchpad:/ {print $2}' | tail -1)
   MIGRATOR=$(echo "$OUT" | awk '/UniV2Migrator:/ {print $2}' | tail -1)
@@ -85,7 +88,7 @@ if awk -v n="$NEED" -v h="$HAVE" -v g="$GAS_MARGIN" 'BEGIN { exit !(h < n + g) }
 fi
 
 echo "== 4. the migration (MigrateFromLedger, direct: the deployer owns this pad)"
-LAUNCHPAD=$TARGET MIGRATION_FILE=$FILE forge script script/MigrateFromLedger.s.sol --rpc-url "$DST_RPC" --private-key "$PRIVATE_KEY" --broadcast 2>&1 \
+LAUNCHPAD=$TARGET MIGRATION_FILE=$FILE forge script script/MigrateFromLedger.s.sol --rpc-url "$DST_RPC" "${SIGNER[@]}" --broadcast 2>&1 \
   | grep -E "^  [A-Za-z]|->|written|root|Error|revert|Reason" || true
 
 echo "== 5. the check: every holder, every price"

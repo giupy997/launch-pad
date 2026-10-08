@@ -23,7 +23,7 @@ import {SlipstreamZapRouter} from "../src/SlipstreamZapRouter.sol";
 ///
 ///   cd contracts && source .env && \
 ///   [TREASURY=0x...] [TIMELOCK_DELAY=86400] [CBLTC_VIRTUAL=6000000000] forge script script/DeployBase.s.sol \
-///     --rpc-url base --private-key "$PRIVATE_KEY" --broadcast
+///     --rpc-url base --account notus --broadcast
 ///
 /// TREASURY defaults to the Notus treasury below.
 ///

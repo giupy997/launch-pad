@@ -81,7 +81,7 @@ and the chain to `web/lib/config.ts` and the site's CSP, as for any new chain.
 ```bash
 source ~/notus-litvm.env; cd ~/launch-pad/contracts && source .env
 UNIV2_ROUTER=<router> TREASURY=<treasury> NATIVE_VIRTUAL=60000000000000000000 \
-  forge script script/DeployLitVM.s.sol --rpc-url litvm --private-key "$PRIVATE_KEY" --broadcast
+  forge script script/DeployLitVM.s.sol --rpc-url litvm --account notus --broadcast
 ```
 
 `NATIVE_VIRTUAL` is the virtual reserve a zkLTC curve opens with: **60 zkLTC**,
@@ -133,7 +133,7 @@ Two timelock rounds of 24 hours, with the coin list closing between them:
    FREEZE=$(( $(cast block-number --rpc-url base) + 100000 )); echo "FREEZE=$FREEZE"   # write it in the env file
    Z32=0x0000000000000000000000000000000000000000000000000000000000000000
    cast send "$BASE_TIMELOCK" "schedule(address,uint256,bytes,bytes32,bytes32,uint256)" "$BASE_PAD" 0 \
-     "$(cast calldata 'announceFreeze(uint256)' "$FREEZE")" $Z32 "$(cast keccak "notus-freeze-$FREEZE")" 86400 --rpc-url base --private-key "$PRIVATE_KEY"
+     "$(cast calldata 'announceFreeze(uint256)' "$FREEZE")" $Z32 "$(cast keccak "notus-freeze-$FREEZE")" 86400 --rpc-url base --account notus
    ```
 
    If the execution slips well past the 24 hours (the margin shrinks with
@@ -153,7 +153,7 @@ Two timelock rounds of 24 hours, with the coin list closing between them:
    for T in $(cast call "$BASE_PAD" "tokenCount()(uint256)" --rpc-url base | xargs seq 0 | head -n -1); do
      COIN=$(cast call "$BASE_PAD" "allTokens(uint256)(address)" $T --rpc-url base)
      cast send "$BASE_TIMELOCK" "schedule(address,uint256,bytes,bytes32,bytes32,uint256)" "$BASE_PAD" 0 \
-       "$(cast calldata 'migrateOut(address,address)' "$COIN" "$BRIDGE_FROM")" $Z32 "$(cast keccak "notus-out-$FREEZE-$COIN")" 86400 --rpc-url base --private-key "$PRIVATE_KEY"
+       "$(cast calldata 'migrateOut(address,address)' "$COIN" "$BRIDGE_FROM")" $Z32 "$(cast keccak "notus-out-$FREEZE-$COIN")" 86400 --rpc-url base --account notus
    done
    ```
 
@@ -183,7 +183,7 @@ Base network: Coinbase credits LTC. Withdraw the LTC to the LitVM bridge, to
 the deployer's account, and wait for the zkLTC:
 
 ```bash
-cast balance "$(cast wallet address --private-key "$PRIVATE_KEY")" --rpc-url litvm --ether   # ≥ the file's bridgeLtc plus gas
+cast balance "$(cast wallet address --account notus)" --rpc-url litvm --ether   # ≥ the file's bridgeLtc plus gas
 ```
 
 To skip the wait, bridge zkLTC for the expected reserves *before* the freeze
@@ -193,7 +193,7 @@ and reimburse yourself from the converted cbLTC afterwards.
 
 ```bash
 source ~/notus-litvm.env; cd ~/launch-pad/contracts && source .env
-LAUNCHPAD="$LITVM_PAD" MIGRATION_FILE=../litecoin/migration/base-$FREEZE.json forge script script/MigrateFromLedger.s.sol --rpc-url litvm --private-key "$PRIVATE_KEY" --broadcast
+LAUNCHPAD="$LITVM_PAD" MIGRATION_FILE=../litecoin/migration/base-$FREEZE.json forge script script/MigrateFromLedger.s.sol --rpc-url litvm --account notus --broadcast
 ```
 
 Direct mode, since the pad is the deployer's for the day: the root is set,

@@ -12,7 +12,7 @@ import {UniV2Migrator} from "../src/UniV2Migrator.sol";
 ///
 ///   cd contracts && source .env && \
 ///   UNIV2_ROUTER=0x... [TREASURY=0x...] [NATIVE_VIRTUAL=<wei>] forge script script/DeployLitVM.s.sol \
-///     --rpc-url litvm_testnet --private-key "$PRIVATE_KEY" --broadcast
+///     --rpc-url litvm_testnet --account notus --broadcast
 ///
 /// TREASURY defaults to the deployer. NATIVE_VIRTUAL is the virtual reserve
 /// a native-quoted curve opens with, in wei of zkLTC (default the contract's

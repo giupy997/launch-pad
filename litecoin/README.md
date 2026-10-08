@@ -151,13 +151,13 @@ node litecoin/payout.ts                                # settle what is due on L
 node litecoin/migration-snapshot.ts [--vault 0x...]    # the migration file
 node litecoin/sweep.ts --bridge litecoin/migration/main-<height>.json --to <your address> --yes   # desk stopped: the curves' LTC leaves with the `bridge` memo
 # take it to LitVM through the bridge, then, from contracts/:
-forge script script/DeployLitVM.s.sol --rpc-url litvm_testnet --private-key "$PRIVATE_KEY" --broadcast
+forge script script/DeployLitVM.s.sol --rpc-url litvm_testnet --account notus --broadcast
 # a pad the broadcaster owns (a rehearsal): everything in one go
 LAUNCHPAD=0x... MIGRATION_FILE=../litecoin/migration/test-<height>.json \
-  forge script script/MigrateFromLedger.s.sol --rpc-url litvm_testnet --private-key "$PRIVATE_KEY" --broadcast
+  forge script script/MigrateFromLedger.s.sol --rpc-url litvm_testnet --account notus --broadcast
 # a pad a timelock owns (mainnet): schedule in the open, wait out the delay, execute
-LAUNCHPAD=0x... TIMELOCK=0x... MODE=schedule MIGRATION_FILE=... forge script script/MigrateFromLedger.s.sol --rpc-url litvm_testnet --private-key "$PRIVATE_KEY" --broadcast
-LAUNCHPAD=0x... TIMELOCK=0x... MODE=execute  MIGRATION_FILE=... forge script script/MigrateFromLedger.s.sol --rpc-url litvm_testnet --private-key "$PRIVATE_KEY" --broadcast
+LAUNCHPAD=0x... TIMELOCK=0x... MODE=schedule MIGRATION_FILE=... forge script script/MigrateFromLedger.s.sol --rpc-url litvm_testnet --account notus --broadcast
+LAUNCHPAD=0x... TIMELOCK=0x... MODE=execute  MIGRATION_FILE=... forge script script/MigrateFromLedger.s.sol --rpc-url litvm_testnet --account notus --broadcast
 cp litecoin/migration/test-<height>.json.migrated.json web/public/litecoin/migrated.json   # the site links each coin to its token
 ```
 

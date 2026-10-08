@@ -271,10 +271,13 @@ node script/pool-probe.mjs --rpc <nodes> --launchpad <pad> --from-block <deploy 
 cd web && npm install && npm run dev   # frontend at http://localhost:3000
 ```
 
-Deploy to GIWA Sepolia (requires `.env` with `PRIVATE_KEY`, see `.env.example`):
+Signing: the deployer key lives in a Foundry keystore encrypted with a password
+(`cast wallet import notus --interactive`, once per machine), never in a file in
+clear: every `forge script` and `cast send` takes `--account notus` and asks for
+the password. Deploy to GIWA Sepolia:
 
 ```bash
-cd contracts && source .env && forge script script/Deploy.s.sol --rpc-url giwa_sepolia --private-key "$PRIVATE_KEY" --broadcast
+cd contracts && source .env && forge script script/Deploy.s.sol --rpc-url giwa_sepolia --account notus --broadcast
 ```
 
 ## TODO
