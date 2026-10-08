@@ -70,10 +70,16 @@ export default function Explore() {
     [tokens, reserves, volumes, chain.id]
   );
 
-  // the king: the coin on its curve closest to graduating; its holders and its day's price line
-  const king = coins.filter((c) => !c.token.curve.graduated).sort((a, b) => b.stats.progress - a.stats.progress)[0] ?? null;
+  // the king: the most traded coin of the day, on its curve or graduated (then by progress, then by size);
+  // its holders and its day's price line, pool swaps included once it has a pool
+  const king =
+    [...coins].sort(
+      (a, b) =>
+        Number((b.stats.volume24h ?? 0n) - (a.stats.volume24h ?? 0n)) || b.stats.progress - a.stats.progress || b.stats.mcap - a.stats.mcap
+    )[0] ?? null;
+  const kingPool = king ? (pools.find((x) => x.token.toLowerCase() === king.token.address.toLowerCase()) ?? null) : null;
   const kingHolders = useHolders(chain.id, king?.token.address ?? ZERO_ADDRESS, !!king);
-  const kingTrades = useTrades(king?.token.address ?? ZERO_ADDRESS, null, !!king);
+  const kingTrades = useTrades(king?.token.address ?? ZERO_ADDRESS, kingPool, !!king && (!king.token.curve.graduated || !!kingPool));
   const kingPoints = pricePoints(kingTrades.data?.trades ?? [], king?.quote.decimals ?? quote.decimals);
 
   return (

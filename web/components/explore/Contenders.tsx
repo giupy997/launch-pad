@@ -6,16 +6,16 @@ import { fmtQuoteMoneyNum } from "@/lib/price";
 import { Change } from "./Change";
 import type { Coin } from "./types";
 
-/** The coins behind the king, nearest to graduation first. */
+/** The coins behind the king, most traded first. */
 export function Contenders({ coins, usd }: { coins: Coin[]; usd: number | null }) {
   return (
     <div className="card p-5 sm:p-6">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-sm font-semibold text-white">Contenders</h2>
-        <span className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">closest to graduation</span>
+        <span className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">most traded · 24h</span>
       </div>
       {coins.length === 0 ? (
-        <p className="mt-4 text-sm text-zinc-500">No other coin on its curve yet.</p>
+        <p className="mt-4 text-sm text-zinc-500">No other coin yet.</p>
       ) : (
         <ol className="mt-3 divide-y divide-white/[0.06]">
           {coins.map(({ token: t, stats, quote }, i) => (
@@ -25,7 +25,7 @@ export function Contenders({ coins, usd }: { coins: Coin[]; usd: number | null }
                 <TokenLogo uri={t.meta.logoURI} symbol={t.symbol} size={28} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium text-zinc-200 group-hover:text-white">${t.symbol}</span>
-                  <span className="block font-mono text-[10px] text-zinc-600">curve {stats.progress.toFixed(1)}%</span>
+                  <span className="block font-mono text-[10px] text-zinc-600">{t.curve.graduated ? "graduated" : `curve ${stats.progress.toFixed(1)}%`}</span>
                 </span>
                 <span className="text-right">
                   <span className="block font-mono text-sm text-zinc-200">{fmtQuoteMoneyNum(stats.mcap, quote.symbol, usd)}</span>

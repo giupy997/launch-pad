@@ -38,7 +38,7 @@ function sortCoins(list: Coin[], sort: Sort): Coin[] {
   }
 }
 
-/** The explore page below the hero: the king and its contenders, then every
+/** The explore page below the hero: the most traded coin and the ones behind it, then every
  *  coin under tabs, a sort and a choice of cards or rows. Pure rendering:
  *  the page computes the figures (see types.ts). */
 export function ExploreView({
@@ -52,7 +52,7 @@ export function ExploreView({
   usd: number | null;
   loading: boolean;
   error: boolean;
-  /** the coin closest to graduating, with its holders (so far, while `holdersPartial`) and the day's price line */
+  /** the day's most traded coin, with its holders (so far, while `holdersPartial`) and the day's price line */
   king: { coin: Coin; holders: number | null | undefined; holdersPartial: boolean; points: number[] } | null;
 }) {
   const [tab, setTabState] = useState<Tab>("trending");
@@ -67,9 +67,10 @@ export function ExploreView({
   };
 
   const graduated = coins.filter((c) => c.token.curve.graduated);
+  // the contenders: the next most traded coins of the day, whatever their stage
   const contenders = coins
-    .filter((c) => !c.token.curve.graduated && c !== king?.coin)
-    .sort(byProgress)
+    .filter((c) => c !== king?.coin)
+    .sort((a, b) => Number((b.stats.volume24h ?? 0n) - (a.stats.volume24h ?? 0n)) || byProgress(a, b) || b.stats.mcap - a.stats.mcap)
     .slice(0, 5);
 
   const q = query.trim().toLowerCase();

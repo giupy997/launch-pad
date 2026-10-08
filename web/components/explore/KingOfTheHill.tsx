@@ -8,8 +8,8 @@ import { Sparkline } from "./Sparkline";
 import { Change } from "./Change";
 import type { Coin } from "./types";
 
-/** The coin closest to graduating: the one to watch, with the shape of its
- *  day and its three figures. */
+/** The day's most traded coin, on its curve or in its pool: the one to
+ *  watch, with the shape of its day and its three figures. */
 export function KingOfTheHill({
   coin,
   usd,
@@ -33,7 +33,7 @@ export function KingOfTheHill({
           <span aria-hidden>♛</span> King of the Hill
         </span>
         <span className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">
-          closest to graduation · {stats.progress.toFixed(1)}%
+          most traded · 24h · {t.curve.graduated ? "graduated" : `curve ${stats.progress.toFixed(1)}%`}
         </span>
       </div>
       <div className="mt-5 flex items-start justify-between gap-4">
