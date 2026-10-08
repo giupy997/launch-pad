@@ -28,7 +28,7 @@ import {Launchpad} from "../src/Launchpad.sol";
 ///   LAUNCHPAD=0x... MIGRATION_FILE=../litecoin/migration/main-<freeze>.json \
 ///   [MODE=schedule|execute TIMELOCK=0x...] \
 ///   forge script script/MigrateFromLedger.s.sol --rpc-url litvm_testnet \
-///     --private-key "$PRIVATE_KEY" --broadcast
+///     --account notus --broadcast
 contract MigrateFromLedger is Script {
     /// One coin as the file lists it. Field order is alphabetical because
     /// that is how vm.parseJson lays a JSON object out.

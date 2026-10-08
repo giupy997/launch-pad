@@ -12,7 +12,7 @@ import {SlipstreamZapRouter} from "../src/SlipstreamZapRouter.sol";
 ///
 ///   cd contracts && source .env && \
 ///   LAUNCHPAD=0x... forge script script/DeployZapSlipstream.s.sol --rpc-url base \
-///     --private-key "$PRIVATE_KEY" --broadcast
+///     --account notus --broadcast
 ///
 /// Then in web/lib/config.ts: ZAP_ROUTER = this address, UNISWAP_QUOTER = the
 /// Slipstream QuoterV2 0x254cF9E1E6e233aa1AC962CB9B05b2cfeAaE15b0 (QuoterV2's

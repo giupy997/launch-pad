@@ -12,7 +12,7 @@ import {Launchpad} from "../src/Launchpad.sol";
 /// schedule and cancel; anyone may execute an operation once it is ready.
 ///
 ///   TIMELOCK_DELAY=172800 LAUNCHPAD=0x... forge script script/DeployTimelock.s.sol \
-///     --rpc-url litvm_testnet --private-key "$PRIVATE_KEY" --broadcast
+///     --rpc-url litvm_testnet --account notus --broadcast
 ///
 /// Without LAUNCHPAD the timelock is only deployed; hand it the Launchpad
 /// later with `cast send <pad> "transferOwnership(address)" <timelock>`.
