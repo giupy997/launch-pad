@@ -68,22 +68,35 @@ contract DeployBase is Script {
     address constant TREASURY_DEFAULT = 0x24622320D93Da2d9c626EE469ad0C2c48a1ED7F7;
     address constant MULTICALL3 = 0xcA11bde05977b3631167028862bE2a173976CA11;
 
+    /// forge's stand-in sender outside a broadcast: never a proposer or a treasury.
+    address constant FORGE_DEFAULT_SENDER = 0x1804c8AB1F12E6bbf3894d4083f33e07309d1f38;
+
+    /// The account that signs the broadcast: known only once it started (before,
+    /// msg.sender is forge's stand-in, which a deploy must never write anywhere).
+    function _broadcaster() internal returns (address who) {
+        (, who,) = vm.readCallers();
+        require(who != FORGE_DEFAULT_SENDER && who != address(0), "no signer: pass --account or --private-key");
+    }
+
     function run() external {
         address treasury = vm.envOr("TREASURY", TREASURY_DEFAULT);
         uint256 virtualReserve = vm.envOr("CBLTC_VIRTUAL", uint256(50 * 1e8));
         uint256 delay = vm.envOr("TIMELOCK_DELAY", uint256(24 hours));
-        address proposer = vm.envOr("PROPOSER", msg.sender);
         address operator = vm.envOr("MIGRATION_OPERATOR", address(0));
         require(CBLTC.code.length > 0, "no cbLTC at its address: is this Base?");
         require(SLIPSTREAM_ROUTER.code.length > 0, "no Slipstream router at its address: is this Base?");
 
+        vm.startBroadcast();
+        // the proposer defaults to the deployer, read from the broadcast itself: the
+        // first v12 stack (0x2729…C5CF, block 52,397,444) took forge's stand-in sender
+        // as proposer and has a timelock nobody can drive; it is left unused
+        address proposer = vm.envOr("PROPOSER", _broadcaster());
+        require(proposer != FORGE_DEFAULT_SENDER, "PROPOSER is forge's stand-in sender");
         address[] memory proposers = new address[](1);
         proposers[0] = proposer;
         address[] memory executors = new address[](2);
         executors[0] = proposer;
         executors[1] = address(0); // the open role: anyone may execute what is ready
-
-        vm.startBroadcast();
         Launchpad pad = new Launchpad(treasury);
         UniV2Migrator migrator = new UniV2Migrator(address(pad), UNIV2_ROUTER);
         pad.setMigrator(address(migrator));

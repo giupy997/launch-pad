@@ -18,18 +18,28 @@ import {Launchpad} from "../src/Launchpad.sol";
 /// later with `cast send <pad> "transferOwnership(address)" <timelock>`.
 /// A rehearsal pad on the testnet takes a short delay (TIMELOCK_DELAY=600).
 contract DeployTimelock is Script {
+    /// forge's stand-in sender outside a broadcast: never a proposer or a treasury.
+    address constant FORGE_DEFAULT_SENDER = 0x1804c8AB1F12E6bbf3894d4083f33e07309d1f38;
+
+    /// The account that signs the broadcast: known only once it started (before,
+    /// msg.sender is forge's stand-in, which a deploy must never write anywhere).
+    function _broadcaster() internal returns (address who) {
+        (, who,) = vm.readCallers();
+        require(who != FORGE_DEFAULT_SENDER && who != address(0), "no signer: pass --account or --private-key");
+    }
+
     function run() external {
         uint256 delay = vm.envOr("TIMELOCK_DELAY", uint256(48 hours));
-        address proposer = vm.envOr("PROPOSER", msg.sender);
         address pad = vm.envOr("LAUNCHPAD", address(0));
 
+        vm.startBroadcast();
+        address proposer = vm.envOr("PROPOSER", _broadcaster()); // the deployer, read from the broadcast itself
+        require(proposer != FORGE_DEFAULT_SENDER, "PROPOSER is forge's stand-in sender");
         address[] memory proposers = new address[](1);
         proposers[0] = proposer;
         address[] memory executors = new address[](2);
         executors[0] = proposer;
         executors[1] = address(0); // the open role: anyone may execute what is ready
-
-        vm.startBroadcast();
         TimelockController timelock = new TimelockController(delay, proposers, executors, address(0));
         if (pad != address(0)) Launchpad(payable(pad)).transferOwnership(address(timelock));
         vm.stopBroadcast();

@@ -39,13 +39,24 @@ import {ILaunchpadMigration} from "../src/interfaces/ILaunchpadMigration.sol";
 contract DeployLitVM is Script {
     address constant MULTICALL3 = 0xcA11bde05977b3631167028862bE2a173976CA11;
 
+    /// forge's stand-in sender outside a broadcast: never a proposer or a treasury.
+    address constant FORGE_DEFAULT_SENDER = 0x1804c8AB1F12E6bbf3894d4083f33e07309d1f38;
+
+    /// The account that signs the broadcast: known only once it started (before,
+    /// msg.sender is forge's stand-in, which a deploy must never write anywhere).
+    function _broadcaster() internal returns (address who) {
+        (, who,) = vm.readCallers();
+        require(who != FORGE_DEFAULT_SENDER && who != address(0), "no signer: pass --account or --private-key");
+    }
+
     function run() external {
-        address treasury = vm.envOr("TREASURY", msg.sender);
         address router = vm.envOr("UNIV2_ROUTER", address(0));
         uint256 nativeVirtual = vm.envOr("NATIVE_VIRTUAL", uint256(0));
         address operator = vm.envOr("MIGRATION_OPERATOR", address(0)); // may run a migration into this pad (v12)
 
         vm.startBroadcast();
+        address treasury = vm.envOr("TREASURY", _broadcaster()); // the deployer, read from the broadcast itself
+        require(treasury != FORGE_DEFAULT_SENDER, "TREASURY is forge's stand-in sender");
         Launchpad pad = new Launchpad(treasury);
         if (router != address(0)) {
             UniV2Migrator migrator = new UniV2Migrator(address(pad), router);
