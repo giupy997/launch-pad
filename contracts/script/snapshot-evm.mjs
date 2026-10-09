@@ -8,7 +8,8 @@
 //
 //   node script/snapshot-evm.mjs --rpc https://mainnet.base.org,https://base-rpc.publicnode.com --launchpad 0x... \
 //     --quote 0xcb17C9Db87B595717C857a08468793f5bAb6445F --from-block <pad deploy block> \
-//     [--network base] [--out ../litecoin/migration/base-<block>.json] [--chunk 5000] [--allow-unfrozen] [--vault 0x...]
+//     [--network base] [--out ../litecoin/migration/base-<block>.json] [--chunk 5000] [--pace 120] [--allow-unfrozen] [--vault 0x...]
+//   --rpc may be left out when SRC_RPC is in the environment; --pace is the ms between calls
 //
 // Refuses a launchpad that is not frozen (the balances could still change)
 // unless --allow-unfrozen, for a dry run at the latest block. Coins with no
@@ -29,29 +30,53 @@ import fs from "node:fs";
 import path from "node:path";
 import { createPublicClient, fallback, http, keccak256, toHex, getAddress, parseAbiItem } from "../../web/node_modules/viem/_esm/index.js";
 
-process.on("unhandledRejection", (e) => {
-  console.error(`\nsnapshot failed: ${e?.shortMessage ?? e?.message ?? e}${e?.details ? ` (${e.details})` : ""}`);
+// Every crash goes through one printer: viem quotes the request URL in its
+// messages, and a keyed node's URL carries its key, so every configured URL
+// is cut to its host before anything is printed. A rejection at the top
+// level of a module reaches Node as an uncaught exception, so both are
+// caught; Node's own printer, which dumps the whole error, never runs.
+let scrubUrls = [];
+const scrub = (s) => {
+  let t = String(s);
+  for (const u of scrubUrls) t = t.split(u).join(nodeName(u));
+  return t.replace(/https?:\/\/[^\s"'<>)]+/g, (u) => `https://${nodeName(u)}/…`);
+};
+const die = (e) => {
+  console.error(`\nsnapshot failed: ${scrub(e?.shortMessage ?? e?.message ?? e)}${e?.details ? ` (${scrub(e.details).slice(0, 300)})` : ""}`);
   process.exit(1);
-});
+};
+process.on("unhandledRejection", die);
+process.on("uncaughtException", die);
+// a keyed node's URL carries its key: shown as its host alone
+const nodeName = (u) => { try { return new URL(u).host; } catch { return "a node"; } };
 
 const root = path.resolve(import.meta.dirname, "..");
 const args = process.argv.slice(2);
+// `--name value`; an empty value ("" from an unset shell variable) counts as absent
 const flag = (name, fallback) => {
   const i = args.indexOf(`--${name}`);
-  return i >= 0 && args[i + 1] !== undefined && !args[i + 1].startsWith("--") ? args[i + 1] : fallback;
+  return i >= 0 && args[i + 1] !== undefined && args[i + 1] !== "" && !args[i + 1].startsWith("--") ? args[i + 1] : fallback;
 };
 const need = (name) => {
   const v = flag(name);
   if (!v) throw new Error(`--${name} is required`);
   return v;
 };
+const positive = (name, fallback) => {
+  const v = BigInt(flag(name, fallback));
+  if (v < 1n) throw new Error(`--${name} must be 1 or more`);
+  return v;
+};
 
-const rpc = need("rpc");
+// --rpc, or SRC_RPC from the environment: on a server a URL in the command
+// line shows in the process list, a variable does not
+const rpc = flag("rpc") ?? process.env.SRC_RPC;
+if (!rpc) throw new Error("--rpc <url,url,...> is required (or SRC_RPC in the environment)");
 const launchpad = getAddress(need("launchpad"));
 const quoteAsset = getAddress(need("quote"));
 const fromBlock = BigInt(need("from-block"));
 const network = flag("network", "base");
-const chunkDefault = BigInt(flag("chunk", "5000"));
+const chunkDefault = positive("chunk", "5000");
 const allowUnfrozen = args.includes("--allow-unfrozen");
 const vault = flag("vault") ? getAddress(flag("vault")) : null;
 // --scale N: a mechanics-only rehearsal on a testnet short of coins. Every
@@ -79,10 +104,16 @@ const TRANSFER = parseAbiItem("event Transfer(address indexed from, address inde
 const GRADUATED = parseAbiItem("event Graduated(address indexed token, uint256 raisedEth)");
 
 const rpcs = rpc.split(",").map((s) => s.trim()).filter(Boolean);
+scrubUrls = rpcs;
+// Every node here must serve the chain's whole history: viem's fallback moves
+// to the next node on an error, and a node that keeps only recent blocks
+// answers a range it does not have with an empty list, not an error, which
+// would leave a gap (the add-up checks below catch it, but the run dies).
+// Few retries of the whole chain of nodes: logsOf has its own patient waits.
 const client = createPublicClient({
   transport: fallback(
     rpcs.map((u) => http(u, { timeout: 20_000 })),
-    { rank: false, retryCount: 5, retryDelay: 600 }
+    { rank: false, retryCount: 2, retryDelay: 600 }
   ),
 });
 const PACE_MS = Number(flag("pace", "120")); // between calls, so one node's rate limit is not tripped
@@ -92,8 +123,6 @@ const read = async (address, abi_, functionName, args_ = [], blockNumber) => {
   await sleep(PACE_MS);
   return client.readContract({ address, abi: abi_, functionName, args: args_, blockNumber });
 };
-// a keyed node's URL carries its key: shown as its host alone
-const nodeName = (u) => { try { return new URL(u).host; } catch { return u; } };
 console.log(`${rpcs.length} RPC node${rpcs.length === 1 ? "" : "s"}: ${rpcs.map(nodeName).join(", ")}`);
 
 // ---- the block: the freeze, reached
@@ -137,10 +166,9 @@ async function logsOf(address, event, eventArgs) {
       from = to + 1n;
       waits = 0;
     } catch (e) {
-      // what the node said, not viem's summary of it: the JSON-RPC error text or the HTTP body
-      const why = String(e?.details || e?.cause?.details || e?.cause?.message || e?.shortMessage || e?.message || e)
+      // what the node said, not viem's summary of it: the JSON-RPC error text or the HTTP body, URLs cut to their host
+      const why = scrub(String(e?.details || e?.cause?.details || e?.cause?.message || e?.shortMessage || e?.message || e))
         .replace(/\s+/g, " ")
-        .replace(/alch_[A-Za-z0-9_-]+|v2\/[A-Za-z0-9_-]{16,}/g, "v2/…")
         .slice(0, 160);
       if (waits < MAX_WAITS) {
         const wait = Math.min(60_000, 3_000 * 2 ** waits);

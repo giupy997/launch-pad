@@ -51,9 +51,10 @@ transaction anyone reads).
 
 LitVM mainnet with a public RPC, a Blockscout, its bridge for LTC, and a
 Uniswap v2 router for the pools (the testnet has several). A Coinbase account
-to turn cbLTC into LTC (sending cbLTC to it credits LTC 1:1). The deployer key
-(`contracts/.env`) with zkLTC for gas — bridge some first. The Base pad's
-timelock proposer key: the same deployer.
+to turn cbLTC into LTC (sending cbLTC to it credits LTC 1:1). The deployer's
+keystore (`notus`, `cast wallet import notus`; `contracts/.env` holds no key)
+with zkLTC for gas — bridge some first. The Base pad's timelock proposer key:
+the same deployer.
 
 One file holds the names as they arrive; every block below sources it:
 
@@ -67,6 +68,7 @@ export BASE_FROM_BLOCK=52180589                                   # the pad's de
 export BRIDGE_FROM=         # the EVM account that receives the cbLTC and takes it through Coinbase
 export VAULT=               # an account of yours: coins with no holder to go to are parked there (step 2)
 export LITVM_RPC=           # LitVM mainnet RPC
+export UNIV2_ROUTER=        # the Uniswap v2 router on LitVM the pools open on (step 1)
 export LITVM_PAD=           # step 1
 export FREEZE=              # step 3, the block
 EOF2
@@ -80,9 +82,13 @@ and the chain to `web/lib/config.ts` and the site's CSP, as for any new chain.
 
 ```bash
 source ~/notus-litvm.env; cd ~/launch-pad/contracts && source .env
-UNIV2_ROUTER=<router> TREASURY=<treasury> NATIVE_VIRTUAL=60000000000000000000 \
+UNIV2_ROUTER="${UNIV2_ROUTER:?set UNIV2_ROUTER in ~/notus-litvm.env}" TREASURY="${TREASURY:?set TREASURY in contracts/.env}" NATIVE_VIRTUAL=60000000000000000000 \
   forge script script/DeployLitVM.s.sol --rpc-url litvm --account notus --broadcast
 ```
+
+(The router comes from the env file, the treasury from `contracts/.env`; the
+shell refuses to run with either missing rather than deploy a pad without a
+migrator or with the deployer as treasury.)
 
 `NATIVE_VIRTUAL` is the virtual reserve a zkLTC curve opens with: **60 zkLTC**,
 the same as Base's 60 cbLTC (decided 2026-10-05), so a coin reads the same on
@@ -101,14 +107,18 @@ it over right after (`DeployTimelock.s.sol` with `LAUNCHPAD=$LITVM_PAD`).
 ```bash
 source ~/notus-litvm.env; cd ~/launch-pad/contracts && set -a && source .env && set +a
 # a dry run of the snapshot at the latest block: it refuses whatever would not add up on the day
-node script/snapshot-evm.mjs --rpc "$SRC_RPC" --chunk "$SRC_CHUNK" --launchpad "$BASE_PAD" --quote "$BASE_QUOTE" \
+node script/snapshot-evm.mjs --chunk "${SRC_CHUNK:?set SRC_CHUNK in contracts/.env}" --launchpad "$BASE_PAD" --quote "$BASE_QUOTE" \
   --from-block "$BASE_FROM_BLOCK" --network base --allow-unfrozen --vault "$VAULT" --out /tmp/base-dryrun.json
 ```
 
 `SRC_RPC` and `SRC_CHUNK` come from `contracts/.env` (`.env.example` explains
-them): the Base nodes the snapshot reads, a keyed one first, and the blocks one
-call may span on it. The public nodes refuse the pad's whole history from a
-server, so a snapshot on `https://mainnet.base.org` alone stalls on the day.
+them): the Base nodes the snapshot reads, a keyed one first and every one
+serving the whole history, and the blocks one call may span on it. The
+snapshot reads `SRC_RPC` from the environment (`set -a` exports it), so the
+keyed URL never sits in a command line; the shell refuses to run without
+`SRC_CHUNK` rather than hand the snapshot an empty range. The public nodes
+refuse the pad's whole history from a server, so a snapshot on
+`https://mainnet.base.org` alone stalls on the day.
 
 Read its warnings: coins parked in the vault (another provider's share of a
 pool, coins sent to the pad) are yours to hand back by hand afterwards. Then
@@ -146,11 +156,19 @@ Two timelock rounds of 24 hours, with the coin list closing between them:
    proposer only) and schedule again with a new `FREEZE` rather than execute
    it late.
 
-2. **Execute it, 24 hours later** (same arguments, `execute(address,uint256,
-   bytes,bytes32,bytes32)`). The pad closes to new coins at once — trading
-   goes on until the block — so the list is final: schedule the migrateOut of
-   every coin right away, each its own operation, ready 24 hours later and
-   executable once the freeze has landed:
+2. **Execute it, 24 hours later** (same arguments, no delay):
+
+   ```bash
+   source ~/notus-litvm.env; cd ~/launch-pad/contracts && source .env
+   Z32=0x0000000000000000000000000000000000000000000000000000000000000000
+   cast send "$BASE_TIMELOCK" "execute(address,uint256,bytes,bytes32,bytes32)" "$BASE_PAD" 0 \
+     "$(cast calldata 'announceFreeze(uint256)' "$FREEZE")" $Z32 "$(cast keccak "notus-freeze-$FREEZE")" --rpc-url base --account notus
+   ```
+
+   The pad closes to new coins at once — trading goes on until the block — so
+   the list is final: schedule the migrateOut of every coin right away, each
+   its own operation, ready 24 hours later and executable once the freeze has
+   landed:
 
    ```bash
    source ~/notus-litvm.env; cd ~/launch-pad/contracts && source .env
@@ -169,7 +187,7 @@ Two timelock rounds of 24 hours, with the coin list closing between them:
 
 ```bash
 source ~/notus-litvm.env; cd ~/launch-pad/contracts && set -a && source .env && set +a
-node script/snapshot-evm.mjs --rpc "$SRC_RPC" --chunk "$SRC_CHUNK" --launchpad "$BASE_PAD" --quote "$BASE_QUOTE" \
+node script/snapshot-evm.mjs --chunk "${SRC_CHUNK:?set SRC_CHUNK in contracts/.env}" --launchpad "$BASE_PAD" --quote "$BASE_QUOTE" \
   --from-block "$BASE_FROM_BLOCK" --network base --vault "$VAULT" --out ../litecoin/migration/base-$FREEZE.json
 ```
 
@@ -180,6 +198,17 @@ public record. Then execute every migrateOut operation scheduled in step 3
 on `BRIDGE_FROM`. Each is its own operation, so one that reverts (a paused
 cbLTC, a blocklisted pair) holds up no other; it is retried later, with
 another `to` if need be — nothing is marked on a revert.
+
+```bash
+source ~/notus-litvm.env; cd ~/launch-pad/contracts && source .env
+Z32=0x0000000000000000000000000000000000000000000000000000000000000000
+for T in $(cast call "$BASE_PAD" "tokenCount()(uint256)" --rpc-url base | xargs seq 0 | head -n -1); do
+  COIN=$(cast call "$BASE_PAD" "allTokens(uint256)(address)" $T --rpc-url base)
+  cast send "$BASE_TIMELOCK" "execute(address,uint256,bytes,bytes32,bytes32)" "$BASE_PAD" 0 \
+    "$(cast calldata 'migrateOut(address,address)' "$COIN" "$BRIDGE_FROM")" $Z32 "$(cast keccak "notus-out-$FREEZE-$COIN")" --rpc-url base --account notus \
+    || echo "migrateOut of $COIN reverted: retry it later, or schedule it again with another to"
+done
+```
 
 ## 5. cbLTC → LTC → zkLTC
 

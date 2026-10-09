@@ -91,11 +91,13 @@ Push, pull on the VPS.
 
 ```bash
 source ~/notus-mainnet.env; cd ~/launch-pad && git pull && cd contracts && source .env
-${UNIV2_ROUTER:+UNIV2_ROUTER=$UNIV2_ROUTER} TREASURY="$TREASURY" forge script script/DeployLitVM.s.sol --rpc-url litvm --account notus --broadcast
+env ${UNIV2_ROUTER:+UNIV2_ROUTER=$UNIV2_ROUTER} TREASURY="$TREASURY" forge script script/DeployLitVM.s.sol --rpc-url litvm --account notus --broadcast
 ```
 
-(The first word passes the router only when the env file has one: the script
-takes an unset variable as "no migrator yet", an empty one as an error.)
+(`env` passes the router only when the env file has one — a word made by an
+expansion is not an assignment to the shell, so without `env` the line would
+not run: the script takes an unset variable as "no migrator yet", an empty
+one as an error.)
 Note `Launchpad`, `UniV2Migrator` and `Deploy block` from the log; put the
 Launchpad in `~/notus-mainnet.env`. Then the timelock — 48 hours, owning the
 pad from the same transaction:
@@ -115,7 +117,7 @@ source ~/notus-mainnet.env; cd ~/launch-pad/contracts && source .env
 Z=0x0000000000000000000000000000000000000000; PROPOSER=$(cast wallet address --account notus)
 MIGRATOR=$(cast call "$LAUNCHPAD" "migrator()(address)" --rpc-url litvm)
 forge verify-contract --chain "$CHAIN_ID" --verifier blockscout --verifier-url "$BLOCKSCOUT/api/" --watch \
-  --constructor-args "$(cast abi-encode 'constructor(address,address)' "$TREASURY" $Z)" "$LAUNCHPAD" src/Launchpad.sol:Launchpad
+  --constructor-args "$(cast abi-encode 'constructor(address)' "$TREASURY")" "$LAUNCHPAD" src/Launchpad.sol:Launchpad
 forge verify-contract --chain "$CHAIN_ID" --verifier blockscout --verifier-url "$BLOCKSCOUT/api/" --watch \
   --constructor-args "$(cast abi-encode 'constructor(address,address)' "$LAUNCHPAD" "$UNIV2_ROUTER")" "$MIGRATOR" src/UniV2Migrator.sol:UniV2Migrator
 forge verify-contract --chain "$CHAIN_ID" --verifier blockscout --verifier-url "$BLOCKSCOUT/api/" --watch \

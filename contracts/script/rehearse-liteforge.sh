@@ -25,38 +25,47 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export PATH="$HOME/.foundry/bin:$PATH"
-# .env may set PRIVATE_KEY (a test key) without exporting it, so a `source` in
-# the shell does not reach this process: read it here when it is missing
-if [ -z "${PRIVATE_KEY:-}" ] && [ -f .env ]; then
+# .env (SRC_RPC, SRC_CHUNK, and a PRIVATE_KEY for a test key) is read here,
+# exported so the snapshot sees SRC_RPC too; a PRIVATE_KEY already in the
+# environment wins over the file's
+if [ -f .env ]; then
+  KEY_GIVEN=${PRIVATE_KEY:-}
   set -a
   # shellcheck disable=SC1091
   source .env
   set +a
+  if [ -n "$KEY_GIVEN" ]; then PRIVATE_KEY=$KEY_GIVEN; fi
+  unset KEY_GIVEN
 fi
 # how to sign: a raw key when one is given, else the encrypted keystore, whose
 # password is asked once here and handed to forge and cast as a file in memory
 # (--password-file; the steps below capture their output, so a prompt of
-# theirs would never show), gone when the script ends
+# theirs would never show), gone when the script ends however it ends
+PWFILE=
+trap 'rm -f "${PWFILE:-}"' EXIT
 if [ -n "${PRIVATE_KEY:-}" ]; then
   SIGNER=(--private-key "$PRIVATE_KEY")
 else
+  [ -t 0 ] || { echo "the keystore password is asked at a terminal: run this from one (or set PRIVATE_KEY for a test key)"; exit 1; }
   read -rsp "password of the keystore ${ACCOUNT:-notus}: " KEYSTORE_PASSWORD; echo
   PWFILE=$(mktemp /dev/shm/notus-keystore.XXXXXX)
-  chmod 600 "$PWFILE"
   printf '%s' "$KEYSTORE_PASSWORD" > "$PWFILE"
   unset KEYSTORE_PASSWORD
-  trap 'rm -f "$PWFILE"' EXIT
   SIGNER=(--account "${ACCOUNT:-notus}" --password-file "$PWFILE")
 fi
 # The Base nodes for the snapshot, in order; the snapshot falls through them
-# when one refuses. The public ones no longer serve a long history from a
-# server (publicnode and drpc want a key for old blocks, mainnet.base.org
-# rations by IP and takes 500 blocks a call), so .env should name a keyed node
-# first and SRC_CHUNK the blocks one call may cover on it: Alchemy on Pay As
-# You Go and Infura's free plan both take 10,000 blocks a call (Alchemy's free
-# plan takes 10, of no use here). Nothing here prints the node URLs: the
-# snapshot names nodes by host, so a key in SRC_RPC stays out of the logs.
-SRC_RPC=${SRC_RPC:-https://mainnet.base.org,https://base-rpc.publicnode.com,https://base.drpc.org,https://1rpc.io/base}
+# when one refuses. Every one must serve the chain's whole history: a node
+# that keeps only recent blocks (publicnode) answers a range it does not have
+# with an empty list, not an error, and the gap would end the run at the
+# add-up check. The public ones no longer serve a long history from a server
+# (publicnode and drpc want a key for old blocks, mainnet.base.org rations by
+# IP and takes 500 blocks a call), so .env should name a keyed node first and
+# SRC_CHUNK the blocks one call may cover on it: Alchemy on Pay As You Go and
+# Infura's free plan both take 10,000 blocks a call (Alchemy's free plan
+# takes 10, of no use here). The snapshot reads SRC_RPC from the environment
+# (not the command line, which the process list shows) and names nodes by
+# host; its errors cut every URL to its host, so a key stays out of the logs.
+export SRC_RPC=${SRC_RPC:-https://mainnet.base.org}
 SRC_CHUNK=${SRC_CHUNK:-499}
 DST_RPC=${DST_RPC:-https://liteforge.rpc.caldera.xyz/infra-partner-http}
 SRC_PAD=${SRC_PAD:-0xEfbB4ebdf5130cC4fC45899EeBA727fa2F55b5f4}
@@ -78,7 +87,9 @@ echo "== 1. the receiving pad on Liteforge"
 if [ -z "${TARGET:-}" ]; then
   ROUTER=$(cast call $OLD_MIGRATOR "router()(address)" --rpc-url "$DST_RPC")
   echo "   DEX router (Lester Labs' Uniswap v2): $ROUTER"
-  OUT=$(UNIV2_ROUTER=$ROUTER TREASURY=$DEPLOYER forge script script/DeployLitVM.s.sol --rpc-url "$DST_RPC" "${SIGNER[@]}" --broadcast 2>&1)
+  # a deploy that fails ends the script here, with its last lines shown (an assignment alone would end it silently)
+  OUT=$(UNIV2_ROUTER=$ROUTER TREASURY=$DEPLOYER forge script script/DeployLitVM.s.sol --rpc-url "$DST_RPC" "${SIGNER[@]}" --broadcast 2>&1) \
+    || { echo "the deploy failed:"; echo "$OUT" | tail -20; exit 1; }
   echo "$OUT" | grep -E "Launchpad:|UniV2Migrator:|Deploy block:|Error|revert|Reason" || true
   TARGET=$(echo "$OUT" | awk '/Launchpad:/ {print $2}' | tail -1)
   MIGRATOR=$(echo "$OUT" | awk '/UniV2Migrator:/ {print $2}' | tail -1)
@@ -93,7 +104,7 @@ printf '{"launchpad":"%s","migrator":"%s"}\n' "$TARGET" "$MIGRATOR" > "$MIG/rehe
 echo "   pad $TARGET · migrator $MIGRATOR · deploy block $DEPLOY_BLOCK"
 
 echo "== 2. the snapshot of Base: unfrozen, at the latest block, $SRC_CHUNK blocks per request"
-node script/snapshot-evm.mjs --rpc "$SRC_RPC" --launchpad "$SRC_PAD" --quote "$SRC_QUOTE" --from-block "$SRC_FROM" \
+node script/snapshot-evm.mjs --launchpad "$SRC_PAD" --quote "$SRC_QUOTE" --from-block "$SRC_FROM" \
   --network base --chunk "$SRC_CHUNK" --allow-unfrozen --vault "$DEPLOYER" --scale "$SCALE" --out "$FILE"
 
 echo "== 3. the zkLTC the coins need, against the deployer's"
@@ -109,11 +120,15 @@ if awk -v n="$NEED" -v h="$HAVE" -v g="$GAS_MARGIN" 'BEGIN { exit !(h < n + g) }
 fi
 
 echo "== 4. the migration (MigrateFromLedger, direct: the deployer owns this pad)"
-LAUNCHPAD=$TARGET MIGRATION_FILE=$FILE forge script script/MigrateFromLedger.s.sol --rpc-url "$DST_RPC" "${SIGNER[@]}" --broadcast 2>&1 \
-  | grep -E "^  [A-Za-z]|->|written|root|Error|revert|Reason" || true
+# a failed step ends the script with its last lines shown and a non-zero status (the grep alone would hide both)
+OUT=$(LAUNCHPAD=$TARGET MIGRATION_FILE=$FILE forge script script/MigrateFromLedger.s.sol --rpc-url "$DST_RPC" "${SIGNER[@]}" --broadcast 2>&1) \
+  || { echo "the migration failed:"; echo "$OUT" | tail -30; exit 1; }
+echo "$OUT" | grep -E "^  [A-Za-z]|->|written|root|Error|revert|Reason" || true
 
 echo "== 5. the check: every holder, every price"
-MIGRATION_FILE=$FILE forge script script/rehearsal/RehearseCheck.s.sol --rpc-url "$DST_RPC" 2>&1 | grep -E "PASS|Error|revert|Reason" || true
+OUT=$(MIGRATION_FILE=$FILE forge script script/rehearsal/RehearseCheck.s.sol --rpc-url "$DST_RPC" 2>&1) \
+  || { echo "the check failed:"; echo "$OUT" | grep -E "PASS|FAIL|Error|revert|Reason" || echo "$OUT" | tail -30; exit 1; }
+echo "$OUT" | grep -E "PASS|Error|revert|Reason" || true
 
 echo "== done"
 echo "   receiving pad   $TARGET"
