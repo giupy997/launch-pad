@@ -31,7 +31,7 @@ contract DeployTimelock is Script {
 
         vm.startBroadcast();
         TimelockController timelock = new TimelockController(delay, proposers, executors, address(0));
-        if (pad != address(0)) Launchpad(pad).transferOwnership(address(timelock));
+        if (pad != address(0)) Launchpad(payable(pad)).transferOwnership(address(timelock));
         vm.stopBroadcast();
 
         console.log("Timelock:     ", address(timelock));

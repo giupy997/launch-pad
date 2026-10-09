@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {Launchpad} from "../src/Launchpad.sol";
-import {LaunchToken} from "../src/LaunchToken.sol";
+import {LaunchpadBase} from "../src/LaunchpadBase.sol";
 import {UniV2Migrator} from "../src/UniV2Migrator.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {MockWETH9, MockV2Factory, MockV2Pair, MockV2Router} from "./mocks/UniV2Mock.sol";
@@ -32,7 +32,7 @@ contract UniV2MigratorTest is Test {
 
     function _create() internal returns (address) {
         vm.prank(creator);
-        return pad.createToken("Meme", "MEME", 0, Launchpad.TokenMetadata("", "", "", "", "", ""), address(0), false);
+        return pad.createToken("Meme", "MEME", 0, LaunchpadBase.TokenMetadata("", "", "", "", "", ""), address(0), false);
     }
 
     function _reserves(address token) internal view returns (uint256 rToken, uint256 rWeth, address pair) {
@@ -156,7 +156,9 @@ contract UniV2MigratorTest is Test {
         assertEq(IERC20(token).balanceOf(address(migrator)), pT);
         assertEq(weth.balanceOf(address(migrator)), pQ);
         assertEq(migrator.buybackCap(token), 0, "nothing to buy back from");
+        assertEq(migrator.harvestCap(token), 0, "nothing to sell into either");
         assertFalse(migrator.seed(token), "still at the other price: still parked");
+        assertTrue(pad.taxedPool(token, pair), "parked or not, the pair is the coin's pool: registered, taxed");
     }
 
     /// ...and once the attacker leaves, the parked reserve lands at the curve's price.
@@ -164,7 +166,6 @@ contract UniV2MigratorTest is Test {
         address token = _create();
         vm.prank(buyer);
         pad.buy{value: 50 ether}(token, 0);
-        (,, uint256 raised,,,,) = pad.curves(token);
         (address pair, uint256 attackerTokens, uint256 attackerWeth) = _attackerPool(token);
         pad.setMigrator(address(migrator));
         pad.migrate(token);
@@ -199,7 +200,6 @@ contract UniV2MigratorTest is Test {
         address token = _create();
         vm.prank(buyer);
         pad.buy{value: 50 ether}(token, 0);
-        (,, uint256 raised,,,,) = pad.curves(token);
 
         // 1 token : 20 WETH — twenty thousand times the curve's price
         address pair = factory.createPair(token, address(weth));
@@ -286,5 +286,97 @@ contract UniV2MigratorTest is Test {
     function test_onlyTheLaunchpadMigrates() public {
         vm.expectRevert(UniV2Migrator.OnlyLaunchpad.selector);
         migrator.migrate{value: 1 ether}(address(weth), 1e18, address(0), 0);
+    }
+
+    // ------------------------------------------------------------ v12: the pool and the harvest
+
+    /// `migrate` names the pool the coin trades in from now on, and the launchpad takes it at
+    /// its word: the pair is registered as taxed, and what it holds earns no cashback.
+    function test_migrateReturnsThePairAndTheLaunchpadRegistersIt() public {
+        pad.setMigrator(address(migrator));
+        address token = _create();
+        vm.prank(buyer);
+        pad.buy{value: 50 ether}(token, 0);
+        (,, address pair) = _reserves(token);
+        assertTrue(pair != address(0));
+        assertEq(migrator.pairOf(token), pair);
+        assertTrue(pad.taxedPool(token, pair), "the pair is the coin's taxed pool");
+        assertEq(address(pad.graduatedVia(token)), address(migrator), "seeded by this adapter");
+        assertFalse(pad.taxedPool(token, address(migrator)), "the adapter itself is not a pool");
+        assertEq(
+            pad.eligibleSupply(token),
+            IERC20(token).totalSupply() - IERC20(token).balanceOf(address(pad)) - IERC20(token).balanceOf(pair)
+                - IERC20(token).balanceOf(address(migrator)),
+            "the pool's coins earn no cashback: off the eligible supply"
+        );
+        // a buy on the pool pays the coin's rate (here the launchpad's fee alone: the coin has no tax)
+        assertEq(pad.transferRate(token, pair, buyer), pad.feeBps(), "the pool paying out: a buy");
+        assertEq(pad.transferRate(token, buyer, pair), pad.feeBps(), "the pool being paid: a sell");
+        assertEq(pad.transferRate(token, buyer, griefer), 0, "wallet to wallet: nothing");
+        // the pair is returned to whoever calls as the launchpad, not only recorded
+        vm.prank(address(pad));
+        vm.expectRevert(UniV2Migrator.NothingToSeed.selector);
+        migrator.migrate(token, 0, address(0), 0); // nothing handed over: the call refuses before it names a pool
+    }
+
+    /// The most coins one harvest may sell: Uniswap's getAmountIn for half a percent of the
+    /// pool's quote side (+1 for the rounding), and 0 while we hold no liquidity in the pool.
+    function test_harvestCapIsHalfAPercentOfTheQuoteSide() public {
+        pad.setMigrator(address(migrator));
+        address token = _create();
+        assertEq(migrator.harvestCap(token), 0, "no pool yet");
+        vm.prank(buyer);
+        pad.buy{value: 50 ether}(token, 0);
+        (uint256 rToken, uint256 rWeth,) = _reserves(token);
+        uint256 out = rWeth / 200;
+        uint256 cap = (rToken * out * 1000) / ((rWeth - out) * 997) + 1;
+        assertEq(migrator.harvestCap(token), cap);
+        // selling exactly the cap takes `out` of the quote side, a wei more at most
+        uint256 got = (cap * 997 * rWeth) / (rToken * 1000 + cap * 997);
+        assertGe(got, out, "the cap buys the half percent");
+        assertLe(got, out + 1, "and not a wei more than the rounding");
+        // the pool's reserves move, the cap with them: a buy deepens the quote side
+        vm.startPrank(griefer);
+        weth.deposit{value: 1 ether}();
+        weth.transfer(migrator.pairOf(token), 1 ether);
+        uint256 tokensOut = (1 ether * 997 * rToken) / (rWeth * 1000 + 1 ether * 997);
+        (uint256 o0, uint256 o1) =
+            MockV2Pair(migrator.pairOf(token)).token0() == token ? (tokensOut, uint256(0)) : (uint256(0), tokensOut);
+        MockV2Pair(migrator.pairOf(token)).swap(o0, o1, griefer, "");
+        vm.stopPrank();
+        (rToken, rWeth,) = _reserves(token);
+        out = rWeth / 200;
+        assertEq(migrator.harvestCap(token), (rToken * out * 1000) / ((rWeth - out) * 997) + 1, "recomputed on the new reserves");
+    }
+
+    /// Nothing to sell: a parked reserve (the pool is somebody else's, we hold no liquidity in it,
+    /// so the cap is 0 and nothing is sold at a price we did not set), and a seeded pool nobody
+    /// has traded on yet (both buckets empty).
+    function test_harvestRevertsWithNothingToSell() public {
+        // parked
+        address token = _create();
+        vm.prank(buyer);
+        pad.buy{value: 50 ether}(token, 0);
+        _attackerPool(token);
+        pad.setMigrator(address(migrator));
+        pad.migrate(token);
+        assertEq(migrator.liquidity(token), 0, "parked: no liquidity of ours");
+        assertEq(migrator.harvestCap(token), 0);
+        vm.expectRevert(UniV2Migrator.NothingToSell.selector);
+        migrator.harvest(token);
+
+        // seeded, untraded
+        address quiet = _create();
+        vm.prank(buyer);
+        pad.buy{value: 50 ether}(quiet, 0);
+        assertGt(migrator.liquidity(quiet), 0);
+        assertGt(migrator.harvestCap(quiet), 0, "there is a pool to sell into");
+        assertEq(pad.taxTreasury(quiet) + pad.taxPot(quiet), 0, "but nothing to sell");
+        vm.expectRevert(UniV2Migrator.NothingToSell.selector);
+        migrator.harvest(quiet);
+
+        // a coin that never existed here
+        vm.expectRevert(UniV2Migrator.NothingToSell.selector);
+        migrator.harvest(makeAddr("not a coin"));
     }
 }

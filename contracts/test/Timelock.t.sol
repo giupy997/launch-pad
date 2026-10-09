@@ -6,15 +6,22 @@ import {TimelockController} from "openzeppelin-contracts/contracts/governance/Ti
 import {Ownable} from "openzeppelin-contracts/contracts/access/Ownable.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {Launchpad} from "../src/Launchpad.sol";
+import {LaunchpadBase} from "../src/LaunchpadBase.sol";
 import {MigrateFromLedger} from "../script/MigrateFromLedger.s.sol";
+import {ILaunchpadMigration} from "../src/interfaces/ILaunchpadMigration.sol";
 
 /// The Launchpad owned by a timelock: no owner call runs before its delay
-/// has passed in the open, the ledger migration included.
+/// has passed in the open, the ledger migration included — the migration
+/// functions live in the LaunchpadMigration module, reached through the
+/// Launchpad's fallback, and the timelock reaches them the same way. The one
+/// shortcut is the migration operator, named through the timelock, who then
+/// runs the migration in without a delay.
 contract TimelockTest is Test {
     Launchpad pad;
     TimelockController timelock;
     MigrateFromLedger script;
     uint256 constant DELAY = 2 days;
+    bytes32 constant ROOT = bytes32(uint256(0x28bf69752873a3620128cb7ad5a7b2996f96650d0a165416fdc1980d5651721b));
 
     function setUp() public {
         pad = new Launchpad(makeAddr("treasury"));
@@ -42,13 +49,102 @@ contract TimelockTest is Test {
 
         vm.expectRevert();
         timelock.execute(address(pad), 0, data, bytes32(0), salt);
-        assertEq(pad.feeBps(), 100, "nothing changed early");
+        assertEq(pad.feeBps(), 50, "nothing changed early");
 
         vm.warp(block.timestamp + DELAY);
         vm.prank(makeAddr("anyone"));
         timelock.execute(address(pad), 0, data, bytes32(0), salt);
         assertEq(pad.feeBps(), 200);
         assertTrue(timelock.isOperationDone(id));
+    }
+
+    /// The operator is the owner's to name, so the name is public a delay ahead;
+    /// once named, the operator opens and runs the migration at once, and the
+    /// owner's other powers stay behind the delay.
+    function test_setMigrationOperatorThroughTheTimelock() public {
+        ILaunchpadMigration mig = ILaunchpadMigration(address(pad));
+        address op = makeAddr("operator");
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
+        mig.setMigrationOperator(op);
+        vm.prank(op);
+        vm.expectRevert(LaunchpadBase.NotOperator.selector);
+        mig.setMigrationRoot(ROOT, 100);
+
+        bytes memory data = abi.encodeCall(ILaunchpadMigration.setMigrationOperator, (op));
+        bytes32 salt = keccak256("the operator for the move");
+        timelock.schedule(address(pad), 0, data, bytes32(0), salt, DELAY);
+        vm.expectRevert();
+        timelock.execute(address(pad), 0, data, bytes32(0), salt);
+        assertEq(pad.migrationOperator(), address(0), "nothing changed early");
+
+        vm.warp(block.timestamp + DELAY);
+        vm.expectEmit(address(pad));
+        emit LaunchpadBase.MigrationOperatorUpdated(op);
+        vm.prank(makeAddr("anyone"));
+        timelock.execute(address(pad), 0, data, bytes32(0), salt);
+        assertEq(pad.migrationOperator(), op, "the module ran in the pad's storage, as the timelock");
+
+        // from now on the operator runs the migration in without waiting
+        vm.prank(op);
+        mig.setMigrationRoot(ROOT, 100);
+        assertEq(pad.migrationRoot(), ROOT);
+        // but cannot end it, nor freeze the pad, nor pass the role on: those stay the timelock's
+        vm.startPrank(op);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, op));
+        mig.closeMigration();
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, op));
+        mig.announceFreeze(block.number + 1);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, op));
+        mig.setMigrationOperator(address(this));
+        vm.stopPrank();
+
+        // closing, through the timelock, clears the operator with it
+        data = abi.encodeCall(ILaunchpadMigration.closeMigration, ());
+        salt = keccak256("close the migration");
+        timelock.schedule(address(pad), 0, data, bytes32(0), salt, DELAY);
+        vm.warp(block.timestamp + DELAY);
+        timelock.execute(address(pad), 0, data, bytes32(0), salt);
+        assertTrue(pad.migrationClosed());
+        assertEq(pad.migrationOperator(), address(0), "the role ended with the migration");
+    }
+
+    /// The live runbook: the timelock names the deployer (here: the script) operator,
+    /// and the script then runs the whole demo ledger in directly, no round of
+    /// scheduling per batch.
+    function test_theOperatorMigratesWithoutTheDelay() public {
+        string memory json = vm.readFile("test/fixtures/migration-demo.json");
+        MigrateFromLedger.Coin[] memory coins = script.load(json);
+        uint256 total;
+        for (uint256 i = 0; i < coins.length; i++) {
+            total += coins[i].realQuote;
+        }
+        vm.deal(address(script), total);
+        // not before the timelock named it
+        vm.expectRevert(LaunchpadBase.NotOperator.selector);
+        script.ensureRoot(pad, json);
+
+        bytes memory data = abi.encodeCall(ILaunchpadMigration.setMigrationOperator, (address(script)));
+        timelock.schedule(address(pad), 0, data, bytes32(0), bytes32(0), DELAY);
+        vm.warp(block.timestamp + DELAY);
+        timelock.execute(address(pad), 0, data, bytes32(0), bytes32(0));
+        assertEq(pad.migrationOperator(), address(script));
+
+        script.ensureRoot(pad, json);
+        address[] memory tokens = script.migrateAll(pad, coins);
+        assertEq(tokens.length, 3);
+        assertEq(pad.tokenCount(), 3);
+        assertEq(address(pad).balance, total, "every reserve arrived, from the operator");
+        assertTrue(script.allMigrated(pad, coins));
+        for (uint256 i = 0; i < coins.length; i++) {
+            address token = pad.migratedTicker(keccak256(bytes(coins[i].symbol)));
+            assertEq(pad.migrationPending(token), 0);
+            for (uint256 j = 0; j < coins[i].holders.length; j++) {
+                assertEq(IERC20(token).balanceOf(coins[i].holders[j]), coins[i].balances[j]);
+            }
+        }
+        // and the timelock's plan finds nothing left to do
+        (uint256 opCount,,) = script.planSummary(pad, json, coins);
+        assertEq(opCount, 0);
     }
 
     function test_tooShortADelayIsRefused() public {
@@ -70,9 +166,9 @@ contract TimelockTest is Test {
         (uint256 opCount, uint256[] memory callsPerOp, bytes4[] memory selectors) = script.planSummary(pad, json, coins);
         assertEq(opCount, 1, "three coins and the root fit one operation");
         assertEq(callsPerOp[0], 4);
-        assertEq(selectors[0], pad.setMigrationRoot.selector, "the root comes first");
-        assertEq(selectors[1], pad.migrateToken.selector);
-        assertEq(selectors[3], pad.migrateToken.selector);
+        assertEq(selectors[0], ILaunchpadMigration.setMigrationRoot.selector, "the root comes first");
+        assertEq(selectors[1], ILaunchpadMigration.migrateToken.selector);
+        assertEq(selectors[3], ILaunchpadMigration.migrateToken.selector);
 
         assertEq(script.scheduleFromFile(timelock, pad, json, coins), 1);
         assertEq(script.scheduleFromFile(timelock, pad, json, coins), 0, "scheduling again changes nothing");
@@ -147,7 +243,7 @@ contract TimelockTest is Test {
         // creation delivers BATCH holders; the rest waits for the token address
         (uint256 calls, bytes4 first) = _round(coins);
         assertEq(calls, 2, "root and the creation with the first batch");
-        assertEq(first, pad.setMigrationRoot.selector);
+        assertEq(first, ILaunchpadMigration.setMigrationRoot.selector);
         address token = pad.migratedTicker(keccak256(bytes("CROWD")));
         assertTrue(token != address(0));
         assertEq(pad.migrationPending(token), 20 * 1_000_000e18, "twenty holders still to deliver");
@@ -156,7 +252,7 @@ contract TimelockTest is Test {
         // the second round: only the twenty, to the token that now exists
         (calls, first) = _round(coins);
         assertEq(calls, 1);
-        assertEq(first, pad.migrateBalances.selector);
+        assertEq(first, ILaunchpadMigration.migrateBalances.selector);
         assertEq(pad.migrationPending(token), 0);
         assertTrue(script.allMigrated(pad, coins));
         assertEq(IERC20(token).balanceOf(address(uint160(0x1000 + n - 1))), 1_000_000e18);

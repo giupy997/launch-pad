@@ -18,25 +18,43 @@ and at `/litecoin`, out of the menu.
 ## Structure
 
 - `contracts/` — smart contracts (Solidity + Foundry)
-  - `src/Launchpad.sol` — factory + bonding curve (constant product with
-    virtual reserves), graduation with automatic DEX migration (manual
+  - `src/Launchpad.sol` — **v12**: factory + bonding curve (constant product
+    with virtual reserves), graduation with automatic DEX migration (manual
     fallback if the DEX leg fails); on-chain token metadata (1:1 logo URI,
     website, X, Telegram, livestream URL) editable by the creator; curves
-    quoted in ETH or in any whitelisted ERC-20 (stocks, ETFs, stablecoin,
-    pre-IPO); a 1% platform fee on every curve trade, 20% of it to the
-    treasury, plus the coin's own tax — up to 10% on buys and on sells,
-    fixed at launch (`createTokenWithFees`, `FeeConfig`) — and the coin's
-    pot (the platform fee's 80% and the whole tax) split as its creator
-    fixed it between the creator (`claimCreatorFees`, redirectable with
-    `setFeeRecipient`), its holders as pro-rata cashback (`claimCashback`),
-    a burn pot that buys the coin back on its curve or its pool and burns it
-    (`buybackAndBurn`, anyone may call it) and a liquidity pot that joins
-    the pool at graduation; the freeze and `migrateOut` for a move to
-    another chain (see `MIGRATION.md`); `createPreMarket` mints a synthetic
-    pre-IPO pair asset, transferable from day one and whitelisted on creation
+    quoted in the chain's coin or in a whitelisted ERC-20 (cbLTC on Base).
+    **Fees, on the curve and on the pool alike**: the launchpad's fee —
+    0.5% a side, whole to the treasury, stamped on each coin at creation
+    (`FeeConfig.platformBps`, so a later `setFeeBps` touches new coins
+    only) — plus the coin's own tax, up to 10% on buys and on sells, fixed
+    at launch (`createTokenWithFees`, `FeeConfig`), which alone funds the
+    four shares its creator fixed: the creator (`claimCreatorFees`,
+    redirectable with `setFeeRecipient`), its holders as pro-rata cashback
+    (`claimCashback`), a burn pot that buys the coin back on its curve or
+    its pool and burns it (`buybackAndBurn`, anyone may call it) and a
+    liquidity pot that joins the pool at graduation. After graduation the
+    token itself takes the same rates in coins on every transfer that
+    touches one of the coin's registered pools (a buy, the pool paying out;
+    a sell, the pool being paid; liquidity added or removed by anyone but
+    the pad's migrator), parks them in the pad (`taxTreasury`, `taxPot`),
+    and anyone's `harvest` on the migrator sells them a slice at a time and
+    pays everyone their share (below). Wallet-to-wallet transfers pay
+    nothing. The freeze and `migrateOut` for a move to another chain
+    (`MIGRATION.md`); v12 itself launched clean on Base, v11 left running
+    with its coins (`LAUNCH-BASE-V12.md`). The pad is
+    split under the EIP-170 size limit: `LaunchpadBase.sol` (storage,
+    events, errors, the shared internals), `Launchpad.sol` (the live
+    surface) and `LaunchpadMigration.sol` (the migration functions, run at
+    the pad's own address by delegatecall from its fallback; tooling calls
+    them through `interfaces/ILaunchpadMigration.sol`); `migrationOperator`
+    may run a migration into the pad without the timelock's delay. v11's
+    pre-markets, RWA quote lists and `setFeeSplit` are gone (the old
+    adapters and tests are parked in `contracts/legacy/`)
   - `src/LaunchToken.sol` — ERC-20 created by the launchpad; transfers locked
-    until graduation, except for pre-markets, which are transferable from
-    day one so they can serve as pair assets right away
+    until graduation; after it, every transfer the launchpad names a rate
+    for (a trade with one of the coin's pools) leaves that rate with the
+    launchpad, in coins, and tells it (`onTax`); `MAX_RATE` 15% caps what
+    the launchpad can ever answer
   - `src/interfaces/IDexMigrator.sol` — pluggable DEX adapter (one per chain)
   - `src/ZapRouter.sol` — one-transaction ETH buys on asset-quoted curves:
     through Uniswap for RWA pairs, or straight through the pre-market's own
@@ -57,19 +75,43 @@ and at `/litecoin`, out of the menu.
     create pools bound to the hook. Fork-tested against the live PoolManager,
     V4Quoter and Universal Router, including a real Robinhood NVDA pair.
   - `src/UniV3Migrator.sol` — legacy v3 graduation adapter (v7.3 and earlier)
-  - `src/UniV2Migrator.sol` — graduation adapter for chains whose DEX is
-    Uniswap v2 (Base, LitVM): seeds the pool at the curve's final price and
-    keeps the LP tokens forever. Nothing of the reserve is ever traded into
-    or deposited at a price somebody else set: a pool pre-seeded at another
+  - `src/UniV2Migrator.sol` — v3: graduation adapter for chains whose DEX is
+    Uniswap v2 (Base, LitVM): seeds the pool at the curve's final price,
+    keeps the LP tokens forever and registers the pair with the pad as the
+    coin's taxed pool. Nothing of the reserve is ever traded into or
+    deposited at a price somebody else set: a pool pre-seeded at another
     price is nudged to ours only when that costs next to nothing, otherwise
     the reserve is parked, still the coin's, for a `seed` once the pool is
     back at our price (the v1 adapter traded the pool back to our price and
-    joined it; that is how the Base v9 pools were taken, below)
-  - `Launchpad.migrateToken` / `migrateBalances` — owner-only, once per coin:
-    re-creates a coin from a frozen contract-less ledger (Notus on Litecoin)
-    with its curve state and holder balances, so trading continues at the
-    same price; `script/MigrateFromLedger.s.sol` drives it from the file
-    `litecoin/migration-snapshot.ts` writes
+    joined it; that is how the Base v9 pools were taken, below). **`harvest`**
+    (anyone): takes a slice of the fees waiting in coins at the pad — at
+    most what sells for half a percent of the pool's quote side, once a
+    block; everything at once while a freeze is announced — burns the burn
+    share without selling it, deepens the locked liquidity with the
+    liquidity share when the pool mints for it (else its quote goes to the
+    burn pot), sells the rest on the pool and hands the quote to the pad
+    (`poolFee`): the launchpad's part to the treasury, the creator's and
+    the holders' shares booked as a curve fee would be, a twentieth of the
+    treasury's part to whoever called. A trade wrapped around a harvest
+    pays the coin's tax on both legs and Uniswap's fee: it earns nothing.
+    The Uniswap router's plain swap functions do not fit these pools: with
+    the coin going in (a sell, or an exact-output buy) the pair receives
+    less than the router sent and reverts on its invariant; with the coin
+    coming out the plain exact-input buy goes through but delivers the
+    quoted amount less the rate, unchecked. Swap with the
+    `...SupportingFeeOnTransferTokens` variants, as the site does;
+    exact-output swaps are not supported
+  - `Launchpad.migrateToken` / `migrateBalances` — the owner's or the
+    migration operator's, once per coin: re-creates a coin from a frozen
+    ledger — Notus on Litecoin, or an earlier pad (Base v11) — with its
+    curve state, fee configuration, metadata and holder balances, funded in
+    the chain's coin or in an ERC-20 quote (cbLTC), so trading continues at
+    the same price; `script/MigrateFromLedger.s.sol` drives it from the file
+    `litecoin/migration-snapshot.ts` or `script/snapshot-evm.mjs` writes;
+    `script/rehearse-local.sh` rehearses the whole move on one anvil node
+    (both quotes, owner or operator), `script/rehearse-base-fork.sh` a
+    same-chain move (Base v11 → v12) on a fork of Base — built and
+    rehearsed, not used: v12 launched clean
 - `zcash/` — **Notus on Zcash** (testnet): a launchpad with no contracts — one
   shielded address, a published viewing key and a bonding-curve ledger
   replayed from encrypted memos. See [zcash/README.md](zcash/README.md)
@@ -145,12 +187,14 @@ and at `/litecoin`, out of the menu.
   DEX, of which 190.48M seed the pool and 9.52M stay locked in the pad for
   good (the curve's virtual share: below)
 - Virtual reserves: 1.25 ETH / 1.05B tokens → the curve raises ~4 ETH
-- Platform fee: 1% on buys and sells (max 5%, owner-configurable), 20% of
-  it to the treasury; a coin's own tax on top, up to 10% each way, fixed at
-  launch; the coin's pot (the platform fee's 80% and the whole tax) split
-  as its creator fixed it: creator / holders (cashback) / buyback-and-burn /
-  liquidity. A coin created with the plain `createToken` has no tax and its
-  pot goes whole to the creator or to the holders (`feesToHolders`)
+- Launchpad fee: 0.5% on buys and sells (max 5%; `setFeeBps` changes it
+  for coins created afterwards, each coin keeping the rate it launched
+  with), whole to the treasury, on the curve and on the pool; a coin's own
+  tax on top, up to 10% each way, fixed at launch, split as its creator
+  fixed it: creator / holders (cashback) / buyback-and-burn / liquidity,
+  on the curve and on the pool. A coin created with the plain `createToken`
+  has no tax, so nothing but the launchpad's fee is taken on it
+  (`feesToHolders` only names whom a tax would go to)
 - Buyback-and-burn: the burn pot buys the coin on its curve (a fee-free buy
   that raises the price and the reserve) or, once graduated, on its pool
   through the migrator, and burns what it gets — a slice at a time (a
@@ -161,8 +205,9 @@ and at `/litecoin`, out of the menu.
   the reserve at `migrateOut` and arrive as pots on the other chain
 - Graduation: once the 800M are sold out → curve trading closes and the
   200M reserve + raised quote (+ the liquidity pot) move automatically into
-  a locked pool on the chain's DEX, in the same transaction; fees end with
-  the curve. The pool opens **at the price the curve closed at**: the quote
+  a locked pool on the chain's DEX, in the same transaction; the fees go on
+  there, taken in coins by the token on every pool trade and sold by
+  anyone's `harvest` (above). The pool opens **at the price the curve closed at**: the quote
   that goes in (the raise and the liquidity pot) against as many coins as
   that price says, 190.48M of the 200M reserve, and the rest of the reserve
   stays locked in the pad for good (`lockedAtGraduation`), the curve's
@@ -248,10 +293,10 @@ explorer `https://liteforge.explorer.caldera.xyz`, gas in zkLTC) is Litecoin's
 EVM layer 2: when LitVM mainnet goes live, the Litecoin ledger's coins migrate
 there automatically — same holders, same price, each coin's pool moved to a
 DEX — see [litecoin/README.md](litecoin/README.md#the-road-to-litvm). The
-mainnet pad opens its zkLTC curves with the same 60 of virtual reserve as
-Base's cbLTC ones (192 zkLTC raised to graduate), decided 2026-10-05; the
-Liteforge rehearsal pad runs at 0.05 so that graduations can be tried on
-faucet money.
+mainnet pad opens its zkLTC curves with the same virtual reserve as Base's
+cbLTC ones — 50 from v12 on (160 zkLTC raised to graduate; v11 opened with
+60, decided 2026-10-05, 192 to graduate); the Liteforge rehearsal pad runs
+at 0.05 so that graduations can be tried on faucet money.
 Per-chain launchpad addresses live in `web/lib/config.ts` (`LAUNCHPAD_ADDRESS`);
 chains without a deployment show a notice and disable trading. Robinhood
 Chain (Arbitrum Orbit, chain ID 4663, RPC `https://rpc.mainnet.chain.robinhood.com`,

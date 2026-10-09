@@ -5,7 +5,7 @@ import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "openzeppelin-contracts/contracts/utils/ReentrancyGuard.sol";
 import {Math} from "openzeppelin-contracts/contracts/utils/math/Math.sol";
-import {IDexMigrator, IDexMigratorUnlock, IDexMigratorBuyback} from "./interfaces/IDexMigrator.sol";
+import {IDexMigrator, IDexMigratorUnlock, IDexMigratorBuyback, IDexMigratorHarvest} from "./interfaces/IDexMigrator.sol";
 
 interface IUniswapV2Router02 {
     function factory() external view returns (address);
@@ -31,8 +31,22 @@ interface IWETH is IERC20 {
     function withdraw(uint256) external;
 }
 
-interface ILaunchpadTreasury {
+/// What the harvest reads of the launchpad and hands it back.
+interface ILaunchpadFees {
     function treasury() external view returns (address);
+    function freezeBlock() external view returns (uint256);
+    function taxTreasury(address token) external view returns (uint256);
+    function taxPot(address token) external view returns (uint256);
+    function feeConfig(address token)
+        external
+        view
+        returns (uint16, uint16, uint16, uint16, uint16, uint16, uint16);
+    function takeTax(address token, uint256 fromTreasury, uint256 fromPot, uint256 toBurn)
+        external
+        returns (uint256 toSell);
+    function poolFee(address token, uint256 toTreasury, uint256 toCreator, uint256 toHolders, uint256 toBurnPot)
+        external
+        payable;
 }
 
 /// @title UniV2Migrator
@@ -68,7 +82,7 @@ interface ILaunchpadTreasury {
 ///         once the pool is back at our price (a mispriced pool is an
 ///         invitation to arbitrage it there). Nothing of ours is ever handed
 ///         to a price somebody else set.
-contract UniV2Migrator is IDexMigrator, IDexMigratorUnlock, IDexMigratorBuyback, ReentrancyGuard {
+contract UniV2Migrator is IDexMigrator, IDexMigratorUnlock, IDexMigratorBuyback, IDexMigratorHarvest, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     address public immutable launchpad;
@@ -80,6 +94,12 @@ contract UniV2Migrator is IDexMigrator, IDexMigratorUnlock, IDexMigratorBuyback,
     mapping(address token => address) public pairAsset;
     /// The LP tokens this contract holds for each token: its locked liquidity.
     mapping(address token => uint256) public liquidity;
+    /// Pools of a native-quoted curve: WETH in the pair, the chain's coin in and out of the launchpad.
+    mapping(address token => bool) public nativeQuote;
+    /// The first block a coin's next harvest may happen in: one a block, a slice at a time.
+    mapping(address token => uint256) public nextHarvestBlock;
+    /// The caller's tip, out of the launchpad's part of what a harvest realises: a twentieth.
+    uint256 public constant TIP_DIVISOR = 20;
 
     /// What was handed over and has not reached the pool yet, because the
     /// pool held liquidity at another price when it was tried.
@@ -112,12 +132,26 @@ contract UniV2Migrator is IDexMigrator, IDexMigratorUnlock, IDexMigratorBuyback,
     event PoolUnlocked(address indexed token, address pair, uint256 tokenAmount, uint256 quoteAmount, uint256 liquidity);
     /// The launchpad bought the token back on its pool, to burn it.
     event BoughtBack(address indexed token, address pair, uint256 quoteIn, uint256 tokenOut);
+    /// Pool fees realised: coins sold (the burn share burned, `lp` minted from the liquidity share), the quote, the caller's tip.
+    event Harvested(
+        address indexed token,
+        address pair,
+        uint256 tokensIn,
+        uint256 quoteOut,
+        uint256 tokensBurned,
+        uint256 lp,
+        address indexed caller,
+        uint256 tip
+    );
 
     error OnlyLaunchpad();
     error NothingToSeed();
     error NothingToUnlock();
     error NothingToBuy();
     error WrongPayment();
+    error NothingToSell();
+    error HarvestCooldown();
+    error TipFailed();
 
     constructor(address launchpad_, address router_) {
         launchpad = launchpad_;
@@ -133,6 +167,7 @@ contract UniV2Migrator is IDexMigrator, IDexMigratorUnlock, IDexMigratorBuyback,
         external
         payable
         nonReentrant
+        returns (address pool)
     {
         if (msg.sender != launchpad) revert OnlyLaunchpad();
         address quote = quoteAsset;
@@ -140,6 +175,7 @@ contract UniV2Migrator is IDexMigrator, IDexMigratorUnlock, IDexMigratorBuyback,
             quote = weth;
             quoteAmount = msg.value;
             IWETH(weth).deposit{value: msg.value}();
+            nativeQuote[token] = true;
         }
         if (tokenAmount == 0 || quoteAmount == 0) revert NothingToSeed();
 
@@ -148,7 +184,8 @@ contract UniV2Migrator is IDexMigrator, IDexMigratorUnlock, IDexMigratorBuyback,
         Parked storage p = parked[token];
         p.tokenAmount += tokenAmount;
         p.quoteAmount += quoteAmount;
-        _seed(token, quote, _pair(token, quote));
+        pool = _pair(token, quote);
+        _seed(token, quote, pool);
     }
 
     /// @notice Put a parked reserve in its pool: anyone, any time. Lands when
@@ -221,6 +258,147 @@ contract UniV2Migrator is IDexMigrator, IDexMigratorUnlock, IDexMigratorBuyback,
         return rQuote / 200; // half a percent of the pool's quote side: less than Uniswap's fee both ways would cost a sandwich
     }
 
+    // ------------------------------------------------------------- harvest
+
+    /// @inheritdoc IDexMigratorHarvest
+    /// @dev The coins whose sale takes half a percent of the pool's quote
+    ///      side (Uniswap's getAmountIn): the same slice a buyback spends, so
+    ///      a trade wrapped around a harvest earns less than the coin's tax
+    ///      and the pool's fee cost it on both legs. 0 on a pool we hold no
+    ///      liquidity in (parked: somebody else's price).
+    function harvestCap(address token) public view returns (uint256) {
+        address quote = pairAsset[token];
+        if (quote == address(0) || liquidity[token] == 0) return 0;
+        (uint256 rToken, uint256 rQuote) = _reserves(token, factory.getPair(token, quote));
+        uint256 out = rQuote / 200;
+        if (out == 0) return 0;
+        return (rToken * out * 1000) / ((rQuote - out) * 997) + 1;
+    }
+
+    /// The working state of one harvest (one struct: the function would not fit the stack otherwise).
+    struct Harvest {
+        address quote;
+        address pair;
+        uint256 rToken;
+        uint256 rQuote;
+        uint256 slice; //     coins taken from the launchpad's two buckets
+        uint256 treasury; //  of them, the launchpad's (sold, to the treasury)
+        uint256 creator; //   the coin's shares of the rest
+        uint256 holders;
+        uint256 burn; //      burned by the launchpad, never sold
+        uint256 liquidity; // half kept as coins, half sold, both to the locked pool
+        uint256 deepenT; //   the half kept (0: the pool would mint nothing, the share is sold and buys back)
+        uint256 sellT;
+        uint256 quoteOut;
+        uint256 qTreasury;
+        uint256 qCreator;
+        uint256 qHolders;
+        uint256 qLiquidity;
+        uint256 tip;
+        uint256 lp;
+        uint256 toBurnPot;
+    }
+
+    /// @inheritdoc IDexMigratorHarvest
+    /// @dev Anyone, once a block per coin, a slice at most (harvestCap) —
+    ///      unbounded once the launchpad has announced a freeze, so every
+    ///      bucket can be emptied before it lands. The slice is taken pro
+    ///      rata from the launchpad's bucket and the coin's; the coin's part
+    ///      is split by its FeeConfig in coins: the burn share is burned by
+    ///      the launchpad, the liquidity share half kept and half sold so
+    ///      both sides join the locked position, the rest sold; the quote
+    ///      goes to each share pro rata to the coins it sold, rounding dust
+    ///      to the treasury, a twentieth of the treasury's part to the
+    ///      caller. The launchpad books the quote (poolFee).
+    function harvest(address token)
+        external
+        nonReentrant
+        returns (uint256 tokensIn, uint256 quoteOut, uint256 tokensBurned)
+    {
+        Harvest memory h;
+        h.quote = pairAsset[token];
+        if (h.quote == address(0) || liquidity[token] == 0) revert NothingToSell();
+        ILaunchpadFees pad = ILaunchpadFees(launchpad);
+        bool rush = pad.freezeBlock() != 0;
+        if (!rush) {
+            if (block.number < nextHarvestBlock[token]) revert HarvestCooldown();
+            nextHarvestBlock[token] = block.number + 1;
+        }
+        uint256 bucketT = pad.taxTreasury(token);
+        uint256 total = bucketT + pad.taxPot(token);
+        if (total == 0) revert NothingToSell();
+        h.slice = total;
+        if (!rush) {
+            uint256 cap = harvestCap(token);
+            if (h.slice > cap) h.slice = cap;
+        }
+        if (h.slice == 0) revert NothingToSell();
+        h.treasury = (h.slice * bucketT) / total;
+        {
+            uint256 pot = h.slice - h.treasury;
+            (,, uint16 creatorBps, uint16 holdersBps, uint16 burnBps, uint16 liquidityBps,) = pad.feeConfig(token);
+            h.burn = (pot * burnBps) / 10_000;
+            h.liquidity = (pot * liquidityBps) / 10_000;
+            h.creator = (pot * creatorBps) / 10_000;
+            h.holders = pot - h.burn - h.liquidity - h.creator; // the holders' share, rounding included
+            holdersBps; // the shares add up to the pot: the launchpad checked them at launch
+        }
+        h.pair = factory.getPair(token, h.quote);
+        (h.rToken, h.rQuote) = _reserves(token, h.pair);
+        // the liquidity leg, decided before anything moves: only when both sides would mint
+        h.deepenT = h.liquidity / 2;
+        if (h.deepenT != 0) {
+            uint256 lpTotal = IUniswapV2Pair(h.pair).totalSupply();
+            uint256 qEst = _amountOut(h.liquidity - h.deepenT, h.rToken, h.rQuote);
+            if ((h.deepenT * lpTotal) / h.rToken == 0 || (qEst * lpTotal) / h.rQuote == 0) h.deepenT = 0;
+        }
+        h.sellT = h.slice - h.burn - h.deepenT;
+        if (h.sellT == 0) revert NothingToSell();
+        h.quoteOut = _amountOut(h.sellT, h.rToken, h.rQuote);
+        if (h.quoteOut == 0) revert NothingToSell();
+
+        // the launchpad burns the burn share and sends the rest here
+        pad.takeTax(token, h.treasury, h.slice - h.treasury, h.burn);
+        IERC20(token).safeTransfer(h.pair, h.sellT);
+        _swapOut(h.pair, token, h.quoteOut, false);
+
+        // the quote to the coins each share sold; dust to the treasury
+        h.qTreasury = (h.quoteOut * h.treasury) / h.sellT;
+        h.qCreator = (h.quoteOut * h.creator) / h.sellT;
+        h.qHolders = (h.quoteOut * h.holders) / h.sellT;
+        h.qLiquidity = (h.quoteOut * (h.liquidity - h.deepenT)) / h.sellT;
+        h.qTreasury += h.quoteOut - h.qTreasury - h.qCreator - h.qHolders - h.qLiquidity;
+        h.tip = h.qTreasury / TIP_DIVISOR;
+        h.qTreasury -= h.tip;
+
+        // the locked position deepens with both sides of the liquidity share; or, when the
+        // pool would mint nothing of it, its quote buys the coin back later (buybackAndBurn)
+        if (h.deepenT != 0) {
+            IERC20(token).safeTransfer(h.pair, h.deepenT);
+            IERC20(h.quote).safeTransfer(h.pair, h.qLiquidity);
+            h.lp = IUniswapV2Pair(h.pair).mint(address(this));
+            liquidity[token] += h.lp;
+        } else {
+            h.toBurnPot = h.qLiquidity;
+        }
+
+        uint256 toPad = h.qTreasury + h.qCreator + h.qHolders + h.toBurnPot;
+        if (nativeQuote[token]) {
+            IWETH(weth).withdraw(toPad + h.tip);
+            pad.poolFee{value: toPad}(token, h.qTreasury, h.qCreator, h.qHolders, h.toBurnPot);
+            if (h.tip != 0) {
+                (bool ok,) = msg.sender.call{value: h.tip}("");
+                if (!ok) revert TipFailed();
+            }
+        } else {
+            IERC20(h.quote).safeTransfer(launchpad, toPad);
+            pad.poolFee(token, h.qTreasury, h.qCreator, h.qHolders, h.toBurnPot);
+            if (h.tip != 0) IERC20(h.quote).safeTransfer(msg.sender, h.tip);
+        }
+        emit Harvested(token, h.pair, h.slice, h.quoteOut, h.burn, h.lp, msg.sender, h.tip);
+        return (h.slice, h.quoteOut, h.burn);
+    }
+
     /// @notice The locked pool of a graduated token.
     function pairOf(address token) external view returns (address) {
         return factory.getPair(token, pairAsset[token]);
@@ -261,7 +439,7 @@ contract UniV2Migrator is IDexMigrator, IDexMigratorUnlock, IDexMigratorBuyback,
         emit PoolSeeded(token, pair, useToken, useQuote, lp);
 
         // what the pool's ratio left over (rounding, or a pool deeper than what we hold) goes to the treasury
-        address treasury = ILaunchpadTreasury(launchpad).treasury();
+        address treasury = ILaunchpadFees(launchpad).treasury();
         if (p.tokenAmount > useToken) IERC20(token).safeTransfer(treasury, p.tokenAmount - useToken);
         uint256 left = p.quoteAmount - useQuote;
         if (left > 0) {

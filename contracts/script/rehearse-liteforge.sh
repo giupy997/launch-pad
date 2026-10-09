@@ -19,6 +19,7 @@
 #
 # Variables, all optional: TARGET (a receiving pad to reuse), SRC_RPC, DST_RPC,
 # SRC_PAD, SRC_QUOTE, SRC_FROM (the Base pad, its quote, its deploy block),
+# POOL_QUOTE_IN (the zkLTC, in wei, the pool buy of step 6 spends: 0.01),
 # SCALE (a mechanics-only rehearsal with every quote figure N times smaller,
 # for a testnet short of zkLTC: holders and coins stay exact, prices land N
 # times lower; the real day runs at 1).
@@ -129,6 +130,11 @@ echo "== 5. the check: every holder, every price"
 OUT=$(MIGRATION_FILE=$FILE forge script script/rehearsal/RehearseCheck.s.sol --rpc-url "$DST_RPC" 2>&1) \
   || { echo "the check failed:"; echo "$OUT" | grep -E "PASS|FAIL|Error|revert|Reason" || echo "$OUT" | tail -30; exit 1; }
 echo "$OUT" | grep -E "PASS|Error|revert|Reason" || true
+
+echo "== 6. NOTUS's twin on its pool (Lester Labs' Uniswap v2): a buy, a sell, a harvest, a transfer, all by the deployer"
+OUT=$(SYMBOL=NOTUS SINGLE_SIGNER=true QUOTE_IN=${POOL_QUOTE_IN:-10000000000000000} forge script script/rehearsal/RehearseV12Pool.s.sol --rpc-url "$DST_RPC" "${SIGNER[@]}" --broadcast 2>&1) \
+  || { echo "the pool rehearsal failed:"; echo "$OUT" | grep -E "PASS|Error|revert|Reason" || echo "$OUT" | tail -30; exit 1; }
+echo "$OUT" | grep -E "^  [a-z]|PASS|Error|revert|Reason" || true
 
 echo "== done"
 echo "   receiving pad   $TARGET"

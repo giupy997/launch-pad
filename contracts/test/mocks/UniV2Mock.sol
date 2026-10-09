@@ -24,6 +24,10 @@ contract MockWETH9 is ERC20 {
     }
 }
 
+interface IUniswapV2Callee {
+    function uniswapV2Call(address sender, uint256 amount0, uint256 amount1, bytes calldata data) external;
+}
+
 /// A Uniswap v2 pair with the arithmetic that matters here: constant product
 /// with the 0.3% fee on swaps, liquidity minted from the balance above the
 /// reserves (sqrt of the product the first time, pro rata after), sync and
@@ -39,6 +43,18 @@ contract MockV2Pair is ERC20 {
     event Mint(address indexed sender, uint256 amount0, uint256 amount1);
     event Swap(address indexed sender, uint256 amount0In, uint256 amount1In, uint256 amount0Out, uint256 amount1Out);
     event Sync(uint112 reserve0, uint112 reserve1);
+
+    /// Uniswap's reentrancy guard, verbatim in spirit: a flash-swap callback
+    /// that comes back into the pair (through anything that trades on it,
+    /// a harvest included) reverts "LOCKED".
+    uint256 private unlocked = 1;
+
+    modifier lock() {
+        require(unlocked == 1, "LOCKED");
+        unlocked = 0;
+        _;
+        unlocked = 1;
+    }
 
     constructor() ERC20("Uniswap V2", "UNI-V2") {
         factory = msg.sender;
@@ -61,7 +77,7 @@ contract MockV2Pair is ERC20 {
         emit Sync(reserve0, reserve1);
     }
 
-    function mint(address to) external returns (uint256 liquidity) {
+    function mint(address to) external lock returns (uint256 liquidity) {
         (uint112 r0, uint112 r1,) = getReserves();
         uint256 b0 = IERC20(token0).balanceOf(address(this));
         uint256 b1 = IERC20(token1).balanceOf(address(this));
@@ -81,7 +97,7 @@ contract MockV2Pair is ERC20 {
     }
 
     /// Uniswap's burn: the LP the pair holds is redeemed pro rata against its balances.
-    function burn(address to) external returns (uint256 amount0, uint256 amount1) {
+    function burn(address to) external lock returns (uint256 amount0, uint256 amount1) {
         uint256 liquidity = balanceOf(address(this));
         uint256 b0 = IERC20(token0).balanceOf(address(this));
         uint256 b1 = IERC20(token1).balanceOf(address(this));
@@ -95,13 +111,17 @@ contract MockV2Pair is ERC20 {
         _update(IERC20(token0).balanceOf(address(this)), IERC20(token1).balanceOf(address(this)));
     }
 
-    function swap(uint256 amount0Out, uint256 amount1Out, address to, bytes calldata) external {
+    /// A swap, and with `data` a flash swap: the output goes out first, then
+    /// `to` is called back (IUniswapV2Callee) and must have paid by the time
+    /// the invariant is checked.
+    function swap(uint256 amount0Out, uint256 amount1Out, address to, bytes calldata data) external lock {
         require(amount0Out > 0 || amount1Out > 0, "INSUFFICIENT_OUTPUT_AMOUNT");
         (uint112 r0, uint112 r1,) = getReserves();
         require(amount0Out < r0 && amount1Out < r1, "INSUFFICIENT_LIQUIDITY");
         require(to != token0 && to != token1, "INVALID_TO");
         if (amount0Out > 0) IERC20(token0).transfer(to, amount0Out);
         if (amount1Out > 0) IERC20(token1).transfer(to, amount1Out);
+        if (data.length > 0) IUniswapV2Callee(to).uniswapV2Call(msg.sender, amount0Out, amount1Out, data);
         _settle(r0, r1, amount0Out, amount1Out);
     }
 
@@ -117,12 +137,12 @@ contract MockV2Pair is ERC20 {
         emit Swap(msg.sender, in0, in1, out0, out1);
     }
 
-    function skim(address to) external {
+    function skim(address to) external lock {
         IERC20(token0).transfer(to, IERC20(token0).balanceOf(address(this)) - reserve0);
         IERC20(token1).transfer(to, IERC20(token1).balanceOf(address(this)) - reserve1);
     }
 
-    function sync() external {
+    function sync() external lock {
         _update(IERC20(token0).balanceOf(address(this)), IERC20(token1).balanceOf(address(this)));
     }
 }

@@ -18,11 +18,8 @@ contract LaunchTokenFactory {
         launchpad = msg.sender;
     }
 
-    function create(string calldata name, string calldata symbol, uint256 supply, bool transferable)
-        external
-        returns (address)
-    {
+    function create(string calldata name, string calldata symbol, uint256 supply) external returns (address) {
         if (msg.sender != launchpad) revert OnlyLaunchpad();
-        return address(new LaunchToken(name, symbol, supply, transferable, msg.sender));
+        return address(new LaunchToken(name, symbol, supply, msg.sender));
     }
 }

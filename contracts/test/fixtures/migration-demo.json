@@ -34,7 +34,13 @@
    "liquidityBps": 0,
    "burned": 0,
    "burnPot": 0,
-   "liquidityPot": 0
+   "liquidityPot": 0,
+   "website": "",
+   "twitter": "",
+   "telegram": "",
+   "livestream": "",
+   "description": "",
+   "feeRecipient": "0x0000000000000000000000000000000000000000"
   },
   {
    "name": "Lite Cat",
@@ -63,7 +69,13 @@
    "liquidityBps": 0,
    "burned": 0,
    "burnPot": 0,
-   "liquidityPot": 0
+   "liquidityPot": 0,
+   "website": "",
+   "twitter": "",
+   "telegram": "",
+   "livestream": "",
+   "description": "",
+   "feeRecipient": "0x0000000000000000000000000000000000000000"
   },
   {
    "name": "Mimble",
@@ -92,7 +104,13 @@
    "liquidityBps": 0,
    "burned": 0,
    "burnPot": 0,
-   "liquidityPot": 0
+   "liquidityPot": 0,
+   "website": "",
+   "twitter": "",
+   "telegram": "",
+   "livestream": "",
+   "description": "",
+   "feeRecipient": "0x0000000000000000000000000000000000000000"
   }
  ]
 }

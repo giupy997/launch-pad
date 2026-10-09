@@ -16,7 +16,7 @@ contract RehearseCheck is Script {
         string memory json = vm.readFile(vm.envString("MIGRATION_FILE"));
         MigrateFromLedger.Coin[] memory coins = new MigrateFromLedger().load(json);
         string memory t = vm.readFile(Keys.TARGET);
-        Launchpad pad = Launchpad(vm.parseJsonAddress(t, ".launchpad"));
+        Launchpad pad = Launchpad(payable(vm.parseJsonAddress(t, ".launchpad")));
         UniV2Migrator migrator = UniV2Migrator(payable(vm.parseJsonAddress(t, ".migrator")));
 
         for (uint256 i = 0; i < coins.length; i++) {
@@ -41,17 +41,30 @@ contract RehearseCheck is Script {
         require(owned == c.sold - c.burned, string.concat(c.symbol, ": holders do not add up to sold less burned"));
     }
 
-    /// The coin's fee configuration, its burn and its pots, as frozen.
+    /// The coin's fee configuration (the pad's own rate stamped on it), its
+    /// fee recipient, its metadata, its burn and its pots, as frozen.
     function _checkFees(Launchpad pad, MigrateFromLedger.Coin memory c, address token) internal view {
-        (uint16 buyTax, uint16 sellTax, uint16 creatorBps, uint16 holdersBps, uint16 burnBps, uint16 liquidityBps) = pad.feeConfig(token);
+        (uint16 buyTax, uint16 sellTax, uint16 creatorBps, uint16 holdersBps, uint16 burnBps, uint16 liquidityBps, uint16 platformBps) =
+            pad.feeConfig(token);
         require(
             buyTax == c.buyTaxBps && sellTax == c.sellTaxBps && creatorBps == c.creatorBps && holdersBps == c.holdersBps
                 && burnBps == c.burnBps && liquidityBps == c.liquidityBps,
             string.concat(c.symbol, ": the fee configuration differs")
         );
+        require(platformBps == pad.feeBps(), string.concat(c.symbol, ": the launchpad's rate was not stamped on it"));
+        require(pad.feeRecipient(token) == c.feeRecipient, string.concat(c.symbol, ": the fee recipient differs"));
+        (string memory logo, string memory website,,,, string memory description) = pad.tokenMetadata(token);
+        require(
+            _eq(logo, c.logo) && _eq(website, c.website) && _eq(description, c.description),
+            string.concat(c.symbol, ": the metadata differs")
+        );
         require(pad.burned(token) == c.burned, string.concat(c.symbol, ": the burn differs"));
         require(pad.burnPot(token) == c.burnPot, string.concat(c.symbol, ": the burn pot differs"));
         require(pad.liquidityPot(token) == c.liquidityPot, string.concat(c.symbol, ": the liquidity pot differs"));
+    }
+
+    function _eq(string memory a, string memory b) internal pure returns (bool) {
+        return keccak256(bytes(a)) == keccak256(bytes(b));
     }
 
     function _checkCurve(Launchpad pad, MigrateFromLedger.Coin memory c, address token) internal view {

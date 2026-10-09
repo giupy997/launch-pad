@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import {Test} from "forge-std/Test.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {Launchpad} from "../src/Launchpad.sol";
+import {LaunchpadBase} from "../src/LaunchpadBase.sol";
 import {LaunchToken} from "../src/LaunchToken.sol";
 import {UniV2Migrator} from "../src/UniV2Migrator.sol";
 import {SlipstreamZapRouter} from "../src/SlipstreamZapRouter.sol";
@@ -16,29 +17,52 @@ interface IUniV2PairView {
 }
 
 interface IUniV2RouterSwap {
+    /// the plain swap: the router's figures assume the pair gets and delivers what it computes (v11's pools)
     function swapExactTokensForTokens(uint256 amountIn, uint256 amountOutMin, address[] calldata path, address to, uint256 deadline)
         external
         returns (uint256[] memory amounts);
+    /// the swap the site makes on a v12 pool: the router measures what the pair got and what `to` received
+    function swapExactTokensForTokensSupportingFeeOnTransferTokens(
+        uint256 amountIn,
+        uint256 amountOutMin,
+        address[] calldata path,
+        address to,
+        uint256 deadline
+    ) external;
 }
 
-/// End-to-end against the PRODUCTION v11 stack on Base, on a fork (no real
-/// funds spent), every contract the live one: a coin is created on the live
-/// pad and bought through graduation with ETH through the live zap (Aerodrome
+/// End-to-end against a PRODUCTION stack on Base, on a fork (no real funds
+/// spent), every contract the live one: a coin is created on the live pad
+/// and bought through graduation with ETH through the live zap (Aerodrome
 /// → cbLTC → the curve), so the pool it seeds on the live Uniswap v2 can be
 /// checked — seeded in the same transaction, the whole raise in against coins
 /// at the price the curve closed at, the rest of the reserve locked in the
 /// pad, the LP locked in the migrator, nothing parked —
 /// and traded on the live router both ways; and a small ETH buy on the curve.
-/// NOTE: targets the deployed addresses — update them after a redeploy.
-/// Run with: RUN_FORK_LIVE=true forge test --match-contract LiveBase -vv
+/// NOTE: targets the deployed addresses — the v11 stack by default (README,
+/// Deployments). LAUNCHPAD names another pad (the v12 one, once deployed) and
+/// ZAP the zap deployed for it; the migrator is read off the pad. The pad's
+/// version is probed on the fork: a v12 pad takes the launchpad's fee on
+/// the pool too, in coins, which changes what the router trade checks.
+/// Run with: RUN_FORK_LIVE=true [LAUNCHPAD=0x... ZAP=0x...] forge test --match-contract LiveBase -vv
 ///   (FORK_RPC overrides the Base node; the default is mainnet.base.org)
 contract LiveBaseForkTest is Test {
-    Launchpad constant PAD = Launchpad(0xEfbB4ebdf5130cC4fC45899EeBA727fa2F55b5f4);
-    UniV2Migrator constant MIGRATOR = UniV2Migrator(payable(0x8fB7f1D18F4b2ECC79da94aBF51f95B93E07d218));
-    SlipstreamZapRouter constant ZAP = SlipstreamZapRouter(payable(0x072a77dC2a770504A1DA17e2fB6814C9cFf85254));
+    /// Base v11 (README, Deployments): the pad, its migrator and its zap — the defaults.
+    address constant V11_PAD = 0xEfbB4ebdf5130cC4fC45899EeBA727fa2F55b5f4;
+    address constant V11_MIGRATOR = 0x8fB7f1D18F4b2ECC79da94aBF51f95B93E07d218;
+    address constant V11_ZAP = 0x072a77dC2a770504A1DA17e2fB6814C9cFf85254;
+    /// Coinbase Wrapped LTC (8 decimals): the pad's only quote.
     IERC20 constant CBLTC = IERC20(0xcb17C9Db87B595717C857a08468793f5bAb6445F);
+    /// Base's WETH (the OP-stack predeploy): the zap's way in.
     address constant WETH = 0x4200000000000000000000000000000000000006;
+    /// Uniswap v2 Router02 on Base: the graduation pools trade through it.
     address constant UNIV2_ROUTER = 0x4752ba5DBc23f44D87826276BF6Fd6b1C372aD24;
+
+    Launchpad PAD;
+    UniV2Migrator MIGRATOR;
+    SlipstreamZapRouter ZAP;
+    /// The pad under test has v12's surface: fees on the pool, booked in coins (its migration module answers).
+    bool v12;
 
     bool skipAll;
     address creator = makeAddr("creator");
@@ -51,8 +75,20 @@ contract LiveBaseForkTest is Test {
             return;
         }
         vm.createSelectFork(vm.envOr("FORK_RPC", string("https://mainnet.base.org")));
+        PAD = Launchpad(payable(vm.envOr("LAUNCHPAD", V11_PAD)));
+        ZAP = SlipstreamZapRouter(payable(vm.envOr("ZAP", V11_ZAP)));
+        MIGRATOR = UniV2Migrator(payable(address(PAD.migrator())));
+        v12 = _isV12(address(PAD));
+        // the zap buys on the pad it was deployed for: another pad's zap would buy on that one
+        assertEq(ZAP.launchpad(), address(PAD), "ZAP is not this pad's zap: set ZAP alongside LAUNCHPAD");
         vm.deal(whale, 100 ether);
         vm.deal(trader, 1 ether);
+    }
+
+    /// v12 answers MIGRATION_MODULE(); v11 has no such selector and no fallback, so the call reverts.
+    function _isV12(address pad) internal view returns (bool) {
+        (bool ok, bytes memory ret) = pad.staticcall(abi.encodeWithSignature("MIGRATION_MODULE()"));
+        return ok && ret.length == 32;
     }
 
     /// the route the site uses: WETH → cbLTC on Aerodrome Slipstream's CL200 pool
@@ -62,7 +98,7 @@ contract LiveBaseForkTest is Test {
 
     function _create() internal returns (address token) {
         vm.prank(creator);
-        token = PAD.createToken("Fork Test", "FORK", 0, Launchpad.TokenMetadata("", "", "", "", "", ""), address(CBLTC), false);
+        token = PAD.createToken("Fork Test", "FORK", 0, LaunchpadBase.TokenMetadata("", "", "", "", "", ""), address(CBLTC), false);
     }
 
     /// Buys the whole curve with ETH through the live zap, a few ETH at a time
@@ -86,7 +122,7 @@ contract LiveBaseForkTest is Test {
 
     function test_live_graduationSeedsTheUniswapPoolInOneTransaction() public {
         if (skipAll) return;
-        assertEq(address(PAD.migrator()), address(MIGRATOR), "the live pad's migrator is the v2 adapter");
+        if (address(PAD) == V11_PAD) assertEq(address(MIGRATOR), V11_MIGRATOR, "the v11 pad's migrator is its v2 adapter");
         assertEq(MIGRATOR.launchpad(), address(PAD));
         assertEq(address(MIGRATOR.router()), UNIV2_ROUTER);
 
@@ -95,6 +131,7 @@ contract LiveBaseForkTest is Test {
         _checkCurveClosed(token);
         address pair = _checkPoolAtTheClosingPrice(token);
         _checkLocked(token, pair);
+        if (v12) assertTrue(PAD.taxedPool(token, pair), "v12: the pool is registered: taxed, and no cashback on what it holds");
     }
 
     function _checkCurveClosed(address token) internal {
@@ -108,7 +145,7 @@ contract LiveBaseForkTest is Test {
         // the curve is closed
         vm.startPrank(whale);
         CBLTC.approve(address(PAD), type(uint256).max);
-        vm.expectRevert(Launchpad.AlreadyGraduated.selector);
+        vm.expectRevert(LaunchpadBase.AlreadyGraduated.selector);
         PAD.buyWithQuote(token, 1e8, 0);
         vm.stopPrank();
     }
@@ -122,8 +159,9 @@ contract LiveBaseForkTest is Test {
         assertGt(PAD.lockedAtGraduation(token), 0, "the curve's virtual share stays locked");
         // the whole raise is in the pool: what a sold-out curve holds is its virtual
         // reserve grown by VIRTUAL_TOKEN / (VIRTUAL_TOKEN - CURVE_SUPPLY), less the
-        // virtual part — 3.2 times the 60 cbLTC, 192 cbLTC — plus the coin's liquidity
-        // pot (none: a plain createToken has no tax), to the rounding of the buys
+        // virtual part — 3.2 times the virtual reserve: 192 cbLTC on v11's 60, 160 on
+        // v12's 50 — plus the coin's liquidity pot (none: a plain createToken has no
+        // tax), to the rounding of the buys
         uint256 virtualQuote = PAD.quoteVirtualReserve(address(CBLTC));
         uint256 raise = (virtualQuote * PAD.VIRTUAL_TOKEN()) / (PAD.VIRTUAL_TOKEN() - PAD.CURVE_SUPPLY()) - virtualQuote;
         assertApproxEqAbs(rQuote, raise, 1e4, "the whole raise is in the pool");
@@ -156,19 +194,61 @@ contract LiveBaseForkTest is Test {
         address pair = MIGRATOR.pairOf(token);
         (uint256 rToken0, uint256 rQuote0) = _reserves(token, pair);
 
-        // the whale, with the cbLTC its last buy did not need, buys and sells in the pool
+        // the whale, with the cbLTC its last buy did not need, buys and sells in the pool;
+        // what Uniswap's arithmetic says the pair pays out, from the reserves before
         uint256 spend = 1e8;
-        uint256 bought = _buyInPool(token, spend);
-        // what Uniswap's arithmetic says, from the reserves before
-        assertEq(bought, (spend * 997 * rToken0) / (rQuote0 * 1000 + spend * 997), "the pool is a plain Uniswap v2 pair");
-        uint256 back = _sellInPool(token, bought);
-        assertGt(back, (spend * 99) / 100, "sold back for the spend less the two 0.3% fees and the price move");
-        assertLt(back, spend);
+        uint256 out = (spend * 997 * rToken0) / (rQuote0 * 1000 + spend * 997);
+        if (v12) _tradeOnV12(token, pair, spend, out);
+        else _tradeOnV11(token, spend, out);
 
         // the fees stayed in the pool, the LP stayed locked
         (uint256 rToken1, uint256 rQuote1) = _reserves(token, pair);
         assertGe(rToken1 * rQuote1, rToken0 * rQuote0, "the constant product does not shrink");
         assertEq(IUniV2PairView(pair).balanceOf(address(MIGRATOR)), MIGRATOR.liquidity(token), "the LP stays locked");
+    }
+
+    /// v11: the pair delivers whole, so the plain router functions serve; sold back for the spend
+    /// less the two 0.3% fees and the price move.
+    function _tradeOnV11(address token, uint256 spend, uint256 out) internal {
+        uint256 bought = _buyInPool(token, spend);
+        assertEq(bought, out, "the pool is a plain Uniswap v2 pair");
+        uint256 back = _sellInPool(token, bought);
+        assertGt(back, (spend * 99) / 100, "sold back for the spend less the two 0.3% fees and the price move");
+        assertLt(back, spend);
+    }
+
+    /// v12: the coin keeps its pool rate on each leg — for a plain coin the launchpad's 0.5% alone,
+    /// stamped at creation — so the trade goes through the fee-on-transfer functions, as the site
+    /// does, and the pad's bucket grows by exactly the coins taken: the launchpad's whole, the coin's none.
+    function _tradeOnV12(address token, address pair, uint256 spend, uint256 out) internal {
+        (uint256 got, uint256 taxBuy) = _v12Buy(token, spend, out);
+        uint256 back = _v12Sell(token, pair, got, taxBuy);
+        assertGt(back, (spend * 98) / 100, "sold back for the spend less two 0.5% and two 0.3% fees and the price move");
+        assertLt(back, spend);
+    }
+
+    /// The v12 buy: the pair pays `out`, the coin keeps the rate, the whale gets the rest; the bucket holds the rate.
+    function _v12Buy(address token, uint256 spend, uint256 out) internal returns (uint256 got, uint256 taxBuy) {
+        (uint16 buyTax, uint16 sellTax,,,,, uint16 platformBps) = PAD.feeConfig(token);
+        assertEq(uint256(buyTax) + sellTax, 0, "a plain createToken has no tax of its own");
+        assertEq(platformBps, PAD.feeBps(), "stamped with the launchpad's fee at creation");
+        taxBuy = (out * (uint256(platformBps) + buyTax)) / 10_000;
+        got = _buyInPoolNet(token, spend, out - taxBuy);
+        assertEq(got, out - taxBuy, "the pair's output less the rate");
+        assertEq(PAD.taxTreasury(token), taxBuy, "the launchpad's bucket: the whole take of a tax-less coin");
+        assertEq(PAD.taxPot(token), 0, "the coin's bucket: nothing");
+    }
+
+    /// The v12 sell of everything bought: the pair receives and prices the net; the bucket holds both legs' take.
+    function _v12Sell(address token, address pair, uint256 got, uint256 taxBuy) internal returns (uint256 back) {
+        (, uint16 sellTax,,,,, uint16 platformBps) = PAD.feeConfig(token);
+        (uint256 rToken1, uint256 rQuote1) = _reserves(token, pair);
+        uint256 taxSell = (got * (uint256(platformBps) + sellTax)) / 10_000;
+        uint256 net = got - taxSell;
+        uint256 expectBack = (net * 997 * rQuote1) / (rToken1 * 1000 + net * 997);
+        back = _sellInPoolNet(token, got, expectBack);
+        assertEq(back, expectBack, "paid the pair's price for the net");
+        assertEq(PAD.taxTreasury(token), taxBuy + taxSell, "both legs' take, in coins, waits for the harvest");
     }
 
     function _buyInPool(address token, uint256 spend) internal returns (uint256) {
@@ -193,6 +273,35 @@ contract LiveBaseForkTest is Test {
         uint256[] memory out = IUniV2RouterSwap(UNIV2_ROUTER).swapExactTokensForTokens(amount, 0, path, whale, block.timestamp + 600);
         vm.stopPrank();
         return out[1];
+    }
+
+    /// The site's buy on a v12 pool: the router measures what the whale received; returns that.
+    function _buyInPoolNet(address token, uint256 spend, uint256 minOut) internal returns (uint256) {
+        assertGe(CBLTC.balanceOf(whale), spend, "the whale has cbLTC left over");
+        uint256 before = LaunchToken(token).balanceOf(whale);
+        vm.startPrank(whale);
+        CBLTC.approve(UNIV2_ROUTER, type(uint256).max);
+        address[] memory path = new address[](2);
+        path[0] = address(CBLTC);
+        path[1] = token;
+        IUniV2RouterSwap(UNIV2_ROUTER).swapExactTokensForTokensSupportingFeeOnTransferTokens(spend, minOut, path, whale, block.timestamp + 600);
+        vm.stopPrank();
+        uint256 got = LaunchToken(token).balanceOf(whale) - before;
+        assertGt(got, 0, "bought in the pool");
+        return got;
+    }
+
+    /// The site's sell on a v12 pool: the pair prices what reached it; returns the cbLTC the whale received.
+    function _sellInPoolNet(address token, uint256 amount, uint256 minOut) internal returns (uint256) {
+        uint256 before = CBLTC.balanceOf(whale);
+        vm.startPrank(whale);
+        LaunchToken(token).approve(UNIV2_ROUTER, type(uint256).max);
+        address[] memory path = new address[](2);
+        path[0] = token;
+        path[1] = address(CBLTC);
+        IUniV2RouterSwap(UNIV2_ROUTER).swapExactTokensForTokensSupportingFeeOnTransferTokens(amount, minOut, path, whale, block.timestamp + 600);
+        vm.stopPrank();
+        return CBLTC.balanceOf(whale) - before;
     }
 
     function test_live_smallEthBuyOnTheCurveThroughTheZap() public {

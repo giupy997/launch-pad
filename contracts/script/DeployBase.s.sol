@@ -6,9 +6,19 @@ import {TimelockController} from "openzeppelin-contracts/contracts/governance/Ti
 import {Launchpad} from "../src/Launchpad.sol";
 import {UniV2Migrator} from "../src/UniV2Migrator.sol";
 import {SlipstreamZapRouter} from "../src/SlipstreamZapRouter.sol";
+import {ILaunchpadMigration} from "../src/interfaces/ILaunchpadMigration.sol";
 
-/// Base (chain 8453), the whole stack in one run — v11 (block 52,180,589),
-/// replacing the v9 stack whose pools were taken at block 52,105,142 and the
+/// Base (chain 8453), the whole stack in one run — v12: the launchpad's fee
+/// (0.5% a side, the constructor's default, whole to the treasury) and the
+/// coin's own tax on every pool trade after graduation too, sold by the
+/// migrator's `harvest`; the migration module (`pad.MIGRATION_MODULE()`,
+/// deployed by the pad's constructor like its factory) behind the pad's
+/// fallback; and, when MIGRATION_OPERATOR is set, the account that may run a
+/// migration into this pad without the timelock's delay (a move of coins
+/// from another pad or chain: MIGRATION.md), named in the deploy
+/// transaction itself, before the timelock takes the pad. Replaces v11
+/// (block 52,180,589), which took fees on the curve alone and keeps running
+/// with its coins (LAUNCH-BASE-V12.md); v11 had replaced the v9 stack whose pools were taken at block 52,105,142 and the
 /// v10 stack deployed the same day before the opening-price change, never
 /// used (README, Deployments): the graduation migrates in one piece, the
 /// migrator never trades against a pool somebody pre-seeded, and the pool
@@ -22,14 +32,17 @@ import {SlipstreamZapRouter} from "../src/SlipstreamZapRouter.sol";
 /// mainnet — is public for TIMELOCK_DELAY before it lands.
 ///
 ///   cd contracts && source .env && \
-///   [TREASURY=0x...] [TIMELOCK_DELAY=86400] [CBLTC_VIRTUAL=6000000000] forge script script/DeployBase.s.sol \
+///   [TREASURY=0x...] [TIMELOCK_DELAY=86400] [CBLTC_VIRTUAL=5000000000] [MIGRATION_OPERATOR=0x...] forge script script/DeployBase.s.sol \
 ///     --rpc-url base --account notus --broadcast
 ///
 /// TREASURY defaults to the Notus treasury below.
 ///
 /// CBLTC_VIRTUAL is the virtual reserve a cbLTC curve opens with, in cbLTC
-/// units (8 decimals): 60 cbLTC by default — about 57 cbLTC of opening
-/// market cap, ~192 cbLTC raised to graduate. cbLTC is the pad's only
+/// units (8 decimals): 50 cbLTC by default (v12; v11 opened with 60) —
+/// about 47.6 cbLTC of opening market cap, 160 cbLTC raised to graduate
+/// (3.2 times the reserve), ~840 cbLTC of market cap at graduation; a
+/// coin migrated here keeps the reserve its own curve was born with. cbLTC
+/// is the pad's only
 /// quote: the native one is switched off, so no coin can be created that
 /// the migration would leave behind. TIMELOCK_DELAY defaults to 24 hours;
 /// PROPOSER (default the deployer) may schedule and cancel, anyone may
@@ -37,8 +50,9 @@ import {SlipstreamZapRouter} from "../src/SlipstreamZapRouter.sol";
 ///
 /// Verify on Blockscout (base.blockscout.com) from this very checkout, each
 /// with its constructor arguments (`cast abi-encode`): Launchpad
-/// (address treasury), LaunchTokenFactory (none; the pad deployed
-/// it — its address is `pad.tokenFactory()`), UniV2Migrator (pad, router),
+/// (address treasury), LaunchTokenFactory and LaunchpadMigration (none; the
+/// pad deployed both — `pad.tokenFactory()`, `pad.MIGRATION_MODULE()`),
+/// UniV2Migrator (pad, router),
 /// SlipstreamZapRouter (pad, router, weth), TimelockController
 /// (uint256 delay, address[] proposers, address[] executors, address 0).
 /// Or by hand with `node script/standard-input.mjs …`.
@@ -56,9 +70,10 @@ contract DeployBase is Script {
 
     function run() external {
         address treasury = vm.envOr("TREASURY", TREASURY_DEFAULT);
-        uint256 virtualReserve = vm.envOr("CBLTC_VIRTUAL", uint256(60 * 1e8));
+        uint256 virtualReserve = vm.envOr("CBLTC_VIRTUAL", uint256(50 * 1e8));
         uint256 delay = vm.envOr("TIMELOCK_DELAY", uint256(24 hours));
         address proposer = vm.envOr("PROPOSER", msg.sender);
+        address operator = vm.envOr("MIGRATION_OPERATOR", address(0));
         require(CBLTC.code.length > 0, "no cbLTC at its address: is this Base?");
         require(SLIPSTREAM_ROUTER.code.length > 0, "no Slipstream router at its address: is this Base?");
 
@@ -74,6 +89,7 @@ contract DeployBase is Script {
         pad.setMigrator(address(migrator));
         pad.setQuoteAsset(CBLTC, virtualReserve);
         pad.setQuoteAsset(address(0), 0); // cbLTC alone: every coin here must be able to move to LitVM
+        if (operator != address(0)) ILaunchpadMigration(address(pad)).setMigrationOperator(operator);
         SlipstreamZapRouter zap = new SlipstreamZapRouter(address(pad), SLIPSTREAM_ROUTER, WETH);
         TimelockController timelock = new TimelockController(delay, proposers, executors, address(0));
         pad.transferOwnership(address(timelock));
@@ -81,6 +97,9 @@ contract DeployBase is Script {
 
         console.log("Launchpad:          ", address(pad));
         console.log("LaunchTokenFactory: ", address(pad.tokenFactory()));
+        console.log("LaunchpadMigration: ", pad.MIGRATION_MODULE());
+        console.log("Fee (bps):          ", pad.feeBps());
+        console.log("Migration operator: ", operator);
         console.log("UniV2Migrator:      ", address(migrator));
         console.log("SlipstreamZapRouter:", address(zap));
         console.log("Timelock (owner):   ", address(timelock));

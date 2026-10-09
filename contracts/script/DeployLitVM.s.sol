@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import {Script, console} from "forge-std/Script.sol";
 import {Launchpad} from "../src/Launchpad.sol";
 import {UniV2Migrator} from "../src/UniV2Migrator.sol";
+import {ILaunchpadMigration} from "../src/interfaces/ILaunchpadMigration.sol";
 
 /// LitVM (Litecoin's EVM layer 2, Arbitrum Orbit): the Launchpad quoted in
 /// native zkLTC, plus — when UNIV2_ROUTER is set — a Uniswap v2 graduation
@@ -18,8 +19,8 @@ import {UniV2Migrator} from "../src/UniV2Migrator.sol";
 /// a native-quoted curve opens with, in wei of zkLTC (default the contract's
 /// 1.25): a testnet short of zkLTC wants a small one, so that a curve can be
 /// bought through graduation with faucet coins — 0.05 zkLTC raises 0.16 to
-/// graduate. Mainnet opens with 60 zkLTC (60e18), Base's figure: 192 zkLTC
-/// to graduate, 1,008 of market cap there. The pad stays owned by the
+/// graduate. Mainnet opens with 50 zkLTC (50e18), Base v12's figure: 160
+/// zkLTC to graduate, ~840 of market cap there. The pad stays owned by the
 /// deployer: a rehearsal pad, or the migration day's pad, which the
 /// TimelockController takes over right after (DeployTimelock.s.sol).
 ///
@@ -42,6 +43,7 @@ contract DeployLitVM is Script {
         address treasury = vm.envOr("TREASURY", msg.sender);
         address router = vm.envOr("UNIV2_ROUTER", address(0));
         uint256 nativeVirtual = vm.envOr("NATIVE_VIRTUAL", uint256(0));
+        address operator = vm.envOr("MIGRATION_OPERATOR", address(0)); // may run a migration into this pad (v12)
 
         vm.startBroadcast();
         Launchpad pad = new Launchpad(treasury);
@@ -51,9 +53,13 @@ contract DeployLitVM is Script {
             console.log("UniV2Migrator:", address(migrator));
         }
         if (nativeVirtual != 0 && nativeVirtual != pad.VIRTUAL_ETH()) pad.setQuoteAsset(address(0), nativeVirtual);
+        if (operator != address(0)) ILaunchpadMigration(address(pad)).setMigrationOperator(operator);
         vm.stopBroadcast();
 
         console.log("Launchpad:    ", address(pad));
+        console.log("LaunchpadMigration:", pad.MIGRATION_MODULE());
+        console.log("Fee (bps):    ", pad.feeBps());
+        if (operator != address(0)) console.log("Migration operator:", operator);
         console.log("Treasury:     ", treasury);
         console.log("Native virtual (wei):", pad.quoteVirtualReserve(address(0)));
         console.log("Deploy block: ", block.number);

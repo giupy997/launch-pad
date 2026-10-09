@@ -108,7 +108,13 @@ const coins = picked.map((c) => {
     name: c.name,
     symbol: c.ticker,
     logo: c.logo,
+    website: "",
+    twitter: "",
+    telegram: "",
+    livestream: "",
+    description: "Migrated from Notus on Litecoin",
     creator,
+    feeRecipient: "0x0000000000000000000000000000000000000000",
     // the ledger knew one choice: the whole pot to holders or to the creator, no tax, no burn, no pots
     buyTaxBps: 0n,
     sellTaxBps: 0n,
