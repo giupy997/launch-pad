@@ -48,8 +48,14 @@ else
   trap 'rm -f "$PWFILE"' EXIT
   SIGNER=(--account "${ACCOUNT:-notus}" --password-file "$PWFILE")
 fi
-# the Base nodes the site uses, in order: the snapshot falls through them when one throttles
+# The Base nodes for the snapshot, in order; the snapshot falls through them
+# when one refuses. The public ones no longer serve a long history from a
+# server (publicnode and drpc want a key for old blocks, mainnet.base.org
+# rations by IP and takes 500 blocks a call), so .env should name a keyed node
+# first (Infura's free plan: 10,000 blocks a call; Alchemy's free plan takes 10
+# and is of no use here) and SRC_CHUNK the blocks one call may cover on it.
 SRC_RPC=${SRC_RPC:-https://mainnet.base.org,https://base-rpc.publicnode.com,https://base.drpc.org,https://1rpc.io/base}
+SRC_CHUNK=${SRC_CHUNK:-499}
 DST_RPC=${DST_RPC:-https://liteforge.rpc.caldera.xyz/infra-partner-http}
 SRC_PAD=${SRC_PAD:-0xEfbB4ebdf5130cC4fC45899EeBA727fa2F55b5f4}
 SRC_QUOTE=${SRC_QUOTE:-0xcb17C9Db87B595717C857a08468793f5bAb6445F}
@@ -84,9 +90,9 @@ fi
 printf '{"launchpad":"%s","migrator":"%s"}\n' "$TARGET" "$MIGRATOR" > "$MIG/rehearsal-target.json"
 echo "   pad $TARGET · migrator $MIGRATOR · deploy block $DEPLOY_BLOCK"
 
-echo "== 2. the snapshot of Base: unfrozen, at the latest block, 1,999 blocks per request, four nodes"
+echo "== 2. the snapshot of Base: unfrozen, at the latest block, $SRC_CHUNK blocks per request"
 node script/snapshot-evm.mjs --rpc "$SRC_RPC" --launchpad "$SRC_PAD" --quote "$SRC_QUOTE" --from-block "$SRC_FROM" \
-  --network base --chunk 499 --allow-unfrozen --vault "$DEPLOYER" --scale "$SCALE" --out "$FILE"
+  --network base --chunk "$SRC_CHUNK" --allow-unfrozen --vault "$DEPLOYER" --scale "$SCALE" --out "$FILE"
 
 echo "== 3. the zkLTC the coins need, against the deployer's"
 NEED=$(node -p "require('$FILE').totals.bridgeLtc")
