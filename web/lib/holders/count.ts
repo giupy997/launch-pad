@@ -23,6 +23,12 @@ import { latestBlock, scanLogs, scanLogsWide, type RpcLog, type ScanTarget } fro
 // run) they live in the instance's memory. `partial` says the count stands
 // for what was read so far: the next request reads on. A count made over
 // reads that failed is answered but never kept.
+//
+// Everything here runs against a budget (the hosting function's ten
+// seconds): the rounds stop at a deadline with what they have, the balance
+// reads are given the time left and no more, and when they cannot be made
+// in it, or fail, the last count kept is answered, as not final, rather
+// than nothing. A request that is cut short saves what it read first.
 
 const TRANSFER = toEventSelector("Transfer(address,address,uint256)");
 const ZERO = "0x0000000000000000000000000000000000000000";
@@ -32,7 +38,10 @@ const CONCURRENCY = 4; // getLogs in flight: a server, but on public nodes
 const WIDE_MS = 4_000; // the one-request read gives up after this, and the rounds take over
 const WIDE_SPAN_CHUNKS = 20n; // a later one-request read is believed over at most this many ranges' worth of blocks
 const CHUNKS_PER_ROUND = 16n; // getLogs ranges per round of the scan
-const SCAN_BUDGET_MS = 5_500; // no round starts past this: the balances and the save need the rest of the function's ten seconds
+const SCAN_BUDGET_MS = 5_500; // the rounds stop here: the balances and the save need the rest of the function's ten seconds
+const BUDGET_MS = 8_300; // what a count may take in all, the answer's own time under the function's ten seconds
+const BALANCES_MIN_MS = 1_200; // the balances are not asked for in less than this: the last count is answered instead
+const RPC_MS = 4_000; // one read on one node: a node that hangs gives way to the next
 const BALANCES_PER_CALL = 500; // balanceOf reads per multicall
 const SINGLE_READS_AT_ONCE = 30; // without a multicall: one batched request at a time, so one public node is not burst
 const MAX_ADDRESSES = 50_000;
@@ -95,8 +104,17 @@ const topicAddress = (topic: string | undefined): string | null => (topic && top
 
 function client(t: ScanTarget): PublicClient {
   return createPublicClient({
-    transport: fallback(t.urls.map((u) => http(u, { timeout: 15_000, retryCount: 1, batch: { batchSize: 30, wait: 16 } }))),
+    transport: fallback(t.urls.map((u) => http(u, { timeout: RPC_MS, retryCount: 0, batch: { batchSize: 30, wait: 16 } }))),
   });
+}
+
+/** `p`, or an error once `deadline` (a time) has passed: the read itself runs on, unheard */
+function before<T>(p: Promise<T>, deadline: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error("out of time")), Math.max(0, deadline - Date.now()));
+  });
+  return Promise.race([p, late]).finally(() => clearTimeout(timer));
 }
 
 /** whether the pad knows `token` as one of its coins (its curve exists); remembered once true */
@@ -109,10 +127,17 @@ async function isPadCoin(c: PublicClient, chain: PointsChain, token: `0x${string
   return known;
 }
 
-/** the balances of `addrs`, in order, null where the read failed: one
- *  multicall where the chain has one, single reads a batch at a time where
- *  it has none or the multicall itself fails */
-async function readBalances(c: PublicClient, chainId: number, token: `0x${string}`, addrs: `0x${string}`[]): Promise<(bigint | null)[]> {
+/** the balances of `addrs`, in order, null where the read failed or the
+ *  `deadline` (a time) came first: one multicall where the chain has one,
+ *  single reads a batch at a time where it has none or the multicall itself
+ *  fails */
+async function readBalances(
+  c: PublicClient,
+  chainId: number,
+  token: `0x${string}`,
+  addrs: `0x${string}`[],
+  deadline: number
+): Promise<(bigint | null)[]> {
   const mc = MULTICALL3[chainId];
   const out: (bigint | null)[] = [];
   for (let i = 0; i < addrs.length; i += BALANCES_PER_CALL) {
@@ -120,9 +145,13 @@ async function readBalances(c: PublicClient, chainId: number, token: `0x${string
       .slice(i, i + BALANCES_PER_CALL)
       .map((a) => ({ address: token, abi: erc20Abi, functionName: "balanceOf" as const, args: [a] as const }));
     let got: (bigint | null)[] | null = null;
+    if (Date.now() >= deadline) {
+      out.push(...contracts.map(() => null));
+      continue;
+    }
     if (mc) {
       try {
-        const res = await c.multicall({ multicallAddress: mc, allowFailure: true, contracts });
+        const res = await before(c.multicall({ multicallAddress: mc, allowFailure: true, contracts }), deadline);
         got = res.map((r) => (r.status === "success" ? (r.result as bigint) : null));
       } catch {
         got = null; // the single reads, below
@@ -132,7 +161,11 @@ async function readBalances(c: PublicClient, chainId: number, token: `0x${string
       got = [];
       for (let j = 0; j < contracts.length; j += SINGLE_READS_AT_ONCE) {
         const part = contracts.slice(j, j + SINGLE_READS_AT_ONCE);
-        got.push(...(await Promise.all(part.map((x) => c.readContract(x).then((b) => b as bigint).catch(() => null)))));
+        if (Date.now() >= deadline) {
+          got.push(...part.map(() => null));
+          continue;
+        }
+        got.push(...(await Promise.all(part.map((x) => before(c.readContract(x), deadline).then((b) => b as bigint).catch(() => null)))));
       }
     }
     out.push(...got);
@@ -150,6 +183,8 @@ export type CountDebug = {
   candidates: number;
   /** balance reads or code probes that failed: the count is answered, not kept */
   unreliable: boolean;
+  /** the last count kept was answered: no time was left for the balances, or their reads failed */
+  previous: boolean;
   ms: number;
 };
 export type HolderCount = { holders: number; launched: number | null; partial: boolean; top: TopHolder[]; debug: CountDebug };
@@ -162,7 +197,8 @@ export async function countHolders(chain: PointsChain, token: `0x${string}`): Pr
   const c = client(t);
   if (!(await isPadCoin(c, chain, token))) throw new UnknownCoinError();
   const key = `${chain.chainId}.${token.toLowerCase()}`;
-  const latest = await latestBlock(t);
+  const deadline = started + BUDGET_MS;
+  const latest = await latestBlock(t, RPC_MS);
   const state = (await load(key)) ?? { last: (chain.deployBlock - 1n).toString(), candidates: [], launched: null };
   const candidates = new Set(state.candidates);
   let last = BigInt(state.last);
@@ -170,6 +206,7 @@ export async function countHolders(chain: PointsChain, token: `0x${string}`): Pr
   let moved = 0; // transfers read this request: each one changes a balance
   let wide = false;
   let unreliable = false;
+  let previous = false;
   const filter = { address: token, topics: [TRANSFER] };
   const debug = (): CountDebug => ({
     latest: latest.toString(),
@@ -179,6 +216,7 @@ export async function countHolders(chain: PointsChain, token: `0x${string}`): Pr
     moved,
     candidates: candidates.size,
     unreliable,
+    previous,
     ms: Date.now() - started,
   });
 
@@ -217,11 +255,12 @@ export async function countHolders(chain: PointsChain, token: `0x${string}`): Pr
     }
   }
   // else the blocks since the last request, a round of ranges at a time while the budget lasts
-  while (last < latest && Date.now() - started < SCAN_BUDGET_MS) {
+  const scanDeadline = started + SCAN_BUDGET_MS;
+  while (last < latest && Date.now() < scanDeadline) {
     const from = last + 1n;
     const span = chain.chunk * CHUNKS_PER_ROUND;
     const to = latest - from + 1n > span ? from + span - 1n : latest;
-    const r = await scanLogs(t, filter, from, to, CONCURRENCY);
+    const r = await scanLogs(t, filter, from, to, CONCURRENCY, scanDeadline);
     // the cursor moves on only over a stretch that starts where it stood: a gap would be skipped for good
     if (r.first !== from || r.last < from) break;
     await absorb(r.logs);
@@ -244,8 +283,19 @@ export async function countHolders(chain: PointsChain, token: `0x${string}`): Pr
   }
 
   // what was read is kept before the balances are asked for: a function cut short loses none of it
-  if (moved || at !== state.last) await save(key, { last: at, candidates: list, launched });
-  const balances = await readBalances(c, chain.chainId, token, list);
+  if (moved || at !== state.last) await save(key, { last: at, candidates: list, launched, count: state.count });
+  // the last count kept, for when this request cannot make a better one: answered as not final, the next request tries again
+  const fallBack = (): HolderCount | null => {
+    if (!state.count) return null;
+    previous = true;
+    return { holders: state.count.holders, launched, partial: true, top: state.count.top, debug: debug() };
+  };
+  // the balances need time: in less than a little, the last count is answered instead of a function that dies
+  if (deadline - Date.now() < BALANCES_MIN_MS) {
+    const fb = fallBack();
+    if (fb) return fb;
+  }
+  const balances = await readBalances(c, chain.chainId, token, list, deadline - 300);
   const failed = balances.filter((b) => b === null).length;
   const holding = list
     .map((a, i) => ({ a, b: balances[i] }))
@@ -255,9 +305,20 @@ export async function countHolders(chain: PointsChain, token: `0x${string}`): Pr
   if (list.length > 0 && holding.length === 0 && failed === 0) throw new Error("no balance could be read");
   // the largest balances are where the contracts sit: the pad's unsold supply, the pool
   const probe = holding.slice(0, PROBE);
-  const codes = await Promise.all(probe.map((x) => c.getCode({ address: x.a }).then((code) => code ?? "0x").catch(() => null)));
+  const codes = await Promise.all(
+    probe.map((x) =>
+      before(c.getCode({ address: x.a }), deadline)
+        .then((code) => code ?? "0x")
+        .catch(() => null)
+    )
+  );
   const isContract = new Set(probe.filter((_, i) => codes[i] !== null && codes[i] !== "0x").map((x) => x.a));
   unreliable = failed > 0 || codes.some((x) => x === null);
+  // reads that failed undercount: the last count kept, when it counted somebody, is nearer the truth than a short one
+  if (unreliable && state.count && state.count.holders > 0) {
+    const fb = fallBack();
+    if (fb) return fb;
+  }
   const holders = Math.max(0, holding.length - isContract.size);
   const top = holding.slice(0, TOP).map((x) => ({ a: x.a, b: x.b.toString(), c: isContract.has(x.a) }));
 

@@ -107,12 +107,13 @@ function noteError(url: string, e: unknown) {
   if (recentScanErrors.length > 20) recentScanErrors.shift();
 }
 
-/** the first node that answers; the last error when none does */
-async function firstNode<T>(set: Node[], fn: (c: PublicClient) => Promise<T>): Promise<T> {
+/** the first node that answers; the last error when none does. `perNodeMs`
+ *  caps the wait on each node: a node that hangs gives way to the next. */
+async function firstNode<T>(set: Node[], fn: (c: PublicClient) => Promise<T>, perNodeMs?: number): Promise<T> {
   let last: unknown;
   for (const n of nodesInOrder(set)) {
     try {
-      return await fn(n.client);
+      return await (perNodeMs === undefined ? fn(n.client) : inTime(fn(n.client), perNodeMs));
     } catch (e) {
       last = e;
       noteError(n.url, e);
@@ -122,9 +123,19 @@ async function firstNode<T>(set: Node[], fn: (c: PublicClient) => Promise<T>): P
   throw last;
 }
 
-/** the chain's latest block, from the first node that answers */
-export function latestBlock(t: ScanTarget): Promise<bigint> {
-  return firstNode(scanNodes(t), (c) => c.getBlockNumber());
+/** `p`, or an error after `ms`: the request itself runs on, unheard */
+function inTime<T>(p: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error("no answer in time")), Math.max(0, ms));
+  });
+  return Promise.race([p, late]).finally(() => clearTimeout(timer));
+}
+
+/** the chain's latest block, from the first node that answers (each given
+ *  `perNodeMs` at most, when said: a server with a budget asks that way) */
+export function latestBlock(t: ScanTarget, perNodeMs?: number): Promise<bigint> {
+  return firstNode(scanNodes(t), (c) => c.getBlockNumber(), perNodeMs);
 }
 
 type Range = { lo: bigint; hi: bigint };
@@ -213,32 +224,43 @@ function cutSize(span: bigint, cap: bigint | undefined): bigint {
 }
 
 /** eth_getLogs of `filter` over `ranges`, a few at a time, through the
- *  chain's nodes (see above): which ranges came back, and which didn't */
+ *  chain's nodes (see above): which ranges came back, and which didn't. Past
+ *  `deadline` (a time, when said) no request starts and none is waited for:
+ *  the ranges left count as failed, so a caller with a budget stops in time
+ *  and keeps what came back. */
 async function getLogsAdaptive(
   set: Node[],
   t: ScanTarget,
   filter: { address: `0x${string}`; topics: (`0x${string}` | `0x${string}`[])[] },
   ranges: Range[],
-  concurrency: number
+  concurrency: number,
+  deadline?: number
 ): Promise<{ logs: RpcLog[]; ok: Range[]; failed: Range[] }> {
   const queue = [...ranges];
   const logs: RpcLog[] = [];
   const ok: Range[] = [];
   const failed: Range[] = [];
+  const left = () => (deadline === undefined ? Infinity : deadline - Date.now());
   const worker = async () => {
     while (queue.length) {
+      if (left() <= 0) {
+        failed.push(...queue.splice(0));
+        return;
+      }
       const r = queue.shift()!;
       const span = r.hi - r.lo + 1n;
       let settled = false;
-      for (let attempt = 0; attempt < 3 && !settled; attempt++) {
+      for (let attempt = 0; attempt < 3 && !settled && left() > 0; attempt++) {
         let tooBig = false;
         let cap: bigint | undefined;
         for (const n of nodesInOrder(set)) {
+          if (left() <= 0) break;
           try {
-            const got = (await n.client.request({
+            const req = n.client.request({
               method: "eth_getLogs",
               params: [{ ...filter, fromBlock: numberToHex(r.lo), toBlock: numberToHex(r.hi) }],
-            })) as RpcLog[];
+            }) as Promise<RpcLog[]>;
+            const got = await (deadline === undefined ? req : inTime(req, left()));
             logs.push(...got);
             ok.push(r);
             settled = true;
@@ -262,7 +284,7 @@ async function getLogsAdaptive(
           settled = true; // handed on in pieces
           break;
         }
-        if (attempt < 2) await sleep(400 * 2 ** attempt + Math.random() * 200);
+        if (attempt < 2 && left() > 1_000) await sleep(400 * 2 ** attempt + Math.random() * 200);
       }
       if (!settled) failed.push(r);
     }
@@ -383,19 +405,24 @@ export async function scanLogsWide(
 }
 
 /** The logs of `filter` over [fromBlock, toBlock], read as scanTrades reads
- *  the pad's. `complete` when every range came back; else one contiguous
- *  stretch of what did, with where it starts and ends: the one starting at
- *  `fromBlock` when there is one, so a caller that keeps a cursor moves it
- *  on without skipping a gap for good, else the most recent. */
+ *  the pad's, oldest range first. `complete` when every range came back;
+ *  else one contiguous stretch of what did, with where it starts and ends:
+ *  the one starting at `fromBlock` when there is one, so a caller that keeps
+ *  a cursor moves it on without skipping a gap for good, else the most
+ *  recent. A `deadline` (a time) stops the reading there: what was read by
+ *  then comes back, the rest is for the next call. */
 export async function scanLogs(
   t: ScanTarget,
   filter: { address: `0x${string}`; topics: (`0x${string}` | `0x${string}`[])[] },
   fromBlock: bigint,
   toBlock: bigint,
-  concurrency = 3
+  concurrency = 3,
+  deadline?: number
 ): Promise<{ logs: RpcLog[]; first: bigint; last: bigint; complete: boolean }> {
   if (fromBlock > toBlock) return { logs: [], first: fromBlock, last: fromBlock - 1n, complete: true };
-  const r = await getLogsAdaptive(scanNodes(t), t, filter, splitRange(fromBlock, toBlock, chunkFor(t)), concurrency);
+  // oldest first: cut short, what came back starts where the cursor stood
+  const ranges = splitRange(fromBlock, toBlock, chunkFor(t)).reverse();
+  const r = await getLogsAdaptive(scanNodes(t), t, filter, ranges, concurrency, deadline);
   if (!r.failed.length) return { logs: r.logs, first: fromBlock, last: toBlock, complete: true };
   const got = stretches(r.ok);
   if (!got.length) return { logs: [], first: fromBlock, last: fromBlock - 1n, complete: false };

@@ -106,8 +106,13 @@ and at `/litecoin`, out of the menu.
     balance in one multicall, contracts (the pad, the pool) named rather than
     counted; the addresses seen, the block read up to and the last count
     live in the Netlify Blobs store `holders`, so a request reads only new
-    blocks, `partial: true` while an old coin's history is still being read,
-    `&debug=1` for what a count did and the nodes' last refusals. Embedded
+    blocks, `partial: true` while an old coin's history is still being read.
+    Every step runs against the function's ten seconds: the rounds stop at a
+    deadline with what they read, the balances get the time left, and when
+    that is too little or their reads fail the last count kept is answered
+    (as `partial`) rather than nothing; the browser asks again in seconds
+    after a route that did not answer. `&debug=1` for what a count did and
+    the nodes' last refusals. Embedded
     livestream player (YouTube/Twitch allowlist) with LIVE badges in Explore;
     creator panel to go live and redirect fees
   - `/api/*` routes and Netlify's CDN: the CDN leaves the query string out of

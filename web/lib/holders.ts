@@ -15,6 +15,8 @@ export type Holder = { address: `0x${string}`; balance: bigint; contract: boolea
 export type HoldersInfo = { holders: number | null; launched: number | null; partial: boolean; top: Holder[] };
 
 const NONE: HoldersInfo = { holders: null, launched: null, partial: false, top: [] };
+/** nothing known yet, and worth asking again soon */
+const RETRY: HoldersInfo = { ...NONE, partial: true };
 
 type Wire = Partial<Omit<HoldersInfo, "top">> & { chain?: number; token?: string; top?: { a: string; b: string; c: boolean }[] };
 
@@ -29,16 +31,19 @@ export function useHolders(chainId: number, token: `0x${string}`, enabled = true
         const r = await fetch(`/api/holders?chain=${chainId}&token=${addr}`);
         if (r.ok) {
           const j = (await r.json()) as Wire;
-          // an answer for another coin or chain (a cache gone wrong) is no answer
-          if ((j.token && j.token.toLowerCase() !== addr) || (j.chain !== undefined && j.chain !== chainId)) return NONE;
+          // an answer for another coin or chain (a cache gone wrong) is no answer, asked again soon
+          if ((j.token && j.token.toLowerCase() !== addr) || (j.chain !== undefined && j.chain !== chainId)) return RETRY;
           return {
             ...NONE,
             ...j,
             top: (j.top ?? []).map((h) => ({ address: h.a as `0x${string}`, balance: BigInt(h.b), contract: !!h.c })),
           };
         }
+        // no such coin, or a bad address: final
+        if (r.status === 404 || r.status === 400) return NONE;
       } catch {}
-      return NONE;
+      // the route did not answer (a function out of time, the network): asked again in seconds, not in a minute
+      return RETRY;
     },
     staleTime: 60_000,
     refetchInterval: (q) => (q.state.data?.partial ? 6_000 : 60_000),
