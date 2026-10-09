@@ -74,14 +74,15 @@ export const POINTS_CHAINS: Record<string, PointsChain> = {
     season: { number: 0, name: "Season 0", start: 57_741_789n, end: null, rehearsal: true },
     explorer: "https://liteforge.explorer.caldera.xyz",
   },
-  // Base: the v11 pad in cbLTC. No season here (the features come with
-  // LitVM); indexed only when enabled, for a one-off genesis credit at Season 1.
+  // Base: the v12 pad in cbLTC (the v11 pad 0xEfbB…b5f4, block 52,180,589, is
+  // not indexed: its coins are the legacy page's). No season here (the features
+  // come with LitVM); indexed only when enabled, for a one-off genesis credit at Season 1.
   base: {
     key: "base",
     chainId: 8453,
     name: "Base",
-    pad: "0xEfbB4ebdf5130cC4fC45899EeBA727fa2F55b5f4",
-    deployBlock: 52_180_589n,
+    pad: "0x23231924281B34Bb28F10D854DB8D2DcBd7F78c5",
+    deployBlock: 52_397_620n,
     rpcs: [...KEYED_BASE, "https://mainnet.base.org", "https://base-rpc.publicnode.com", "https://base.drpc.org", "https://1rpc.io/base"],
     archive: KEYED_BASE,
     quoteDecimals: 8,

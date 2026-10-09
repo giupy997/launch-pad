@@ -79,10 +79,12 @@ export const MIGRATION_TARGET: Record<number, string> = { [base.id]: "LitVM main
 
 // One address per chain: add future deployments here (multichain).
 export const LAUNCHPAD_ADDRESS: Record<number, `0x${string}` | undefined> = {
-  // v11 quoted in cbLTC (60 virtual), deploy block 52,180,589, owned by the timelock 0xeDCe189855E9298C3f5b937fE9Ffe8D5261B9EB2 (24 h);
-  // UniV2Migrator v2 0x8fB7f1D18F4b2ECC79da94aBF51f95B93E07d218 → Uniswap v2 pools, opened at the curve's closing price; zap below.
-  // The v9 pad 0xcaB7…42EF (its pools taken) and the v10 pad 0xDd48A36aa65142A5CF111f485C2EFB26482b74C1 (never used) are retired (README).
-  [base.id]: "0xEfbB4ebdf5130cC4fC45899EeBA727fa2F55b5f4",
+  // v12 quoted in cbLTC (50 virtual: 160 to graduate), deploy block 52,397,620, owned by the timelock 0xe28f446D3a1DB105F8F9b34A65474E1F6d256f76
+  // (24 h, proposer 0x707f…9A02); fees on the pool after graduation, sold by anyone's harvest through UniV2Migrator v3
+  // 0x6f3303c520dE1a74a664c3EB3045cfb0380d40B3; the migration module 0x0F41…B2a2 behind the pad's fallback; zap below.
+  // The v11 pad 0xEfbB…b5f4 keeps running with its coins (LEGACY_LAUNCHPADS); the v9 pad 0xcaB7…42EF (its pools taken), the
+  // v10 pad 0xDd48…74C1 (never used) and the first v12 stack 0x2729…C5CF (a timelock nobody can drive) are retired (README).
+  [base.id]: "0x23231924281B34Bb28F10D854DB8D2DcBd7F78c5",
   [giwaSepolia.id]: "0x8E1a1308E3b176528Ee9278d7a531F185F9fBeFD",
   [robinhood.id]: "0x4A84c7B0dc45a473eA67f56617BC5903CA2c001c", // v7.4
   // v11 rehearsal pad quoted in native zkLTC with a 0.05 zkLTC virtual reserve (a curve graduates with 0.16 zkLTC, faucet
@@ -103,7 +105,7 @@ export function isHiddenToken(chainId: number, token: string): boolean {
 }
 
 export const LAUNCHPAD_DEPLOY_BLOCK: Record<number, bigint> = {
-  [base.id]: 52_180_589n,
+  [base.id]: 52_397_620n, // v12
   [giwaSepolia.id]: 31_997_798n, // v7.1
   [robinhood.id]: 61_447_720n, // v7.4
   [litvmTestnet.id]: 57_741_789n, // the v11 rehearsal pad (the v9 one, block 56_991_201, and the v7.x pads are parked)
@@ -117,7 +119,7 @@ export const LAUNCHPAD_DEPLOY_BLOCK: Record<number, bigint> = {
  *  Base and Liteforge both become 12 when their v12 pads are live: the switch
  *  is one line here at the v12 launch (LAUNCH-BASE-V12.md), no code. */
 export const PAD_VERSION: Record<number, PadVersion> = {
-  [base.id]: 11,
+  [base.id]: 12, // since 2026-10-09 (LAUNCH-BASE-V12.md)
   [giwaSepolia.id]: 11,
   [robinhood.id]: 11,
   [litvmTestnet.id]: 11,
@@ -140,7 +142,10 @@ export type LegacyPad = {
  *  the v12 pad, PAD_VERSION[base.id] 12, and the v11 pad goes in here, left
  *  running with its coins:
  *    [base.id]: [{ address: "0xEfbB4ebdf5130cC4fC45899EeBA727fa2F55b5f4", version: 11, deployBlock: 52_180_589n, label: "Launchpad v11" }], */
-export const LEGACY_LAUNCHPADS: Record<number, LegacyPad[]> = {};
+export const LEGACY_LAUNCHPADS: Record<number, LegacyPad[]> = {
+  // v11 (2026-10-04 → 2026-10-09): fees on the curve alone; Notus and Lester were launched on it and trade there still
+  [base.id]: [{ address: "0xEfbB4ebdf5130cC4fC45899EeBA727fa2F55b5f4", version: 11, deployBlock: 52_180_589n, label: "Launchpad v11" }],
+};
 
 // Quote assets offered at launch per chain. address null = native ETH.
 // To add one (e.g. a tokenized stock): owner must also enable it on-chain
@@ -277,7 +282,7 @@ export function rwaLogo(asset: QuoteAssetInfo): string | undefined {
 // Slipstream, where cbLTC's liquidity is (SlipstreamZapRouter speaks that
 // router's shape; both quoters answer QuoterV2's ABI).
 export const ZAP_ROUTER: Record<number, `0x${string}` | undefined> = {
-  [base.id]: "0x072a77dC2a770504A1DA17e2fB6814C9cFf85254", // SlipstreamZapRouter → Aerodrome, for the v11 pad
+  [base.id]: "0x15045E01b6A38f40695EEa0BB31aE0342f7Ee810", // SlipstreamZapRouter → Aerodrome, for the v12 pad (the v11 pad's was 0x072a…5254)
   [robinhood.id]: "0xfd0C942E3DB34672715B862A8e19838bC9EDa7B5", // v7.4
 };
 export const UNISWAP_QUOTER: Record<number, `0x${string}` | undefined> = {
