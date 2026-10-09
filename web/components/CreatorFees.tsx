@@ -7,15 +7,17 @@ import {
   useWriteContract,
 } from "wagmi";
 import { launchpadAbi } from "@/lib/abi";
-import { useLaunchpadAddress, useAppChain, ZERO_ADDRESS } from "@/lib/hooks";
+import { useLaunchpadAddress, useAppChain, usePadVersion, ZERO_ADDRESS } from "@/lib/hooks";
 import { QUOTE_ASSETS } from "@/lib/config";
 import { fmtUnits } from "@/lib/format";
 
-/** Accrued creator fee earnings (80% of trade fees on keep-mode tokens) per quote asset, with
- *  claim buttons. Renders nothing on deployments without creator fees. */
+/** Accrued creator fee earnings per quote asset, with claim buttons: the
+ *  creator's share of the coin's tax (on v11, of the pot the platform fee
+ *  left). Renders nothing on deployments without creator fees. */
 export function CreatorFees() {
   const pad = useLaunchpadAddress();
   const chain = useAppChain();
+  const v12 = usePadVersion() === 12;
   const { address: user } = useAccount();
   const assets = QUOTE_ASSETS[chain.id] ?? [{ address: null, symbol: chain.nativeCurrency.symbol, decimals: 18 }];
 
@@ -77,7 +79,18 @@ export function CreatorFees() {
           {(error as { shortMessage?: string }).shortMessage ?? error.message}
         </p>
       )}
-      <p className="mt-1 text-[11px] text-zinc-600">The creator&apos;s share of every curve trade&apos;s fee on your coins, as you set it at launch.</p>
+      {v12 ? (
+        <>
+          <p className="mt-1 text-[11px] text-zinc-600">
+            The creator&apos;s share of every trade&apos;s tax on your coins, on the curve and on the pool, as you set it at launch.
+          </p>
+          <p className="text-[11px] text-zinc-600">
+            Fees taken on a pool wait in coins until someone harvests them: each coin&apos;s page shows what is pending.
+          </p>
+        </>
+      ) : (
+        <p className="mt-1 text-[11px] text-zinc-600">The creator&apos;s share of every curve trade&apos;s fee on your coins, as you set it at launch.</p>
+      )}
     </div>
   );
 }

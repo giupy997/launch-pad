@@ -7,11 +7,12 @@ import {
   useWriteContract,
 } from "wagmi";
 import { launchpadAbi } from "@/lib/abi";
-import { useLaunchpadAddress, useAppChain, useNativeSymbol } from "@/lib/hooks";
+import { useLaunchpadAddress, useAppChain, useNativeSymbol, usePadVersion } from "@/lib/hooks";
 import { fmtUnits } from "@/lib/format";
 
-/** Holder cashback (80% of trade fees on rewards-mode tokens, pro-rata) for the connected wallet.
- *  Renders nothing on deployments that predate the cashback system. */
+/** Holder cashback for the connected wallet: the holders' share of the
+ *  coin's tax, pro-rata (on v11, of the pot the platform fee left). Renders
+ *  nothing on deployments that predate the cashback system. */
 export function CashbackCard({
   token,
   quoteSymbol: quoteSymbolProp,
@@ -25,6 +26,7 @@ export function CashbackCard({
   const native = useNativeSymbol();
   const quoteSymbol = quoteSymbolProp ?? native;
   const appChainId = useAppChain().id;
+  const v12 = usePadVersion() === 12;
   const { address: user } = useAccount();
 
   const { data: claimable, isError } = useReadContract({
@@ -70,7 +72,9 @@ export function CashbackCard({
         {isSuccess && <span className="text-xs text-zinc-400">claimed ✓</span>}
       </div>
       <p className="mt-1 text-[11px] text-zinc-600">
-        The holders&apos; share of every curve trade&apos;s fee, pro-rata to what each wallet holds, as the coin&apos;s creator set it.
+        {v12
+          ? "The holders' share of the coin's own tax on every trade, on the curve and, once graduated, on the pool after a harvest; pro-rata to what each wallet holds, as the coin's creator set it."
+          : "The holders' share of every curve trade's fee, pro-rata to what each wallet holds, as the coin's creator set it."}
       </p>
       {error && (
         <p className="mt-1 text-xs text-zinc-500 break-all">

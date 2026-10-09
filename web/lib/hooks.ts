@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { parseAbi } from "viem";
 import { cookieToInitialState, useChainId, useReadContract, useReadContracts } from "wagmi";
-import { launchpadAbi, launchTokenAbi } from "./abi";
-import { APP_CHAINS, DEFAULT_CHAIN, LAUNCHPAD_ADDRESS, QUOTE_ASSETS, VISIBLE_CHAINS, config, isHiddenToken } from "./config";
+import { launchpadAbi, launchTokenAbi, padAbiFor, type PadVersion } from "./abi";
+import { APP_CHAINS, DEFAULT_CHAIN, LAUNCHPAD_ADDRESS, PAD_VERSION, QUOTE_ASSETS, VISIBLE_CHAINS, config, isHiddenToken } from "./config";
 
 /** Any chain the app is wired for (the pages still special-case Robinhood's assets). */
 export type AppChain = (typeof APP_CHAINS)[number];
@@ -58,6 +59,18 @@ export function useLaunchpadAddress(): `0x${string}` | undefined {
   return LAUNCHPAD_ADDRESS[useAppChain().id];
 }
 
+/** The generation of the current chain's pad (PAD_VERSION; 11 for a chain the config does not place). */
+export function usePadVersion(): PadVersion {
+  return PAD_VERSION[useAppChain().id] ?? 11;
+}
+
+/** The pad ABI the current chain is read and written with: reads of what both
+ *  generations share work with either, feeConfig and the version-only reads
+ *  need this one. */
+export function usePadAbi() {
+  return padAbiFor(usePadVersion());
+}
+
 export type CurveInfo = {
   vEth: bigint;
   vToken: bigint;
@@ -87,10 +100,16 @@ export type TokenInfo = {
   meta: TokenMeta;
   feesToHolders: boolean;
   /** Notus pre-market: a pair asset, never listed as a token to buy. Read
-   *  on-chain (only createPreMarket makes transferable tokens), so hiding
-   *  them never depends on the web config being up to date. */
+   *  on-chain (only v11's createPreMarket made transferable tokens), so hiding
+   *  them never depends on the web config being up to date. v12 tokens have
+   *  no transferable(): the read reverts and reads as false, as on old pads. */
   isPreMarket: boolean;
 };
+
+/** The pre-market flag of a v11 token, read on its own because v12's token
+ *  ABI no longer carries it (there, and on tokens older than v7.3, the read
+ *  fails and the coin is an ordinary one). */
+const transferableAbi = parseAbi(["function transferable() view returns (bool)"]);
 
 // The browser keeps these reads between visits (see app/providers.tsx), so
 // polled data stays in the cache for a day rather than the default five
@@ -254,8 +273,8 @@ export function useTokens(chainIdOverride?: number, opts: { warm?: boolean } = {
       { address: t, abi: launchTokenAbi, functionName: "name" as const, chainId },
       { address: t, abi: launchTokenAbi, functionName: "symbol" as const, chainId },
       { address: padSafe, abi: launchpadAbi, functionName: "feesToHolders" as const, args: [t] as const, chainId },
-      // reverts on tokens from launchpads older than v7.3 — treated as false
-      { address: t, abi: launchTokenAbi, functionName: "transferable" as const, chainId },
+      // reverts on tokens from launchpads older than v7.3 and on v12's — treated as false
+      { address: t, abi: transferableAbi, functionName: "transferable" as const, chainId },
     ]),
     query: { enabled: tokenAddrs.length > 0, ...IMMUTABLE, placeholderData: sameChainPlaceholder(chainId) },
   });

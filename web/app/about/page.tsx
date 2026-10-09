@@ -1,5 +1,9 @@
 import type { Metadata } from "next";
 import { SOURCE_URL } from "@/lib/site";
+import { DEFAULT_CHAIN, PAD_VERSION } from "@/lib/config";
+
+// the fee story follows the pad the site runs on: v11 (the platform fee feeding the pot) or v12
+const V12 = (PAD_VERSION[DEFAULT_CHAIN.id] ?? 11) === 12;
 
 export const metadata: Metadata = {
   title: "About",
@@ -31,14 +35,16 @@ export default function AboutPage() {
           bonding curve: the price rises with every buy and falls with every sell, by a formula anyone can check.
         </li>
         <li>
-          You pay in cbLTC, or in ETH: the buy swaps ETH for cbLTC on Aerodrome and buys, in the same transaction. The platform
-          fee is 1% per trade, 0.2% of it to the treasury; a coin may add a tax of its own, up to 10% on buys and on sells. The
-          rest is the coin&apos;s pot, split as its creator fixed at launch between the creator, its holders as cashback, buying
-          the coin back to burn it, and the liquidity of its pool.
+          You pay in cbLTC, or in ETH: the buy swaps ETH for cbLTC on Aerodrome and buys, in the same transaction.{" "}
+          {V12
+            ? "The launchpad takes 0.5% of every buy and every sell, whole to its treasury; a coin may add a tax of its own, up to 10% on buys and on sells, split as its creator fixed at launch between the creator, its holders as cashback, buying the coin back to burn it, and the liquidity of its pool."
+            : "The platform fee is 1% per trade, 0.2% of it to the treasury; a coin may add a tax of its own, up to 10% on buys and on sells. The rest is the coin's pot, split as its creator fixed at launch between the creator, its holders as cashback, buying the coin back to burn it, and the liquidity of its pool."}
         </li>
         <li>
           At 800M coins sold the coin graduates: the rest of the supply and the cbLTC raised seed a Uniswap v2 pool whose
           liquidity is locked. From then on it trades there, with no price ceiling.
+          {V12 &&
+            " The launchpad's fee and the coin's tax go on in the pool, taken in coins on every swap and sold by anyone's harvest, which pays everyone their share."}
         </li>
         <li>
           The launchpad&apos;s only owner is a timelock: every change — fees, treasury, the migration below — is public on the

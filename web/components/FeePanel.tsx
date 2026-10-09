@@ -2,15 +2,19 @@
 
 import { useAccount, useReadContracts, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { launchpadAbi } from "@/lib/abi";
-import { useLaunchpadAddress, useAppChain } from "@/lib/hooks";
-import { feesLine, splitParts, type FeeConfig } from "@/lib/curve";
+import { useLaunchpadAddress, useAppChain, usePadVersion, ZERO_ADDRESS } from "@/lib/hooks";
+import { feesLine, splitParts, treasuryPct, type FeeConfig } from "@/lib/curve";
 import { fmtUnits, fmtTokens } from "@/lib/format";
+import { usePool } from "@/lib/pool";
+import { Harvest } from "@/components/fees-Harvest";
 
 const TOTAL_SUPPLY = 1_000_000_000n * 10n ** 18n;
 
 /** A coin's fees as its creator fixed them, and where they have gone: the
  *  pots waiting to be spent and the coins burned so far. Anyone may spend the
- *  burn pot. Renders for pads that know fee configurations (v9 and on). */
+ *  burn pot. On a v12 pad a graduated coin's pool fees wait in coins until a
+ *  harvest sells them: the two buckets, and the button, show here too.
+ *  Renders for pads that know fee configurations (v9 and on). */
 export function FeePanel({
   token,
   symbol,
@@ -36,6 +40,7 @@ export function FeePanel({
 }) {
   const pad = useLaunchpadAddress();
   const chain = useAppChain();
+  const v12 = usePadVersion() === 12;
   const { isConnected } = useAccount();
   const { writeContract, data: hash, isPending, error, reset } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
@@ -54,10 +59,31 @@ export function FeePanel({
   const noPool = graduated && via !== undefined && /^0x0{40}$/.test(via);
   const cannotBurn = noPool ? "Its pool is not seeded yet: nothing to buy from" : pending > 0n ? "Its holders are still being delivered" : null;
 
+  // v12, after graduation: the coins the token took on pool trades, waiting in the pad's two
+  // buckets (the launchpad's rate, the coin's tax) until a harvest sells them; and the pool,
+  // whose price says what they are worth
+  const harvesting = v12 && graduated;
+  const { data: buckets } = useReadContracts({
+    contracts: [
+      { address: pad, abi: launchpadAbi, functionName: "taxTreasury", args: [token] },
+      { address: pad, abi: launchpadAbi, functionName: "taxPot", args: [token] },
+    ],
+    query: { enabled: !!pad && harvesting, refetchInterval: 15_000 },
+  });
+  const bucketTreasury = buckets?.[0]?.status === "success" ? (buckets[0].result as bigint) : 0n;
+  const bucketPot = buckets?.[1]?.status === "success" ? (buckets[1].result as bigint) : 0n;
+  const pool = usePool(pad ?? ZERO_ADDRESS, token, chain.id, !!pad && harvesting);
+  // an estimate: the pool's price before the sale moves it
+  const worth = (coins: bigint): bigint | undefined =>
+    pool.data && pool.data.tokenReserve > 0n ? (coins * pool.data.quoteReserve) / pool.data.tokenReserve : undefined;
+  const share = (bps: number) => (bucketPot * BigInt(bps)) / 10_000n;
+  const rate = treasuryPct(fees.platformBps); // the launchpad's rate as text, on v12 the coin's own stamp
+
   return (
-    <div className="card p-5 space-y-3">
+    // the anchor the pool card points at when it says a harvest sells what the pool charges
+    <div id="fees" className="card p-5 space-y-3">
       <div className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">Fees</div>
-      <div className="font-mono text-xs text-zinc-300">{feesLine(fees)}</div>
+      <div className="font-mono text-xs text-zinc-300">{v12 ? `${rate} launchpad fee · ${feesLine(fees)}` : feesLine(fees)}</div>
       <div className="space-y-1.5">
         {parts.map((p) => (
           <div key={p.key} className="flex items-center gap-3 text-xs">
@@ -69,9 +95,53 @@ export function FeePanel({
           </div>
         ))}
         <p className="text-[11px] text-zinc-600">
-          Of every trade, {treasury} goes to the treasury; the rest of the fee is split as above.
+          {v12
+            ? `The launchpad's ${rate} goes whole to the treasury on every trade, on the curve and on the pool; the coin's tax is split as above.`
+            : `Of every trade, ${treasury} goes to the treasury; the rest of the fee is split as above.`}
         </p>
       </div>
+
+      {harvesting && (
+        <div className="border-t border-white/[0.06] pt-3 space-y-2">
+          <div className="text-xs text-zinc-500">Pool fees to harvest</div>
+          {(
+            [
+              ["Launchpad fee", bucketTreasury],
+              ["Coin's tax", bucketPot],
+            ] as const
+          ).map(([label, coins]) => {
+            const q = worth(coins);
+            return (
+              <div key={label} className="flex items-baseline justify-between gap-3 text-xs">
+                <span className="text-zinc-500">{label}</span>
+                <span className="font-mono text-zinc-300 text-right">
+                  {fmtTokens(coins)} ${symbol}
+                  {q !== undefined && (
+                    <span className="text-zinc-500">
+                      {" "}
+                      ≈ {fmtUnits(q, quoteDecimals)} {quoteSymbol}
+                    </span>
+                  )}
+                </span>
+              </div>
+            );
+          })}
+          {bucketPot > 0n && parts.length > 0 && (
+            <p className="text-[11px] text-zinc-600">
+              The coin&apos;s tax, by its shares: {parts.map((p) => `${fmtTokens(share(p.bps))} ${p.label}`).join(" · ")}.
+            </p>
+          )}
+          <Harvest
+            token={token}
+            symbol={symbol}
+            pool={pool.data}
+            noPool={pool.none}
+            pending={bucketTreasury + bucketPot}
+            quoteSymbol={quoteSymbol}
+            quoteDecimals={quoteDecimals}
+          />
+        </div>
+      )}
 
       {(fees.burnBps > 0 || burnPot > 0n) && (
         <div className="flex items-center justify-between gap-3 border-t border-white/[0.06] pt-3">
@@ -101,6 +171,16 @@ export function FeePanel({
           <div className="text-xs text-zinc-500">Liquidity pot · joins the pool at graduation</div>
           <div className="font-mono text-sm text-white">
             {fmtUnits(liquidityPot, quoteDecimals)} {quoteSymbol}
+          </div>
+        </div>
+      )}
+      {/* after graduation the quote pot is in the pool; on v12 the share goes on, in coins, pool side at each harvest */}
+      {harvesting && fees.liquidityBps > 0 && (
+        <div className="border-t border-white/[0.06] pt-3">
+          <div className="text-xs text-zinc-500">Liquidity share · deepens the pool at each harvest</div>
+          <div className="font-mono text-sm text-white">
+            {fmtTokens(share(fees.liquidityBps))} ${symbol}{" "}
+            <span className="text-zinc-500">· waiting; half kept, half sold, both sides into the locked liquidity</span>
           </div>
         </div>
       )}

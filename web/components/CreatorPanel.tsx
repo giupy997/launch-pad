@@ -128,7 +128,7 @@ export function CreatorPanel({
         <div className="text-sm text-zinc-300">
           Fee recipient{" "}
           <span className="text-zinc-500">
-            — your 60% share currently accrues to{" "}
+            — your creator share currently accrues to{" "}
             {redirected ? shortAddr(currentRecipient as string) : "you"}
           </span>
         </div>

@@ -14,10 +14,12 @@ import {
   quoteInfo,
   isQuoteAsset,
   IMMUTABLE,
+  usePadVersion,
 } from "@/lib/hooks";
 import { BLOCK_SECONDS, PRE_IPO_DISCLAIMER, isHiddenToken } from "@/lib/config";
 import { fmtUnits, fmtTokens } from "@/lib/format";
 import { TradeBox } from "@/components/TradeBox";
+import { PoolCard } from "@/components/PoolCard";
 import { TokenHeader } from "@/components/TokenHeader";
 import { useNow } from "@/lib/useNow";
 import { PriceChart } from "@/components/PriceChart";
@@ -29,7 +31,7 @@ import { CreatorPanel } from "@/components/CreatorPanel";
 import { CashbackCard } from "@/components/CashbackCard";
 import { MigrationNotice } from "@/components/MigrationNotice";
 import { FeePanel } from "@/components/FeePanel";
-import { parseFeeConfig, NO_TAX, treasuryPct } from "@/lib/curve";
+import { parseFeeConfig, NO_TAX, treasuryPct, treasuryPctV11 } from "@/lib/curve";
 import { useLtcPrice, fmtQuoteMoney, fmtQuoteMoneyNum, fmtUsd, isLtcQuote } from "@/lib/price";
 import { poolMarketCapOf, poolPriceOf, usePool } from "@/lib/pool";
 import { useHolders } from "@/lib/holders";
@@ -45,11 +47,12 @@ export function TokenPage({ address }: { address: string }) {
   const pad = useLaunchpadAddress() ?? ("0x0000000000000000000000000000000000000000" as `0x${string}`);
   const explorer = useExplorer();
   const chain = useAppChain();
+  const version = usePadVersion();
 
   // name/symbol/fee mode never change — read once; only curve + metadata poll.
   // The same two lists the Explore cards read ahead of a tap (lib/tokenReads.ts).
   const { data: statics, isLoading: staticsLoading } = useReadContracts({
-    contracts: tokenStaticReads(pad, token, chain.id),
+    contracts: tokenStaticReads(pad, token, chain.id, version),
     query: { ...IMMUTABLE },
   });
   const { data: dyn, isLoading: dynLoading } = useReadContracts({
@@ -65,7 +68,7 @@ export function TokenPage({ address }: { address: string }) {
   // with the first paint, and no second scan when the pair turns up.
   const { data: tradeData, isPending: tradesPending } = useTrades(
     token,
-    pool.data ? { token, pair: pool.data.pair, tokenIsZero: pool.data.tokenIsZero } : null,
+    pool.data ? { token, pair: pool.data.pair, migrator: pool.data.migrator, tokenIsZero: pool.data.tokenIsZero } : null,
     !!dyn && (!graduatedNow || !!pool.data || pool.none)
   );
   const holdersQ = useHolders(chain.id, token);
@@ -99,13 +102,18 @@ export function TokenPage({ address }: { address: string }) {
   const feesToHolders = feeModeR?.status === "success" ? (feeModeR.result as boolean) : false;
   const big = (r: { status: string; result?: unknown } | undefined, fallback = 0n) =>
     r?.status === "success" ? (r.result as bigint) : fallback;
+  // the pad's rate: v11's platform fee, and what a six-field feeConfig falls back to
+  const padFeeBps = big(feeBpsR, 100n);
   // pads before v9 know no fee configuration: no panel, and the launch-time choice tells the split
   const hasFees = feesR?.status === "success";
   const fees = hasFees
-    ? parseFeeConfig(feesR.result)
-    : { ...NO_TAX, creatorBps: feesToHolders ? 0 : 10_000, holdersBps: feesToHolders ? 10_000 : 0 };
-  const platformFeeBps = big(feeBpsR, 100n);
-  const treasury = treasuryPct(platformFeeBps, big(creatorShareR, 5_000n) + big(holderShareR, 3_000n));
+    ? parseFeeConfig(feesR.result, Number(padFeeBps))
+    : { ...NO_TAX, platformBps: Number(padFeeBps), creatorBps: feesToHolders ? 0 : 10_000, holdersBps: feesToHolders ? 10_000 : 0 };
+  // the rate the coin trades at and the treasury's cut of it: on v12 both are the coin's own
+  // (feeConfig's seventh field, whole to the treasury); on v11 the pad's fee, less the pot's share
+  const platformFeeBps = version === 12 ? BigInt(fees.platformBps) : padFeeBps;
+  const treasury =
+    version === 12 ? treasuryPct(fees.platformBps) : treasuryPctV11(padFeeBps, big(creatorShareR, 5_000n) + big(holderShareR, 3_000n));
   if (curveR.status !== "success" || (curveR.result as readonly unknown[])[0] === 0n) {
     return <p className="text-zinc-500">Token not found on this launchpad.</p>;
   }
@@ -177,6 +185,7 @@ export function TokenPage({ address }: { address: string }) {
           buyTaxBps={fees.buyTaxBps}
           sellTaxBps={fees.sellTaxBps}
           poolFeeBps={curve.graduated ? 30 : null}
+          poolPlatformBps={version === 12 ? fees.platformBps : 0}
           explorer={explorer}
           links={links}
         />
@@ -246,7 +255,13 @@ export function TokenPage({ address }: { address: string }) {
       </div>
 
       <div className="order-1 lg:order-2 space-y-6">
-        <TradeBox token={token} symbol={symbol} curve={curve} fees={fees} platformFeeBps={platformFeeBps} treasury={treasury} />
+        {/* a graduated coin trades in its pool: the card gets the coin's fees and the pad's generation
+            from here, since on v12 the pool charges them in coins and the quotes must be net of that */}
+        {curve.graduated ? (
+          <PoolCard token={token} symbol={symbol} quote={q} version={version} fees={fees} />
+        ) : (
+          <TradeBox token={token} symbol={symbol} curve={curve} fees={fees} platformFeeBps={platformFeeBps} treasury={treasury} />
+        )}
         {hasFees && (
           <FeePanel
             token={token}

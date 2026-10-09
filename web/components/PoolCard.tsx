@@ -1,11 +1,16 @@
 "use client";
 
+import { useReadContract } from "wagmi";
+import { type PadVersion } from "@/lib/abi";
 import { DEX_LINKS, MIGRATION_TARGET } from "@/lib/config";
+import { NO_TAX, feesLine, parseFeeConfig, type FeeConfig } from "@/lib/curve";
 import { fmtNum, fmtTokens, fmtUnits, shortAddr } from "@/lib/format";
-import { useAppChain, useExplorer, useLaunchpadAddress, ZERO_ADDRESS } from "@/lib/hooks";
+import { IMMUTABLE, useAppChain, useExplorer, useLaunchpadAddress, usePadAbi, usePadVersion, ZERO_ADDRESS } from "@/lib/hooks";
 import { poolMarketCapOf, poolPriceOf, usePool } from "@/lib/pool";
 import { fmtQuoteMoney, fmtQuoteMoneyNum, isLtcQuote, useLtcPrice } from "@/lib/price";
 import { PoolTrade } from "@/components/PoolTrade";
+
+const pct = (bps: number) => `${Number((bps / 100).toFixed(2))}%`;
 
 /** The trade box of a graduated coin: where it trades now, what its pool
  *  holds, that the pad keeps the liquidity locked, and the way to the DEX. */
@@ -13,12 +18,21 @@ export function PoolCard({
   token,
   symbol,
   quote,
+  version: versionProp,
+  fees: feesProp,
 }: {
   token: `0x${string}`;
   symbol: string;
   quote: { symbol: string; decimals: number; address: `0x${string}` | null };
+  /** the pad's generation; the chain's (PAD_VERSION) when the page does not say */
+  version?: PadVersion;
+  /** the coin's fee configuration, what its pool charges on v12; read here when the page does not hand it down */
+  fees?: FeeConfig;
 }) {
   const chain = useAppChain();
+  const chainVersion = usePadVersion();
+  const version = versionProp ?? chainVersion;
+  const padAbi = usePadAbi();
   const pad = useLaunchpadAddress() ?? ZERO_ADDRESS;
   const explorer = useExplorer();
   const usd = useLtcPrice().data?.usd ?? null;
@@ -27,6 +41,33 @@ export function PoolCard({
   const target = MIGRATION_TARGET[chain.id];
   const p = pool.data;
   const inDollars = !!usd && isLtcQuote(quote.symbol);
+
+  // The coin's fees when they were not handed down (TradeBox's path): read
+  // with the pad's own ABI, since feeConfig answers six fields on v11 and
+  // seven on v12. The trade box waits for them rather than quote a v12 pool
+  // gross. A six-field answer takes 0 for the pad's rate: a v11 pool pays the
+  // pad nothing, and nothing here shows that figure. No feeConfig at all (a
+  // pad before v9) is a coin without a tax.
+  const ownFees = useReadContract({
+    address: pad,
+    abi: padAbi,
+    functionName: "feeConfig",
+    args: [token],
+    chainId: chain.id,
+    query: { enabled: feesProp === undefined, ...IMMUTABLE },
+  });
+  const fees: FeeConfig | undefined =
+    feesProp ?? (ownFees.isError ? NO_TAX : ownFees.data !== undefined ? parseFeeConfig(ownFees.data, 0) : undefined);
+  // what a v12 pool charges over its own 0.3%, as the closing line tells it; nothing on v11, or on a coin that charges nothing
+  const charges =
+    version === 12 && fees
+      ? [
+          fees.platformBps > 0 ? `the launchpad's ${pct(fees.platformBps)} a side` : null,
+          fees.buyTaxBps > 0 || fees.sellTaxBps > 0 ? `the coin's own tax (${feesLine(fees)})` : null,
+        ]
+          .filter(Boolean)
+          .join(" and ")
+      : "";
 
   return (
     <div className="card p-5 h-fit space-y-4">
@@ -72,11 +113,17 @@ export function PoolCard({
         </p>
       )}
 
-      {p && <PoolTrade token={token} symbol={symbol} quote={quote} pool={p} />}
+      {p && fees && <PoolTrade token={token} symbol={symbol} quote={quote} pool={p} fees={fees} version={version} />}
 
       <div className="flex flex-wrap gap-2">
         {dex && (
-          <a href={dex.swap(token, quote.address)} target="_blank" rel="noreferrer" className="btn-ghost px-4 py-2 text-sm">
+          <a
+            href={dex.swap(token, quote.address)}
+            target="_blank"
+            rel="noreferrer"
+            className="btn-ghost px-4 py-2 text-sm"
+            title={charges ? "Trading there, set the slippage above what the pool charges: it is taken in coins" : undefined}
+          >
             {dex.name} ↗
           </a>
         )}
@@ -92,9 +139,23 @@ export function PoolCard({
         )}
       </div>
 
+      {/* what a swap here pays: on v12 the launchpad's rate and the coin's tax go on, in coins, past
+          graduation; a v11 pool pays nothing to the pad or the coin, and the text says so as before */}
       <p className="text-xs text-zinc-500">
-        Swaps here go straight to the pool through its router, with no fee of the launchpad&apos;s: the curve&apos;s fees ended with
-        it. The pool&apos;s own 0.3% goes to its liquidity, which the pad holds: it stays in the pool.
+        {charges ? (
+          <>
+            Swaps here pay {charges}, like the curve did: taken in coins, and sold for {quote.symbol} by anyone&apos;s{" "}
+            <a href="#fees" className="underline">
+              harvest
+            </a>
+            . The pool&apos;s own 0.3% stays with its liquidity, which the pad holds: it stays in the pool.
+          </>
+        ) : (
+          <>
+            Swaps here go straight to the pool through its router, with no fee of the launchpad&apos;s: the curve&apos;s fees ended
+            with it. The pool&apos;s own 0.3% goes to its liquidity, which the pad holds: it stays in the pool.
+          </>
+        )}
       </p>
     </div>
   );

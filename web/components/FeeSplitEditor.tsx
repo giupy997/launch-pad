@@ -1,5 +1,7 @@
 "use client";
 
+import { usePadVersion } from "@/lib/hooks";
+
 /** A coin's fee configuration, as its creator sets it before launch: its own
  *  tax on buys and on sells (percent of the trade, on top of the platform
  *  fee), and how its pot is split — four shares that must total 100%. */
@@ -39,6 +41,8 @@ export function FeeSplitEditor({
   onTax: (side: "buy" | "sell", pct: number) => void;
   onSplit: (s: SplitPct) => void;
 }) {
+  // the copy follows the pad's generation: on v12 the launchpad's fee leaves no pot and the liquidity share also deepens the pool at each harvest
+  const version = usePadVersion();
   const total = splitTotal(split);
   const clampPct = (v: number, max: number) => Math.max(0, Math.min(max, Math.round(v * 2) / 2));
 
@@ -97,8 +101,8 @@ export function FeeSplitEditor({
       </div>
 
       <p className="text-[11px] text-zinc-500">
-        Each share stops where the others leave off. They must total 100% to launch — of the 0.8% pot the platform fee leaves
-        and of your whole tax.
+        Each share stops where the others leave off. They must total 100% to launch —{" "}
+        {version === 12 ? "of your whole tax; the launchpad's fee is apart, whole to the treasury." : "of the 0.8% pot the platform fee leaves and of your whole tax."}
       </p>
 
       <div className="grid grid-cols-1 md:grid-cols-[1fr_180px] gap-6 items-center">
@@ -111,7 +115,7 @@ export function FeeSplitEditor({
                   <span className="text-sm text-zinc-300 flex items-center gap-2">
                     <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: COLORS[key] }} />
                     {SPLIT_LABELS[key].title}
-                    <span className="text-zinc-600 text-[11px]" title={SPLIT_LABELS[key].hint}>
+                    <span className="text-zinc-600 text-[11px]" title={version === 12 && key === "liquidity" ? "Joins the pool's quote side at graduation, and deepens the pool at each harvest after" : SPLIT_LABELS[key].hint}>
                       ⓘ
                     </span>
                   </span>

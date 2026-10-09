@@ -4,17 +4,27 @@ import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { erc20Abi, formatUnits, maxUint256, parseAbi, parseUnits } from "viem";
 import { useAccount, useBalance, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
-import { launchTokenAbi } from "@/lib/abi";
+import { launchTokenAbi, type PadVersion } from "@/lib/abi";
 import { useAppChain, useExplorer, useNativeSymbol } from "@/lib/hooks";
+import { netOfRate, poolRate, sideFeeLabel, type FeeConfig } from "@/lib/curve";
 import { fmtEth, fmtTokens, fmtUnits } from "@/lib/format";
 import type { PoolInfo } from "@/lib/pool";
 import { SlippageControl, useSlippageBps } from "@/components/SlippageControl";
 import { refreshAfterTrade } from "@/components/TradeBox";
 
+// The Uniswap v2 router's exact-input swaps that measure what the pair really
+// received and what the wallet really got, instead of trusting the pair's
+// arithmetic: the only ones that work on a v12 coin, whose token keeps a share
+// of every transfer out of or into its pool. They serve an untaxed (v11) pool
+// the same, so both pads go through them and the plain ones are gone.
+// Exact output is never offered (it was not before either): the router's
+// ...ForExactTokens functions size the input from the reserves alone and know
+// nothing of the token's charge, so on a taxed coin a buy delivers less than
+// asked for and a sell reverts, the pair getting fewer coins than counted on.
 const routerAbi = parseAbi([
-  "function swapExactTokensForTokens(uint256 amountIn, uint256 amountOutMin, address[] path, address to, uint256 deadline) returns (uint256[] amounts)",
-  "function swapExactETHForTokens(uint256 amountOutMin, address[] path, address to, uint256 deadline) payable returns (uint256[] amounts)",
-  "function swapExactTokensForETH(uint256 amountIn, uint256 amountOutMin, address[] path, address to, uint256 deadline) returns (uint256[] amounts)",
+  "function swapExactTokensForTokensSupportingFeeOnTransferTokens(uint256 amountIn, uint256 amountOutMin, address[] path, address to, uint256 deadline)",
+  "function swapExactETHForTokensSupportingFeeOnTransferTokens(uint256 amountOutMin, address[] path, address to, uint256 deadline) payable",
+  "function swapExactTokensForETHSupportingFeeOnTransferTokens(uint256 amountIn, uint256 amountOutMin, address[] path, address to, uint256 deadline)",
 ]);
 
 const GAS_RESERVE = 300_000_000_000_000n; // 0.0003 of the chain's coin kept for gas
@@ -29,17 +39,24 @@ function amountOut(amountIn: bigint, reserveIn: bigint, reserveOut: bigint): big
 
 /** Buy and sell a graduated coin in its pool, through the Uniswap v2 router
  *  the pad seeded it on. The quote is what the pool is paired with: the
- *  curve's ERC-20 quote, or the chain's own coin for a native curve. */
+ *  curve's ERC-20 quote, or the chain's own coin for a native curve. On v12
+ *  the quotes are net of what the token keeps on the way through the pool. */
 export function PoolTrade({
   token,
   symbol,
   quote,
   pool,
+  fees,
+  version,
 }: {
   token: `0x${string}`;
   symbol: string;
   quote: { symbol: string; decimals: number; address: `0x${string}` | null };
   pool: PoolInfo;
+  /** the coin's fee configuration: on v12 its pool charges platformBps plus the side's tax, in coins */
+  fees: FeeConfig;
+  /** the pad's generation: a v11 pool pays nothing to the pad or the coin */
+  version: PadVersion;
 }) {
   const chain = useAppChain();
   const explorer = useExplorer();
@@ -109,15 +126,27 @@ export function PoolTrade({
           ? `${fmtEth(sideBalance)} ${native}`
           : `${fmtUnits(sideBalance, quote.decimals)} ${quote.symbol}`;
 
-  // what the pool gives, from its reserves as last read; the price it moves to
-  const out =
+  // What this side pays over the pool's own 0.3%: on v12 the launchpad's rate
+  // and the coin's tax, which the token keeps, in coins, on every transfer out
+  // of the pool (a buy) or into it (a sell) — the pad's transferRate, one floor
+  // division (netOfRate). A v11 pool pays nothing to the pad or the coin.
+  const rateBps = version === 12 ? poolRate(fees, mode) : 0;
+  // what the pool itself takes in and gives, from its reserves as last read: on
+  // a sell the token keeps its share before the coins reach the pair, on a buy
+  // after they leave it; `out` is what reaches the wallet
+  const poolIn = mode === "sell" ? netOfRate(parsed, rateBps) : parsed;
+  const poolOut =
     mode === "buy"
-      ? amountOut(parsed, pool.quoteReserve, pool.tokenReserve)
-      : amountOut(parsed, pool.tokenReserve, pool.quoteReserve);
+      ? amountOut(poolIn, pool.quoteReserve, pool.tokenReserve)
+      : amountOut(poolIn, pool.tokenReserve, pool.quoteReserve);
+  const out = mode === "buy" ? netOfRate(poolOut, rateBps) : poolOut;
+  // the price the pool dealt at against its spot: the pool's own move, the charge told beside it
   const spot = Number(pool.quoteReserve) / Number(pool.tokenReserve || 1n);
-  const dealt = out > 0n ? (mode === "buy" ? Number(parsed) / Number(out) : Number(out) / Number(parsed)) : spot;
-  const impactPct = out > 0n ? Math.max(0, (mode === "buy" ? dealt / spot - 1 : 1 - dealt / spot) * 100) : 0;
+  const dealt = poolOut > 0n ? (mode === "buy" ? Number(poolIn) / Number(poolOut) : Number(poolOut) / Number(poolIn)) : spot;
+  const impactPct = poolOut > 0n ? Math.max(0, (mode === "buy" ? dealt / spot - 1 : 1 - dealt / spot) * 100) : 0;
+  // the least the wallet must receive, which the router checks: the net figure less the slippage allowed
   const minOut = out - (out * BigInt(slippageBps)) / 10_000n;
+  const charge = rateBps > 0 ? rateLine(fees, mode) : null;
 
   const { writeContract, data: hash, isPending, error, reset } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
@@ -170,7 +199,7 @@ export function PoolTrade({
         writeContract({
           address: router,
           abi: routerAbi,
-          functionName: "swapExactETHForTokens",
+          functionName: "swapExactETHForTokensSupportingFeeOnTransferTokens",
           chainId: chain.id,
           args: [minOut, [pool.pairAsset, token], user, deadline],
           value: parsed,
@@ -181,7 +210,7 @@ export function PoolTrade({
         writeContract({
           address: router,
           abi: routerAbi,
-          functionName: "swapExactTokensForTokens",
+          functionName: "swapExactTokensForTokensSupportingFeeOnTransferTokens",
           chainId: chain.id,
           args: [parsed, minOut, [pool.pairAsset, token], user, deadline],
         });
@@ -192,7 +221,7 @@ export function PoolTrade({
       writeContract({
         address: router,
         abi: routerAbi,
-        functionName: "swapExactTokensForETH",
+        functionName: "swapExactTokensForETHSupportingFeeOnTransferTokens",
         chainId: chain.id,
         args: [parsed, minOut, [token, pool.pairAsset], user, deadline],
       });
@@ -200,7 +229,7 @@ export function PoolTrade({
       writeContract({
         address: router,
         abi: routerAbi,
-        functionName: "swapExactTokensForTokens",
+        functionName: "swapExactTokensForTokensSupportingFeeOnTransferTokens",
         chainId: chain.id,
         args: [parsed, minOut, [token, pool.pairAsset], user, deadline],
       });
@@ -264,6 +293,7 @@ export function PoolTrade({
               {" "}
               · moves the price {impactPct < 0.01 ? "<0.01" : impactPct.toFixed(impactPct < 10 ? 2 : 0)}%
             </span>
+            {charge && <span className="block text-xs text-zinc-600">{charge}</span>}
           </p>
         )}
         {parsed > 0n && out === 0n && !needsApproval && <p className="text-sm text-zinc-500">The pool cannot fill this.</p>}
@@ -307,6 +337,16 @@ export function PoolTrade({
       {error && <p className="text-sm text-zinc-400 break-all">{(error as { shortMessage?: string }).shortMessage ?? error.message}</p>}
     </div>
   );
+}
+
+const pctText = (bps: number) => `${Number((bps / 100).toFixed(2))}%`;
+
+/** What the pool charges on one side, from the chain's figures: "0.5% launchpad
+ *  fee + 1% buy tax, taken in coins"; null when there is nothing to tell. */
+function rateLine(fees: FeeConfig, side: "buy" | "sell"): string | null {
+  const tax = side === "buy" ? fees.buyTaxBps : fees.sellTaxBps;
+  const parts = [fees.platformBps > 0 ? `${pctText(fees.platformBps)} launchpad fee` : null, tax > 0 ? sideFeeLabel(tax, side) : null].filter(Boolean);
+  return parts.length ? `${parts.join(" + ")}, taken in coins` : null;
 }
 
 /** twenty minutes from now, as the router wants it */

@@ -5,7 +5,7 @@ import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useConfig } from "wagmi";
 import { readContractsQueryOptions } from "wagmi/query";
-import { type TokenInfo, marketCapOf, curveProgress, quoteInfo, useAppChain, useLaunchpadAddress, ZERO_ADDRESS } from "@/lib/hooks";
+import { type TokenInfo, marketCapOf, curveProgress, quoteInfo, useAppChain, useLaunchpadAddress, usePadVersion, ZERO_ADDRESS } from "@/lib/hooks";
 import { tokenLiveReads, tokenStaticReads } from "@/lib/tokenReads";
 import { poolMarketCapOf, usePool } from "@/lib/pool";
 import { fmtNum, fmtUnits, shortAddr } from "@/lib/format";
@@ -27,6 +27,7 @@ export function TokenCard({
   const chain = useAppChain();
   const q = quoteInfo(chain.id, t.curve.quoteAsset);
   const pad = useLaunchpadAddress() ?? ZERO_ADDRESS;
+  const version = usePadVersion();
   // a graduated coin is priced by its pool, not by the curve it closed
   const pool = usePool(pad, t.address, chain.id, t.curve.graduated);
   // The coin's page opens on two multicalls (lib/tokenReads.ts): ask for them
@@ -36,14 +37,14 @@ export function TokenCard({
   const queryClient = useQueryClient();
   useEffect(() => {
     void queryClient.prefetchQuery({
-      ...readContractsQueryOptions(config, { contracts: tokenStaticReads(pad, t.address, chain.id), chainId: chain.id }),
+      ...readContractsQueryOptions(config, { contracts: tokenStaticReads(pad, t.address, chain.id, version), chainId: chain.id }),
       staleTime: Infinity,
     });
     void queryClient.prefetchQuery({
       ...readContractsQueryOptions(config, { contracts: tokenLiveReads(pad, t.address, chain.id), chainId: chain.id }),
       staleTime: 30_000,
     });
-  }, [config, queryClient, pad, t.address, chain.id]);
+  }, [config, queryClient, pad, t.address, chain.id, version]);
   const mcap = t.curve.graduated && pool.data ? poolMarketCapOf(pool.data, q.decimals) : marketCapOf(t.curve, q.decimals);
   const inDollars = !!usd && isLtcQuote(q.symbol);
   return (

@@ -30,6 +30,9 @@ export type TokenHeaderProps = {
   sellTaxBps: number;
   /** the pool's fee once graduated (Uniswap v2: 30 bps); null on the curve */
   poolFeeBps: number | null;
+  /** the launchpad's rate on the pool, basis points: on v12 the coin's platformBps, taken in coins with
+   *  its tax on every swap there; 0 or absent where the pool pays the pad nothing (v11) */
+  poolPlatformBps?: number;
   explorer: string;
   links: { label: string; href: string }[];
 };
@@ -120,6 +123,14 @@ export function TokenHeader(p: TokenHeaderProps) {
         {p.poolFeeBps !== null && (
           <Fact label="Pool fee">
             <span className="text-zinc-200">{pct(p.poolFeeBps)}</span>
+            {!!p.poolPlatformBps && (
+              <span
+                className="text-zinc-500"
+                title={`The pool's ${pct(p.poolFeeBps)} stays with its liquidity; the launchpad's ${pct(p.poolPlatformBps)} and the coin's tax are taken in coins on every swap there`}
+              >
+                + {pct(p.poolPlatformBps)} launchpad + tax
+              </span>
+            )}
           </Fact>
         )}
         <Fact label="24h volume">

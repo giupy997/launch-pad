@@ -13,9 +13,10 @@ import {
   type PoolRef,
   type ScanTarget,
   type Trade,
+  type TradeKind,
 } from "./trades/scan";
 
-export type { Trade, PoolRef };
+export type { Trade, TradeKind, PoolRef };
 
 // The trades as the pages see them: a coin's history for its feed and chart,
 // and the day's volumes for the explore cards. The scanning itself lives in
@@ -58,7 +59,7 @@ async function fetchServed(chainId: number, token: `0x${string}` | "all", pools:
 // instead of re-scanning the whole history — the difference between tens of
 // seconds and milliseconds on the token page.
 
-const CACHE_PREFIX = "notus.trades.v3."; // v3: the venue, and a graduated coin's pool swaps
+const CACHE_PREFIX = "notus.trades.v4."; // v4: the kind of the migrator's own swaps (a harvest, a buyback)
 const CACHE_MAX_TRADES = 400; // enough for the chart + feed; keeps quota safe
 const VOLUME_MAX_TRADES = 3_000; // a day of the whole pad
 
@@ -184,9 +185,12 @@ export function useTrades(token: `0x${string}`, pool: PoolRef | null = null, ena
 /** The last day's trading of every coin on the pad, summed per token in quote
  *  wei (what buyers paid plus what sellers received), for the explore cards:
  *  the curves' trades, and the pool swaps of the graduated coins in `pools`.
- *  The server's scan of the day when the browser is cold, then only the
- *  blocks mined since (a localStorage cache, like a token's), refreshed every
- *  minute. */
+ *  The migrator's own swaps count too (a harvest sells the pool's fee
+ *  buckets, a buyback spends the burn pot): they are swaps on the DEX, and
+ *  worth at most the tax of the trades before them, so they inflate nothing
+ *  on their own. The server's scan of the day when the browser is cold, then
+ *  only the blocks mined since (a localStorage cache, like a token's),
+ *  refreshed every minute. */
 /** A coin's day, from its trades of the last 24 hours. */
 export type DaySummary = {
   /** what buyers paid plus what sellers received, in quote wei */

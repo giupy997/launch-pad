@@ -11,6 +11,7 @@ import {
 import { launchpadAbi, launchTokenAbi } from "@/lib/abi";
 import {
   useLaunchpadAddress,
+  usePadAbi,
   useTokens,
   useExplorer,
   useAppChain,
@@ -32,6 +33,7 @@ export default function SwapPage() {
   const padMaybe = useLaunchpadAddress();
   const deployed = !!padMaybe;
   const pad = padMaybe ?? ("0x0000000000000000000000000000000000000000" as `0x${string}`);
+  const padAbi = usePadAbi(); // feeConfig answers six fields on v11, seven on v12: read with the pad's own ABI
   const explorer = useExplorer();
   const appChainId = useAppChain().id;
   const native = useNativeSymbol();
@@ -87,14 +89,14 @@ export default function SwapPage() {
   const platformFeeBps = (feeBpsRaw as bigint | undefined) ?? 100n;
   const { data: fromFeesRaw } = useReadContract({
     address: pad,
-    abi: launchpadAbi,
+    abi: padAbi,
     functionName: "feeConfig",
     args: from !== ETH ? [from] : undefined,
     query: { enabled: from !== ETH, staleTime: Infinity },
   });
   const { data: toFeesRaw } = useReadContract({
     address: pad,
-    abi: launchpadAbi,
+    abi: padAbi,
     functionName: "feeConfig",
     args: to !== ETH ? [to] : undefined,
     query: { enabled: to !== ETH, staleTime: Infinity },
@@ -103,7 +105,7 @@ export default function SwapPage() {
   // leg 1 quote: from -> ETH (if from is a token)
   const sellQuote: bigint | undefined =
     fromToken && parsed > 0n
-      ? quoteSell(fromToken.curve, parsed, platformFeeBps, fromFeesRaw ? parseFeeConfig(fromFeesRaw) : NO_TAX)
+      ? quoteSell(fromToken.curve, parsed, platformFeeBps, fromFeesRaw ? parseFeeConfig(fromFeesRaw, Number(platformFeeBps)) : NO_TAX)
       : undefined;
 
   // ETH input for the buy leg
@@ -111,7 +113,9 @@ export default function SwapPage() {
 
   // leg 2 quote: ETH -> to (if to is a token)
   const buyQuote: bigint | undefined =
-    toToken && ethIn > 0n ? quoteBuy(toToken.curve, ethIn, platformFeeBps, toFeesRaw ? parseFeeConfig(toFeesRaw) : NO_TAX) : undefined;
+    toToken && ethIn > 0n
+      ? quoteBuy(toToken.curve, ethIn, platformFeeBps, toFeesRaw ? parseFeeConfig(toFeesRaw, Number(platformFeeBps)) : NO_TAX)
+      : undefined;
 
   const { writeContract, data: hash, isPending, error, reset } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });

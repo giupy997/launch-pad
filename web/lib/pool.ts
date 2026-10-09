@@ -8,12 +8,17 @@ import type { PoolRef } from "./events";
 import { IMMUTABLE, ZERO_ADDRESS } from "./hooks";
 
 /** What the site reads of a UniV2Migrator: the pool it seeded for a coin,
- *  what the coin is paired against there, the liquidity it holds locked. */
+ *  what the coin is paired against there, the liquidity it holds locked; and
+ *  on v12 the harvest of the coin's pool buckets, which anyone may call (how
+ *  much it may sell this block, and from which block the next one may run). */
 export const migratorAbi = parseAbi([
   "function pairOf(address token) view returns (address)",
   "function pairAsset(address token) view returns (address)",
   "function liquidity(address token) view returns (uint256)",
   "function router() view returns (address)",
+  "function harvest(address token) returns (uint256 tokensIn, uint256 quoteOut, uint256 tokensBurned)",
+  "function harvestCap(address token) view returns (uint256)",
+  "function nextHarvestBlock(address token) view returns (uint256)",
 ]);
 
 /** What the site reads of a Uniswap v2 pair. */
@@ -188,10 +193,12 @@ export function usePools(
         .map((x, i) => ({
           token: x.token,
           pair: x.pair,
+          migrator: x.migrator,
           token0: sideReads?.[i]?.status === "success" ? (sideReads[i].result as `0x${string}`) : undefined,
         }))
-        .filter((x): x is { token: `0x${string}`; pair: `0x${string}`; token0: `0x${string}` } => !!x.token0)
-        .map((x) => ({ token: x.token, pair: x.pair, tokenIsZero: x.token0.toLowerCase() === x.token.toLowerCase() })),
+        .filter((x): x is { token: `0x${string}`; pair: `0x${string}`; migrator: `0x${string}`; token0: `0x${string}` } => !!x.token0)
+        // the migrator named here spares the scan a read of it (its own swaps are labelled by it)
+        .map((x) => ({ token: x.token, pair: x.pair, migrator: x.migrator, tokenIsZero: x.token0.toLowerCase() === x.token.toLowerCase() })),
     [paired, sideReads]
   );
   // what each pool holds, polled: the price and market cap of a graduated coin

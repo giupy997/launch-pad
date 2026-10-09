@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { formatEther, parseEther, parseEventLogs } from "viem";
+import { formatEther, parseEther, parseEventLogs, type Abi } from "viem";
 import Link from "next/link";
 import { useAccount, useReadContract, useReadContracts, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
-import { launchpadAbi } from "@/lib/abi";
-import { useLaunchpadAddress, useExplorer, useAppChain, ZERO_ADDRESS } from "@/lib/hooks";
+import { launchpadAbi, launchpadV11Abi } from "@/lib/abi";
+import { useLaunchpadAddress, useExplorer, useAppChain, usePadAbi, usePadVersion, ZERO_ADDRESS } from "@/lib/hooks";
 import {
   robinhood,
   QUOTE_ASSETS,
@@ -18,7 +18,7 @@ import { TokenLogo } from "@/components/TokenLogo";
 import { processLogoFile, dataUriBytes } from "@/lib/image";
 import { fmtTokens, fmtUnits } from "@/lib/format";
 import { FeeSplitEditor, splitTotal, type SplitPct } from "@/components/FeeSplitEditor";
-import { feesLine, treasuryPct } from "@/lib/curve";
+import { feesLine, treasuryPct, treasuryPctV11 } from "@/lib/curve";
 
 const inputCls =
   "w-full rounded-lg input px-3 py-2 text-sm focus:border-white outline-none placeholder:text-zinc-600";
@@ -46,6 +46,8 @@ export function CreateTokenForm() {
   const pad = padMaybe ?? ("0x0000000000000000000000000000000000000000" as `0x${string}`);
   const explorer = useExplorer();
   const chain = useAppChain();
+  const version = usePadVersion();
+  const padAbi = usePadAbi(); // createTokenWithFees takes a six-field tuple on v11, seven on v12
   const { isConnected } = useAccount();
 
   // a v8 pad closes to new coins the moment a migration freeze is announced
@@ -84,17 +86,22 @@ export function CreateTokenForm() {
   });
   const customFees = maxTaxRaw !== undefined;
   const maxTaxPct = customFees ? Number(maxTaxRaw as bigint) / 100 : 10;
+  // the pad's rate, which a coin created now trades at; on v11 also the pot's share of it (a v12 pad
+  // has no such split: the rate goes whole to the treasury, and those two reads are gone)
+  const padReads: { address: `0x${string}`; abi: Abi; functionName: string }[] = [{ address: pad, abi: launchpadAbi, functionName: "feeBps" }];
+  if (version === 11) {
+    padReads.push(
+      { address: pad, abi: launchpadV11Abi, functionName: "creatorFeeShareBps" },
+      { address: pad, abi: launchpadV11Abi, functionName: "holderCashbackBps" }
+    );
+  }
   const { data: padFees } = useReadContracts({
-    contracts: [
-      { address: pad, abi: launchpadAbi, functionName: "feeBps" },
-      { address: pad, abi: launchpadAbi, functionName: "creatorFeeShareBps" },
-      { address: pad, abi: launchpadAbi, functionName: "holderCashbackBps" },
-    ],
+    contracts: padReads,
     query: { enabled: deployed, staleTime: 60_000 },
   });
   const padBig = (i: number, fallback: bigint) => (padFees?.[i]?.status === "success" ? (padFees[i].result as bigint) : fallback);
   const platformFeeBps = padBig(0, 100n);
-  const treasury = treasuryPct(platformFeeBps, padBig(1, 5_000n) + padBig(2, 3_000n));
+  const treasury = version === 12 ? treasuryPct(platformFeeBps) : treasuryPctV11(platformFeeBps, padBig(1, 5_000n) + padBig(2, 3_000n));
   const platformPct = `${(Number(platformFeeBps) / 100).toString()}%`;
   const buyTaxBps = customFees ? Math.round(buyTax * 100) : 0;
   const sellTaxBps = customFees ? Math.round(sellTax * 100) : 0;
@@ -180,7 +187,7 @@ export function CreateTokenForm() {
     if (customFees) {
       writeContract({
         address: pad,
-        abi: launchpadAbi,
+        abi: padAbi,
         functionName: "createTokenWithFees",
         chainId: chain.id,
         args: [
@@ -196,6 +203,7 @@ export function CreateTokenForm() {
             holdersBps: split.holders * 100,
             burnBps: split.burn * 100,
             liquidityBps: split.liquidity * 100,
+            platformBps: 0, // v12 ignores it and stamps the pad's own feeBps on the coin; v11's tuple has no such field
           },
         ],
         value,
@@ -317,9 +325,11 @@ export function CreateTokenForm() {
           <Label>
             Trading fees{" "}
             <span className="normal-case text-zinc-600">
-              {customFees
-                ? `${platformPct} platform fee on every curve trade (${treasury} to the treasury) · add your own tax up to ${maxTaxPct}% each way · you split the pot, fixed forever`
-                : `${platformPct} per trade on the curve · ${treasury} to the treasury · you pick where the rest goes, locked forever`}
+              {version === 12
+                ? `every buy and sell pays the launchpad ${platformPct} (to the treasury) plus your coin's tax, on the curve and in the pool after graduation · your tax up to ${maxTaxPct}% each way, split as you choose below, fixed forever`
+                : customFees
+                  ? `${platformPct} platform fee on every curve trade (${treasury} to the treasury) · add your own tax up to ${maxTaxPct}% each way · you split the pot, fixed forever`
+                  : `${platformPct} per trade on the curve · ${treasury} to the treasury · you pick where the rest goes, locked forever`}
             </span>
           </Label>
           {deployed && !feeUiReady ? (
@@ -387,8 +397,15 @@ export function CreateTokenForm() {
         </div>
 
         <div className="rounded-lg border border-white/10 px-4 py-3 font-mono text-[11px] tracking-wide text-zinc-400 uppercase">
-          {feesLine({ buyTaxBps, sellTaxBps })} →{" "}
-          <span className="text-white">{splitText}</span> · {treasury} treasury
+          {version === 12 ? (
+            <>
+              {platformPct} launchpad fee · {feesLine({ buyTaxBps, sellTaxBps })} → <span className="text-white">{splitText}</span>
+            </>
+          ) : (
+            <>
+              {feesLine({ buyTaxBps, sellTaxBps })} → <span className="text-white">{splitText}</span> · {treasury} treasury
+            </>
+          )}
         </div>
 
         <button
@@ -495,8 +512,8 @@ export function CreateTokenForm() {
           </p>
 
           <div className="divide-y divide-white/[0.06] font-mono text-xs">
-            <Row k="Fees" v={feesLine({ buyTaxBps, sellTaxBps })} />
-            <Row k="Fee split" v={`${splitText} · ${treasury} treasury`} strong />
+            <Row k="Fees" v={version === 12 ? `${platformPct} launchpad fee · ${feesLine({ buyTaxBps, sellTaxBps })}` : feesLine({ buyTaxBps, sellTaxBps })} />
+            <Row k="Fee split" v={version === 12 ? `${splitText} · ${platformPct} treasury` : `${splitText} · ${treasury} treasury`} strong />
             <Row k="Holders earn" v={holdersOn ? `Cashback in ${quote.symbol}` : "—"} />
             <Row k="Supply" v="1B fixed" />
             <Row
@@ -531,7 +548,9 @@ export function CreateTokenForm() {
           <p className="text-[11px] text-zinc-600">
             {chain.id === robinhood.id
               ? `One transaction deploys your coin and its bonding curve. At graduation, liquidity moves to a Uniswap v4 pool, locked forever, and every swap there keeps paying the 1% fee — ${feesToHolders ? "to your holders" : "to you"}, as chosen above.`
-              : "One transaction deploys your coin and its bonding curve, its fees fixed for good. At graduation, liquidity moves to the DEX automatically and is locked forever."}
+              : version === 12
+                ? "One transaction deploys your coin and its bonding curve, its fees fixed for good. At graduation, liquidity moves to the DEX automatically and is locked forever, and every pool trade keeps paying the launchpad fee and your tax."
+                : "One transaction deploys your coin and its bonding curve, its fees fixed for good. At graduation, liquidity moves to the DEX automatically and is locked forever."}
           </p>
         </div>
         </div>

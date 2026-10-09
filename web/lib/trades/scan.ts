@@ -4,6 +4,7 @@ import {
   encodeEventTopics,
   http,
   numberToHex,
+  parseAbi,
   parseAbiItem,
   type PublicClient,
   type RpcLog,
@@ -28,11 +29,20 @@ export type Trade = {
   timestamp: number; // unix seconds, 0 if unknown
   /** where it happened: the pad's curve, or the coin's DEX pool once graduated */
   venue: "curve" | "pool";
+  /** a pool swap that is the protocol's own, not a trader's: the migrator
+   *  selling the pool's fee buckets (a harvest, v12), or buying coins back
+   *  with the burn pot for the pad to burn (a buyback, every version). Still
+   *  a sell or a buy on the DEX (the price moves, the volume counts): the
+   *  feed names them instead. Absent on a trader's swap. */
+  kind?: TradeKind;
 };
+export type TradeKind = "harvest" | "buyback";
 
-/** A graduated coin's pool, so its swaps read as the coin's trades: the pair
- *  and which side of it the coin is. */
-export type PoolRef = { token: `0x${string}`; pair: `0x${string}`; tokenIsZero: boolean };
+/** A graduated coin's pool, so its swaps read as the coin's trades: the pair,
+ *  which side of it the coin is, and, when the caller knows it, the migrator
+ *  that seeded it (`graduatedVia`), whose own swaps are not a trader's. Left
+ *  out, the scan asks the pad once and keeps the answer. */
+export type PoolRef = { token: `0x${string}`; pair: `0x${string}`; tokenIsZero: boolean; migrator?: `0x${string}` };
 
 /** Where a scan reads: the chain's nodes in order of preference, and the block
  *  range one eth_getLogs may cover there (configured; a node's refusal teaches
@@ -367,6 +377,38 @@ function stretches(ok: Range[]): Range[] {
 
 export type Scan = { trades: Trade[]; truncated: boolean; first: bigint; last: bigint };
 
+// the pad's record of which migrator seeded a coin's pool (both pad versions
+// answer it): the contract whose own swaps there are the protocol's, not a
+// trader's. Immutable once graduated, so asked once per coin and kept.
+const graduatedViaAbi = parseAbi(["function graduatedVia(address token) view returns (address)"]);
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+const migrators = new Map<string, `0x${string}`>();
+
+/** the migrator behind `pool`: the one the ref names, else the pad's answer;
+ *  undefined when no node answers in time (or the pad knows none), in which
+ *  case this scan's swaps go unlabelled and the next scan asks again */
+async function migratorOf(t: ScanTarget, pad: `0x${string}`, pool: PoolRef, deadline?: number): Promise<`0x${string}` | undefined> {
+  if (pool.migrator) return pool.migrator;
+  const key = `${t.chainId}.${pad.toLowerCase()}.${pool.token.toLowerCase()}`;
+  const known = migrators.get(key);
+  if (known) return known;
+  try {
+    const via = await firstNode(
+      scanNodes(t),
+      (c) => c.readContract({ address: pad, abi: graduatedViaAbi, functionName: "graduatedVia", args: [pool.token] }),
+      PER_REQUEST_MS,
+      deadline
+    );
+    if (via && via !== ZERO_ADDRESS) {
+      migrators.set(key, via);
+      return via;
+    }
+  } catch {
+    /* unlabelled this time */
+  }
+  return undefined;
+}
+
 /** The trade logs over [fromBlock, toBlock] — one token's, or (no token)
  *  every coin's: the pad's Bought and Sold, plus the swaps of every pool in
  *  `pools` (graduated coins trade there, and their trades go on). A first
@@ -398,8 +440,15 @@ export async function scanTrades(
   const set = scanNodes(t);
   const ranges = splitRange(start, toBlock, chunkFor(t));
   const scans = [
-    { logs: [] as RpcLog[], pool: null as PoolRef | null, filter: { address: pad, topics } },
-    ...pools.map((pool) => ({ logs: [] as RpcLog[], pool, filter: { address: pool.pair, topics: [topicSwap] } })),
+    { logs: [] as RpcLog[], pool: null as PoolRef | null, migrator: undefined as `0x${string}` | undefined, filter: { address: pad, topics } },
+    ...(await Promise.all(
+      pools.map(async (pool) => ({
+        logs: [] as RpcLog[],
+        pool,
+        migrator: await migratorOf(t, pad, pool, deadline),
+        filter: { address: pool.pair, topics: [topicSwap] },
+      }))
+    )),
   ];
   // the same ranges for the pad and every pool; a range counts as read only when every scan read it
   const failedKeys = new Set<string>();
@@ -429,7 +478,7 @@ export async function scanTrades(
               return bn >= within.lo && bn <= within.hi;
             })
           : scan.logs;
-        return scan.pool ? decodeSwaps(logs, scan.pool) : decodeTrades(logs);
+        return scan.pool ? decodeSwaps(logs, scan.pool, pad, scan.migrator) : decodeTrades(logs);
       })
     );
   if (!failedKeys.size) return { trades: decodeAll(), truncated: start > fromBlock, first: start, last: toBlock };
@@ -585,19 +634,43 @@ function decodeTrades(logs: RpcLog[]): Keyed[] {
 
 /** A pool's swaps as the coin's trades: quote in and coins out is a buy, coins
  *  in and quote out a sell, by the recipient (the router's `to`: the wallet
- *  behind the swap). Anything else (both sides in, a flash swap) is skipped. */
-function decodeSwaps(logs: RpcLog[], pool: PoolRef): Keyed[] {
+ *  behind the swap). Anything else (both sides in, a flash swap) is skipped.
+ *  The migrator's own swaps (it calls the pair itself, so it is the swap's
+ *  `sender`) are named: a harvest sells the pool's fee buckets to itself
+ *  (UniV2Migrator.harvest, the quote then handed to the pad), a buyback buys
+ *  with the burn pot for the pad, which burns the coins (buybackAndBurn, on
+ *  every version of the migrator). A nudge at seeding (a pre-seeded pool
+ *  brought to the pad's price, once per coin at most) swaps to the migrator
+ *  too: one that sells reads as a harvest, one that buys as a plain buy by
+ *  the migrator; the protocol's leg either way, never a trader's. */
+function decodeSwaps(logs: RpcLog[], pool: PoolRef, pad: `0x${string}`, migrator: `0x${string}` | undefined): Keyed[] {
   const out: Keyed[] = [];
+  const padLow = pad.toLowerCase();
+  const migratorLow = migrator?.toLowerCase();
   for (const l of logs) {
     const d = decodeEventLog({ abi: [swapEvent], data: l.data, topics: l.topics as [`0x${string}`, ...`0x${string}`[]] });
-    const a = d.args as { amount0In: bigint; amount1In: bigint; amount0Out: bigint; amount1Out: bigint; to: `0x${string}` };
+    const a = d.args as {
+      sender: `0x${string}`;
+      amount0In: bigint;
+      amount1In: bigint;
+      amount0Out: bigint;
+      amount1Out: bigint;
+      to: `0x${string}`;
+    };
     const [tokensIn, quoteIn] = pool.tokenIsZero ? [a.amount0In, a.amount1In] : [a.amount1In, a.amount0In];
     const [tokensOut, quoteOut] = pool.tokenIsZero ? [a.amount0Out, a.amount1Out] : [a.amount1Out, a.amount0Out];
     const block = BigInt(l.blockNumber ?? "0x0");
     const base = { token: pool.token, trader: a.to, block, tx: l.transactionHash as `0x${string}`, timestamp: 0, venue: "pool" as const };
+    const byMigrator = migratorLow !== undefined && a.sender.toLowerCase() === migratorLow;
+    const to = a.to.toLowerCase();
     let trade: Trade | null = null;
-    if (quoteIn > 0n && tokensOut > 0n && tokensIn === 0n) trade = { type: "buy", eth: quoteIn, tokens: tokensOut, ...base };
-    else if (tokensIn > 0n && quoteOut > 0n && quoteIn === 0n) trade = { type: "sell", eth: quoteOut, tokens: tokensIn, ...base };
+    if (quoteIn > 0n && tokensOut > 0n && tokensIn === 0n) {
+      trade = { type: "buy", eth: quoteIn, tokens: tokensOut, ...base };
+      if (byMigrator && to === padLow) trade.kind = "buyback";
+    } else if (tokensIn > 0n && quoteOut > 0n && quoteIn === 0n) {
+      trade = { type: "sell", eth: quoteOut, tokens: tokensIn, ...base };
+      if (byMigrator && to === migratorLow) trade.kind = "harvest";
+    }
     if (trade) out.push({ trade, block, index: Number(l.logIndex ?? 0) });
   }
   return out;
@@ -607,14 +680,16 @@ function decodeSwaps(logs: RpcLog[], pool: PoolRef): Keyed[] {
 // The compact form trades travel and sleep in: the browser's cache and the
 // server's answer, one array per trade, bigints as decimal strings.
 
-export type PackedTrade = [string, `0x${string}`, string, string, string, `0x${string}`, number, `0x${string}`, string];
+// The tenth element, the kind, is "" on a trader's swap and absent in what
+// was packed before it existed (an answer the edge still holds): no kind either way.
+export type PackedTrade = [string, `0x${string}`, string, string, string, `0x${string}`, number, `0x${string}`, string, string?];
 
 export function packTrades(trades: Trade[]): PackedTrade[] {
-  return trades.map((x) => [x.type, x.trader, x.eth.toString(), x.tokens.toString(), x.block.toString(), x.tx, x.timestamp, x.token, x.venue]);
+  return trades.map((x) => [x.type, x.trader, x.eth.toString(), x.tokens.toString(), x.block.toString(), x.tx, x.timestamp, x.token, x.venue, x.kind ?? ""]);
 }
 
 export function unpackTrades(packed: PackedTrade[]): Trade[] {
-  return packed.map(([type, trader, eth, tokens, block, tx, timestamp, token, venue]) => ({
+  return packed.map(([type, trader, eth, tokens, block, tx, timestamp, token, venue, kind]) => ({
     type: type === "sell" ? ("sell" as const) : ("buy" as const),
     token,
     trader,
@@ -624,5 +699,6 @@ export function unpackTrades(packed: PackedTrade[]): Trade[] {
     tx,
     timestamp,
     venue: venue === "pool" ? ("pool" as const) : ("curve" as const),
+    ...(kind === "harvest" || kind === "buyback" ? { kind } : {}),
   }));
 }

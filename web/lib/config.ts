@@ -2,6 +2,7 @@ import { defineChain } from "viem";
 import { base, mainnet, sepolia } from "viem/chains";
 import { cookieStorage, createConfig, createStorage, fallback, http, injected } from "wagmi";
 import { walletConnect } from "wagmi/connectors";
+import type { PadVersion } from "./abi";
 
 export const giwaSepolia = defineChain({
   id: 91342,
@@ -71,7 +72,9 @@ export const CHAIN_LABEL: Record<number, string> = { [base.id]: "cbLTC" };
 
 /** Seconds a block takes, to turn a freeze block into a time. */
 export const BLOCK_SECONDS: Record<number, number> = { [base.id]: 2, [litvmTestnet.id]: 0.25 }; // Liteforge: ~4 blocks a second, measured
-/** Where a chain's coins go when the pad freezes for its migration (v8 pads). */
+/** Where a chain's coins go when the pad freezes for its migration (v8 pads
+ *  and on): what the frozen notice names. Base's v11 coins move to the v12
+ *  pad on Base first; the LitVM move comes after that, from v12. */
 export const MIGRATION_TARGET: Record<number, string> = { [base.id]: "LitVM mainnet" };
 
 // One address per chain: add future deployments here (multichain).
@@ -105,6 +108,39 @@ export const LAUNCHPAD_DEPLOY_BLOCK: Record<number, bigint> = {
   [robinhood.id]: 61_447_720n, // v7.4
   [litvmTestnet.id]: 57_741_789n, // the v11 rehearsal pad (the v9 one, block 56_991_201, and the v7.x pads are parked)
 };
+
+/** Which launchpad generation a chain's live pad is, by config rather than by
+ *  probing the chain: it picks the ABI (padAbiFor in lib/abi.ts) and the reads
+ *  that exist on one generation only (feeConfig's seventh field, taxTreasury
+ *  and taxPot on 12; creatorFeeShareBps and holderCashbackBps on 11). The
+ *  older pads (GIWA v7.1, Robinhood v7.4) are read with the v11 ABI as before.
+ *  Base and Liteforge both become 12 when their v12 pads are live: the switch
+ *  is one line here at the v12 launch (LAUNCH-BASE-V12.md), no code. */
+export const PAD_VERSION: Record<number, PadVersion> = {
+  [base.id]: 11,
+  [giwaSepolia.id]: 11,
+  [robinhood.id]: 11,
+  [litvmTestnet.id]: 11,
+};
+
+/** A pad a chain moved on from, kept usable on the legacy page: its coins
+ *  with their state, a sell box for the ones still on their curve, the
+ *  cashback and creator-fee claims, the links to their pools. A pad left
+ *  running with its coins (Base v11) names no `migratedTo`; one whose coins
+ *  were moved names the pad they went to, and the page links each coin's
+ *  twin. `deployBlock` is where its event scans start. */
+export type LegacyPad = {
+  address: `0x${string}`;
+  version: 11;
+  deployBlock: bigint;
+  label: string;
+  migratedTo?: string;
+};
+/** Empty today. At the v12 launch on Base, LAUNCHPAD_ADDRESS[base.id] becomes
+ *  the v12 pad, PAD_VERSION[base.id] 12, and the v11 pad goes in here, left
+ *  running with its coins:
+ *    [base.id]: [{ address: "0xEfbB4ebdf5130cC4fC45899EeBA727fa2F55b5f4", version: 11, deployBlock: 52_180_589n, label: "Launchpad v11" }], */
+export const LEGACY_LAUNCHPADS: Record<number, LegacyPad[]> = {};
 
 // Quote assets offered at launch per chain. address null = native ETH.
 // To add one (e.g. a tokenized stock): owner must also enable it on-chain

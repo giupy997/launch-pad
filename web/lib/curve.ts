@@ -4,7 +4,11 @@ import type { CurveInfo } from "@/lib/hooks";
 export const CURVE_SUPPLY = 800_000_000n * 10n ** 18n;
 export const FEE_DENOMINATOR = 10_000n;
 
-/** A coin's fee configuration as the pad stores it (basis points). */
+/** A coin's fee configuration as the pad stores it (basis points): its own
+ *  tax each way and the split of that tax, plus the launchpad's rate the coin
+ *  trades at. On v12 the rate is stamped on the coin at creation (the seventh
+ *  field, whole to the treasury, on the curve and on the pool); on v11 it is
+ *  the pad's feeBps(), carried here so the two read alike. */
 export type FeeConfig = {
   buyTaxBps: number;
   sellTaxBps: number;
@@ -12,16 +16,41 @@ export type FeeConfig = {
   holdersBps: number;
   burnBps: number;
   liquidityBps: number;
+  platformBps: number;
 };
 
 /** The fee configuration of a coin before taxes existed, or of one that set none. */
-export const NO_TAX: FeeConfig = { buyTaxBps: 0, sellTaxBps: 0, creatorBps: 10_000, holdersBps: 0, burnBps: 0, liquidityBps: 0 };
+export const NO_TAX: FeeConfig = { buyTaxBps: 0, sellTaxBps: 0, creatorBps: 10_000, holdersBps: 0, burnBps: 0, liquidityBps: 0, platformBps: 0 };
 
-/** feeConfig(token) as wagmi returns it: six uint16 in order. */
-export function parseFeeConfig(result: unknown): FeeConfig {
+/** feeConfig(token) as wagmi returns it: six uint16 in order on v11, seven on
+ *  v12. A six-field answer takes `fallbackPlatformBps`, the pad's feeBps()
+ *  (its meaning differs there: the treasury got a share of it, see
+ *  treasuryPctV11, but it is the rate the coin trades at either way). */
+export function parseFeeConfig(result: unknown, fallbackPlatformBps: number): FeeConfig {
   const r = result as readonly (number | bigint)[];
   const n = (i: number) => Number(r[i] ?? 0);
-  return { buyTaxBps: n(0), sellTaxBps: n(1), creatorBps: n(2), holdersBps: n(3), burnBps: n(4), liquidityBps: n(5) };
+  return {
+    buyTaxBps: n(0),
+    sellTaxBps: n(1),
+    creatorBps: n(2),
+    holdersBps: n(3),
+    burnBps: n(4),
+    liquidityBps: n(5),
+    platformBps: r.length >= 7 ? n(6) : fallbackPlatformBps,
+  };
+}
+
+/** What a coin's pool charges on one side of a trade, in basis points: the
+ *  launchpad's rate and the coin's tax for that side, taken in coins by the
+ *  token on every transfer out of (a buy) or into (a sell) a registered pool. */
+export function poolRate(fees: FeeConfig, side: "buy" | "sell"): number {
+  return fees.platformBps + (side === "buy" ? fees.buyTaxBps : fees.sellTaxBps);
+}
+
+/** `amount` less a rate in basis points: what a pool trade delivers after the
+ *  token's charge, the pad's own rounding. */
+export function netOfRate(amount: bigint, rateBps: number): bigint {
+  return amount - (amount * BigInt(rateBps)) / FEE_DENOMINATOR;
 }
 
 /** Tokens a buy of `quoteIn` gets on the curve: the platform fee and the coin's tax off first,
@@ -44,10 +73,18 @@ export function quoteSell(curve: CurveInfo, tokensIn: bigint, platformFeeBps: bi
   return out - (out * f) / FEE_DENOMINATOR;
 }
 
-/** The treasury's cut of a trade, in percent, as text: the platform fee less the coin's pot share of it. */
-export function treasuryPct(platformFeeBps: bigint, potShareBps: bigint): string {
-  const pct = (Number(platformFeeBps) * (10_000 - Number(potShareBps))) / 1_000_000;
-  return `${pct.toFixed(3).replace(/\.?0+$/, "")}%`;
+const trimPct = (pct: number) => `${pct.toFixed(3).replace(/\.?0+$/, "")}%`;
+
+/** The treasury's cut of a trade, in percent, as text: on v12 the whole of the
+ *  launchpad's rate the coin was stamped with (FeeConfig.platformBps). */
+export function treasuryPct(platformBps: number | bigint): string {
+  return trimPct(Number(platformBps) / 100);
+}
+
+/** The same on a v11 pad, where the platform fee fed the coin's pot too: the
+ *  fee less the pot's share of it (creatorFeeShareBps + holderCashbackBps). */
+export function treasuryPctV11(platformFeeBps: bigint, potShareBps: bigint): string {
+  return trimPct((Number(platformFeeBps) * (10_000 - Number(potShareBps))) / 1_000_000);
 }
 
 const pctText = (bps: number) => `${(bps / 100).toString().replace(/\.0+$/, "")}%`;

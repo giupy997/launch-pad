@@ -14,6 +14,8 @@ import {
 import { launchpadAbi, launchTokenAbi } from "@/lib/abi";
 import {
   useLaunchpadAddress,
+  usePadAbi,
+  usePadVersion,
   useExplorer,
   useAppChain,
   quoteInfo,
@@ -23,7 +25,7 @@ import {
   useDebounced,
 } from "@/lib/hooks";
 import { fmtEth, fmtUnits, fmtTokens } from "@/lib/format";
-import { quoteBuy, quoteSell, parseFeeConfig, NO_TAX, sideFeeLabel, splitParts, type FeeConfig } from "@/lib/curve";
+import { quoteBuy, quoteSell, parseFeeConfig, NO_TAX, sideFeeLabel, splitParts, treasuryPct, type FeeConfig } from "@/lib/curve";
 import { SlippageControl, useSlippageBps } from "@/components/SlippageControl";
 import { PoolCard } from "@/components/PoolCard";
 import { QUOTE_ASSETS, ZAP_ROUTER, UNISWAP_QUOTER, WETH9, USDG } from "@/lib/config";
@@ -90,14 +92,16 @@ export function TradeBox({
   curve: CurveInfo;
   /** the coin's own tax and split (none on pads before v9) */
   fees?: FeeConfig;
-  /** the pad's platform fee, basis points */
+  /** the pad's platform fee, basis points (on v12 the coin's own stamp, fees.platformBps) */
   platformFeeBps?: bigint;
-  /** the treasury's cut of a trade, as text */
+  /** the treasury's cut of a trade, as text (v11: the fee less the pot's share; v12 says the rate itself) */
   treasury?: string;
 }) {
   const padMaybe = useLaunchpadAddress();
   const deployed = !!padMaybe;
   const pad = padMaybe ?? ("0x0000000000000000000000000000000000000000" as `0x${string}`);
+  const padAbi = usePadAbi(); // feeConfig answers six fields on v11, seven on v12: read with the pad's own ABI
+  const v12 = usePadVersion() === 12;
   const explorer = useExplorer();
   const chain = useAppChain();
   const native = useNativeSymbol();
@@ -139,7 +143,7 @@ export function TradeBox({
   });
   const { data: preFeesRaw } = useReadContract({
     address: pad,
-    abi: launchpadAbi,
+    abi: padAbi,
     functionName: "feeConfig",
     args: q.address ? [q.address] : undefined,
     chainId: chain.id,
@@ -251,7 +255,7 @@ export function TradeBox({
   // ETH -> pre-market estimate straight from its own curve (curve route): the pad's arithmetic, run here
   const preQuoteOut: bigint | undefined =
     curveZapMode && preCurveRaw && parsed > 0n
-      ? quoteBuy(parseCurve(preCurveRaw), parsed, platformFeeBps, preFeesRaw ? parseFeeConfig(preFeesRaw) : NO_TAX)
+      ? quoteBuy(parseCurve(preCurveRaw), parsed, platformFeeBps, preFeesRaw ? parseFeeConfig(preFeesRaw, Number(platformFeeBps)) : NO_TAX)
       : undefined;
 
   const zapQuoteOut = curveZapMode ? preQuoteOut : (quoterSim?.result?.[0] as bigint | undefined);
@@ -401,7 +405,7 @@ export function TradeBox({
     }
   }
 
-  if (graduated) return <PoolCard token={token} symbol={symbol} quote={q} />;
+  if (graduated) return <PoolCard token={token} symbol={symbol} quote={q} fees={fees} />;
 
   return (
     <div className="card p-5 h-fit space-y-4">
@@ -532,12 +536,31 @@ export function TradeBox({
       </form>
 
       <SlippageControl bps={slippageBps} onChange={setSlippageBps} />
+      {/* what this side pays: on v12 the launchpad's rate (whole to the treasury) and the coin's tax, split
+          as its creator set; on v11 the tax, the split of the pot and the treasury's cut of the platform fee */}
       <p className="text-xs text-zinc-600">
-        {sideFeeLabel(mode === "buy" ? fees.buyTaxBps : fees.sellTaxBps, mode)} ·{" "}
-        {splitParts(fees)
-          .map((p) => `${p.bps / 100}% ${p.label}`)
-          .join(" · ")}{" "}
-        · {treasury} treasury
+        {v12 ? (
+          <>
+            {treasuryPct(fees.platformBps)} launchpad fee · {sideFeeLabel(mode === "buy" ? fees.buyTaxBps : fees.sellTaxBps, mode)}
+            {(mode === "buy" ? fees.buyTaxBps : fees.sellTaxBps) > 0 && (
+              <>
+                {" "}
+                →{" "}
+                {splitParts(fees)
+                  .map((p) => `${p.bps / 100}% ${p.label}`)
+                  .join(" · ")}
+              </>
+            )}
+          </>
+        ) : (
+          <>
+            {sideFeeLabel(mode === "buy" ? fees.buyTaxBps : fees.sellTaxBps, mode)} ·{" "}
+            {splitParts(fees)
+              .map((p) => `${p.bps / 100}% ${p.label}`)
+              .join(" · ")}{" "}
+            · {treasury} treasury
+          </>
+        )}
       </p>
 
       {isSuccess && hash && (

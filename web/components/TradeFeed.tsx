@@ -1,8 +1,19 @@
 "use client";
 
-import { type Trade } from "@/lib/events";
+import { type Trade, type TradeKind } from "@/lib/events";
 import { fmtUnits, fmtTokens, shortAddr } from "@/lib/format";
 import { useExplorer, useNativeSymbol } from "@/lib/hooks";
+
+// the protocol's own pool swaps, named for what they are rather than as a
+// trader's buy or sell: who swapped, and what the swap did
+const KIND_TRADER: Record<TradeKind, string> = {
+  harvest: "the pad's migrator",
+  buyback: "the pad",
+};
+const KIND_TITLES: Record<TradeKind, string> = {
+  harvest: "the pad's migrator sold the pool's fee buckets: the quote went to the treasury, the creator, the holders and the burn pot",
+  buyback: "the pad bought coins back on its pool with the burn pot, and burned them",
+};
 
 export function TradeFeed({
   trades,
@@ -41,13 +52,22 @@ export function TradeFeed({
       <ul className="divide-y divide-white/[0.06]">
         {recent.map((t) => (
           <li key={t.tx + t.type + t.trader} className="px-4 py-2.5 flex items-center gap-3 text-sm">
-            <span
-              className={`font-mono text-[10px] tracking-widest uppercase px-2 py-0.5 rounded-full border ${
-                t.type === "buy" ? "border-white text-white" : "border-zinc-600 text-zinc-400"
-              }`}
-            >
-              {t.type}
-            </span>
+            {t.kind ? (
+              <span
+                className="font-mono text-[10px] tracking-widest uppercase px-2 py-0.5 rounded-full border border-dashed border-zinc-700 text-zinc-500"
+                title={KIND_TITLES[t.kind]}
+              >
+                {t.kind}
+              </span>
+            ) : (
+              <span
+                className={`font-mono text-[10px] tracking-widest uppercase px-2 py-0.5 rounded-full border ${
+                  t.type === "buy" ? "border-white text-white" : "border-zinc-600 text-zinc-400"
+                }`}
+              >
+                {t.type}
+              </span>
+            )}
             {t.venue === "pool" && (
               <span className="font-mono text-[10px] tracking-widest uppercase text-zinc-600" title="a swap in the coin's pool on the DEX">
                 pool
@@ -58,7 +78,7 @@ export function TradeFeed({
               target="_blank"
               className="font-mono text-xs text-zinc-400 hover:text-white underline"
             >
-              {shortAddr(t.trader)}
+              {t.kind ? KIND_TRADER[t.kind] : shortAddr(t.trader)}
             </a>
             <span className="flex-1 text-right text-zinc-300">
               {fmtTokens(t.tokens)} {symbol}
