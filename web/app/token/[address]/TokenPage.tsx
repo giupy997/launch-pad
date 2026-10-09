@@ -16,7 +16,8 @@ import {
   IMMUTABLE,
   usePadVersion,
 } from "@/lib/hooks";
-import { BLOCK_SECONDS, PRE_IPO_DISCLAIMER, isHiddenToken } from "@/lib/config";
+import Link from "next/link";
+import { BLOCK_SECONDS, LEGACY_LAUNCHPADS, PRE_IPO_DISCLAIMER, isHiddenToken } from "@/lib/config";
 import { fmtUnits, fmtTokens } from "@/lib/format";
 import { TradeBox } from "@/components/TradeBox";
 import { PoolCard } from "@/components/PoolCard";
@@ -115,7 +116,21 @@ export function TokenPage({ address }: { address: string }) {
   const treasury =
     version === 12 ? treasuryPct(fees.platformBps) : treasuryPctV11(padFeeBps, big(creatorShareR, 5_000n) + big(holderShareR, 3_000n));
   if (curveR.status !== "success" || (curveR.result as readonly unknown[])[0] === 0n) {
-    return <p className="text-zinc-500">Token not found on this launchpad.</p>;
+    return (
+      <p className="text-zinc-500">
+        Token not found on this launchpad.
+        {!!LEGACY_LAUNCHPADS[chain.id]?.length && (
+          <>
+            {" "}
+            A coin from an earlier launchpad on this chain is on the{" "}
+            <Link href="/legacy" className="underline">
+              legacy page
+            </Link>
+            .
+          </>
+        )}
+      </p>
+    );
   }
 
   const name = nameR.status === "success" ? (nameR.result as string) : "?";
