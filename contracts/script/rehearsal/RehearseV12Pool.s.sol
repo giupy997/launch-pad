@@ -127,6 +127,8 @@ contract RehearseV12Pool is Script {
         IPairLike(s.pair).swap(s.tokenIs0 ? out : 0, s.tokenIs0 ? 0 : out, bob, "");
         vm.stopBroadcast();
         uint256 got = IERC20(s.token).balanceOf(bob) - before;
+        console.log("buy:  coins got", got, "expected", out - tax);
+        console.log("      buckets grew by", _buckets() - tT - tP, "expected", tax);
         require(got == out - tax, "the buyer did not receive the pair's output less the pool rate");
         uint256 platform = rate == 0 ? 0 : (tax * s.platformBps) / rate;
         require(s.pad.taxTreasury(s.token) - tT == platform, "the launchpad's bucket did not grow by its part");
@@ -151,6 +153,9 @@ contract RehearseV12Pool is Script {
         IERC20(s.token).transfer(s.pair, amount);
         IPairLike(s.pair).swap(s.tokenIs0 ? 0 : out, s.tokenIs0 ? out : 0, bob, "");
         vm.stopBroadcast();
+        console.log("sell: quote got", IERC20(s.quote).balanceOf(bob) - before, "expected", out);
+        console.log("      buckets grew by", _buckets() - buckets, "expected", amount - net);
+        console.log("      buckets now", s.pad.taxTreasury(s.token), s.pad.taxPot(s.token));
         require(IERC20(s.quote).balanceOf(bob) - before == out, "the seller did not get the pair's price for the net amount");
         require(_buckets() - buckets == amount - net, "the buckets did not grow by the sell fee");
         console.log("sell: coins in", amount, "of which the pair got", net);

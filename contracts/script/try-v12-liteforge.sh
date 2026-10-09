@@ -12,7 +12,8 @@
 # about 2 zkLTC on Liteforge: ~0.2 of gas for the stack, 1.65 for the
 # graduating buy (NATIVE_VIRTUAL 0.5 zkLTC: a curve raises 1.6), 0.01 for
 # the pool buy. Variables, all optional: PAD (a v12 pad to reuse, with
-# MIGRATOR), NATIVE_VIRTUAL (wei), NAME, SYMBOL, DST_RPC, POOL_QUOTE_IN.
+# MIGRATOR), TOKEN (a graduated coin on it, skipping steps 2-3), NATIVE_VIRTUAL
+# (wei), NAME, SYMBOL, DST_RPC, POOL_QUOTE_IN.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export PATH="$HOME/.foundry/bin:$PATH"
@@ -68,6 +69,10 @@ fi
 printf '{"launchpad":"%s","migrator":"%s","quote":"%s"}\n' "$PAD" "$MIGRATOR" "$ZERO" > "$MIG/rehearsal-target.json"
 echo "   pad $PAD · migrator $MIGRATOR"
 
+if [ -n "${TOKEN:-}" ]; then
+  echo "== 2-3. reusing the graduated coin $TOKEN"
+  PAIR=$(cast call "$MIGRATOR" "pairOf(address)(address)" "$TOKEN" --rpc-url "$DST_RPC")
+else
 echo "== 2. a coin with a tax: $NAME ($SYMBOL), 1% buy / 1% sell, 70% creator / 30% liquidity"
 cast send "$PAD" \
   "createTokenWithFees(string,string,uint256,(string,string,string,string,string,string),address,(uint16,uint16,uint16,uint16,uint16,uint16,uint16))" \
@@ -85,10 +90,11 @@ GRAD=$(cast call "$TOKEN" "graduated()(bool)" --rpc-url "$DST_RPC")
 [ "$GRAD" = true ] || { echo "   not graduated after the buy: is NATIVE_VIRTUAL the pad's?"; exit 1; }
 PAIR=$(cast call "$MIGRATOR" "pairOf(address)(address)" "$TOKEN" --rpc-url "$DST_RPC")
 echo "   graduated · pool $PAIR · registered for the fee: $(cast call "$PAD" "taxedPool(address,address)(bool)" "$TOKEN" "$PAIR" --rpc-url "$DST_RPC")"
+fi
 
 echo "== 4. the pool: a buy, a sell, a harvest, a transfer, the fees checked"
 OUT=$(TOKEN=$TOKEN SINGLE_SIGNER=true QUOTE_IN=${POOL_QUOTE_IN:-10000000000000000} forge script script/rehearsal/RehearseV12Pool.s.sol --rpc-url "$DST_RPC" "${SIGNER[@]}" --broadcast 2>&1) \
-  || { echo "the pool trial failed:"; echo "$OUT" | grep -E "PASS|Error|revert|Reason" || echo "$OUT" | tail -30; exit 1; }
+  || { echo "the pool trial failed:"; echo "$OUT" | grep -E "^  [a-z]|PASS|Error|revert|Reason" || echo "$OUT" | tail -30; exit 1; }
 echo "$OUT" | grep -E "^  [a-z]|PASS|Error|revert|Reason" || true
 
 echo "== done"
