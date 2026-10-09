@@ -99,11 +99,16 @@ it over right after (`DeployTimelock.s.sol` with `LAUNCHPAD=$LITVM_PAD`).
 ## 2. Before scheduling anything: the checks
 
 ```bash
-source ~/notus-litvm.env; cd ~/launch-pad/contracts
+source ~/notus-litvm.env; cd ~/launch-pad/contracts && set -a && source .env && set +a
 # a dry run of the snapshot at the latest block: it refuses whatever would not add up on the day
-node script/snapshot-evm.mjs --rpc https://mainnet.base.org --launchpad "$BASE_PAD" --quote "$BASE_QUOTE" \
+node script/snapshot-evm.mjs --rpc "$SRC_RPC" --chunk "$SRC_CHUNK" --launchpad "$BASE_PAD" --quote "$BASE_QUOTE" \
   --from-block "$BASE_FROM_BLOCK" --network base --allow-unfrozen --vault "$VAULT" --out /tmp/base-dryrun.json
 ```
+
+`SRC_RPC` and `SRC_CHUNK` come from `contracts/.env` (`.env.example` explains
+them): the Base nodes the snapshot reads, a keyed one first, and the blocks one
+call may span on it. The public nodes refuse the pad's whole history from a
+server, so a snapshot on `https://mainnet.base.org` alone stalls on the day.
 
 Read its warnings: coins parked in the vault (another provider's share of a
 pool, coins sent to the pad) are yours to hand back by hand afterwards. Then
@@ -163,8 +168,8 @@ Two timelock rounds of 24 hours, with the coin list closing between them:
 ## 4. The freeze lands: snapshot, migrateOut
 
 ```bash
-source ~/notus-litvm.env; cd ~/launch-pad/contracts
-node script/snapshot-evm.mjs --rpc https://mainnet.base.org --launchpad "$BASE_PAD" --quote "$BASE_QUOTE" \
+source ~/notus-litvm.env; cd ~/launch-pad/contracts && set -a && source .env && set +a
+node script/snapshot-evm.mjs --rpc "$SRC_RPC" --chunk "$SRC_CHUNK" --launchpad "$BASE_PAD" --quote "$BASE_QUOTE" \
   --from-block "$BASE_FROM_BLOCK" --network base --vault "$VAULT" --out ../litecoin/migration/base-$FREEZE.json
 ```
 

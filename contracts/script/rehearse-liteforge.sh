@@ -52,8 +52,10 @@ fi
 # when one refuses. The public ones no longer serve a long history from a
 # server (publicnode and drpc want a key for old blocks, mainnet.base.org
 # rations by IP and takes 500 blocks a call), so .env should name a keyed node
-# first (Infura's free plan: 10,000 blocks a call; Alchemy's free plan takes 10
-# and is of no use here) and SRC_CHUNK the blocks one call may cover on it.
+# first and SRC_CHUNK the blocks one call may cover on it: Alchemy on Pay As
+# You Go and Infura's free plan both take 10,000 blocks a call (Alchemy's free
+# plan takes 10, of no use here). Nothing here prints the node URLs: the
+# snapshot names nodes by host, so a key in SRC_RPC stays out of the logs.
 SRC_RPC=${SRC_RPC:-https://mainnet.base.org,https://base-rpc.publicnode.com,https://base.drpc.org,https://1rpc.io/base}
 SRC_CHUNK=${SRC_CHUNK:-499}
 DST_RPC=${DST_RPC:-https://liteforge.rpc.caldera.xyz/infra-partner-http}
