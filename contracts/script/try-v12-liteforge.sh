@@ -94,8 +94,8 @@ fi
 
 echo "== 4. the pool: a buy, a sell, a harvest, a transfer, the fees checked"
 OUT=$(TOKEN=$TOKEN SINGLE_SIGNER=true QUOTE_IN=${POOL_QUOTE_IN:-10000000000000000} forge script script/rehearsal/RehearseV12Pool.s.sol --rpc-url "$DST_RPC" "${SIGNER[@]}" --broadcast 2>&1) \
-  || { echo "the pool trial failed:"; echo "$OUT" | grep -E "^  [a-z]|PASS|Error|revert|Reason" || echo "$OUT" | tail -30; exit 1; }
-echo "$OUT" | grep -E "^  [a-z]|PASS|Error|revert|Reason" || true
+  || { echo "the pool trial failed:"; echo "$OUT" | grep -E "^ +[a-z]|PASS|Error|revert|Reason" || echo "$OUT" | tail -30; exit 1; }
+echo "$OUT" | grep -E "^ +[a-z]|PASS|Error|revert|Reason" || true
 
 echo "== done"
 echo "   pad        $PAD   https://liteforge.explorer.caldera.xyz/address/$PAD"

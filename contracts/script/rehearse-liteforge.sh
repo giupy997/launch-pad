@@ -134,7 +134,7 @@ echo "$OUT" | grep -E "PASS|Error|revert|Reason" || true
 echo "== 6. NOTUS's twin on its pool (Lester Labs' Uniswap v2): a buy, a sell, a harvest, a transfer, all by the deployer"
 OUT=$(SYMBOL=NOTUS SINGLE_SIGNER=true QUOTE_IN=${POOL_QUOTE_IN:-10000000000000000} forge script script/rehearsal/RehearseV12Pool.s.sol --rpc-url "$DST_RPC" "${SIGNER[@]}" --broadcast 2>&1) \
   || { echo "the pool rehearsal failed:"; echo "$OUT" | grep -E "PASS|Error|revert|Reason" || echo "$OUT" | tail -30; exit 1; }
-echo "$OUT" | grep -E "^  [a-z]|PASS|Error|revert|Reason" || true
+echo "$OUT" | grep -E "^ +[a-z]|PASS|Error|revert|Reason" || true
 
 echo "== done"
 echo "   receiving pad   $TARGET"

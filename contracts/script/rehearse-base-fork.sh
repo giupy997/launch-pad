@@ -121,7 +121,7 @@ echo "== 7. NOTUS's twin on its real Uniswap v2 pool: a buy, a sell, a harvest, 
 cast send "$CBLTC" "transfer(address,uint256)" "$BOB" 30000000 --from "$TREASURY" --unlocked --rpc-url $RPC >/dev/null
 OUT=$(SYMBOL=NOTUS QUOTE_IN=20000000 forge script script/rehearsal/RehearseV12Pool.s.sol --rpc-url $RPC --broadcast 2>&1) \
   || { echo "the pool rehearsal failed:"; echo "$OUT" | grep -E "PASS|Error|revert|Reason" || echo "$OUT" | tail -30; exit 1; }
-echo "$OUT" | grep -E "^  [a-z]|PASS|Error|revert|Reason" || true
+echo "$OUT" | grep -E "^ +[a-z]|PASS|Error|revert|Reason" || true
 
 echo "== 8. closeMigration through the v12 timelock (impersonated): the operator's part is over"
 cast send "$V12_PAD" "closeMigration()" --from "$V12_TIMELOCK" --unlocked --rpc-url $RPC >/dev/null
