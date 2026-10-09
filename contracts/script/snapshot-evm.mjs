@@ -116,11 +116,16 @@ const tokens = [];
 for (let i = 0n; i < count; i++) tokens.push(await read(launchpad, padAbi, "allTokens", [i], block));
 console.log(`${tokens.length} coins`);
 
-/** Logs of one event at one address in chunks, halving the chunk on an RPC error. */
+/** Logs of one event at one address in chunks. A refusal is first waited out
+ *  (public nodes limit by IP and recover in seconds: every retry waits twice
+ *  as long, up to a minute), and only a range that keeps failing is halved;
+ *  the run gives up only after many patient attempts on a small range. */
+const MAX_WAITS = 6; // waits before a range is halved: 3, 6, 12, 24, 48, 60 s
 async function logsOf(address, event, eventArgs) {
   const out = [];
   let from = fromBlock;
   let chunk = chunkDefault;
+  let waits = 0;
   while (from <= block) {
     const to = from + chunk - 1n > block ? block : from + chunk - 1n;
     try {
@@ -128,10 +133,21 @@ async function logsOf(address, event, eventArgs) {
       const logs = await client.getLogs({ address, event, args: eventArgs, fromBlock: from, toBlock: to });
       out.push(...logs);
       from = to + 1n;
+      waits = 0;
     } catch (e) {
-      if (chunk <= 100n) throw e;
-      chunk /= 2n;
-      console.log(`  (a node refused ${to - from + 1n} blocks of logs: trying ${chunk})`);
+      const why = String(e?.shortMessage ?? e?.message ?? e).split("\n")[0].slice(0, 120);
+      if (waits < MAX_WAITS) {
+        const wait = Math.min(60_000, 3_000 * 2 ** waits);
+        waits++;
+        console.log(`  (the nodes refused ${to - from + 1n} blocks of logs: ${why}; waiting ${wait / 1000}s, attempt ${waits}/${MAX_WAITS})`);
+        await sleep(wait);
+      } else if (chunk > 100n) {
+        chunk /= 2n;
+        waits = 0;
+        console.log(`  (still refused: trying ${chunk} blocks a call)`);
+      } else {
+        throw e;
+      }
     }
   }
   return out;
