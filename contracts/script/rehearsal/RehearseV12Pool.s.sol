@@ -157,7 +157,15 @@ contract RehearseV12Pool is Script {
         console.log("      buckets grew by", _buckets() - buckets, "expected", amount - net);
         console.log("      buckets now", s.pad.taxTreasury(s.token), s.pad.taxPot(s.token));
         require(IERC20(s.quote).balanceOf(bob) - before == out, "the seller did not get the pair's price for the net amount");
-        require(_buckets() - buckets == amount - net, "the buckets did not grow by the sell fee");
+        // the sell fee, exactly; a DEX whose pair pays a protocol fee out in the input coin
+        // on each swap (Lester Labs' on Liteforge: 0.2% of what came in, to its collector)
+        // adds that leg, pair -> collector, taxed at the buy rate like any pool payout
+        uint256 grew = _buckets() - buckets;
+        require(grew >= amount - net, "the buckets did not grow by the sell fee");
+        if (grew > amount - net) {
+            uint256 buyRate = uint256(s.platformBps) + s.buyTax;
+            console.log("      and the pair paid its own fee out in coins, taxed as a buy:", buyRate == 0 ? 0 : ((grew - (amount - net)) * 10_000) / buyRate);
+        }
         console.log("sell: coins in", amount, "of which the pair got", net);
         console.log("      quote out", out);
     }
