@@ -11,14 +11,20 @@ takes the same files by hand under Verify & publish → Solidity (Standard JSON
 input), compiler v0.8.24. Set `FIRST_TOKEN` in `addresses.sh` once the first
 coin exists to verify its LaunchToken (the others show as similar matches).
 
-The inputs here for LaunchTokenFactory, LaunchpadMigration, UniV2Migrator,
-SlipstreamZapRouter and TimelockController are the ones Basescan accepted on
-2026-10-09. The Launchpad's (and the LaunchToken's) must come from the build
-that deployed — forge 1.8.3 on the VPS: a forge 1.5.1 build of the same
-sources gives another creation bytecode (the contract embeds the factory's
-and the module's creation code with their metadata) and Basescan refused it.
-Regenerate them there before verifying:
+The inputs here come from the build that deployed: forge 1.8.3, the deployer's
+checkout on the VPS (`~/launch-pad/contracts`, absolute path included). Both
+matter: forge writes the remappings into the metadata, and 1.8.3 adds context
+remappings with the project's absolute path, so the same sources built elsewhere, or with
+another forge, give another metadata hash — and another creation bytecode
+for the Launchpad, which embeds the module's and the factory's creation code
+with their metadata. Basescan refused a forge 1.5.1 build of it on
+2026-10-09; the inputs here reproduce the deployed bytecode exactly
+(`solc --standard-json` on `Launchpad.standard-input.json` gives the creation
+code `forge inspect` prints on the VPS, md5 `36d1ff18be2507cae2e5d213b8c5f503`).
+To regenerate them, on the VPS:
 
-    cd ~/launch-pad/contracts && node script/standard-input.mjs src/Launchpad.sol:Launchpad src/LaunchToken.sol:LaunchToken \
-      && cp out/verify/Launchpad.standard-input.json out/verify/LaunchToken.standard-input.json verify/base-v12/
-
+    cd ~/launch-pad/contracts && forge build && node script/standard-input.mjs src/Launchpad.sol:Launchpad \
+      src/LaunchpadMigration.sol:LaunchpadMigration src/LaunchTokenFactory.sol:LaunchTokenFactory src/LaunchToken.sol:LaunchToken \
+      src/UniV2Migrator.sol:UniV2Migrator src/SlipstreamZapRouter.sol:SlipstreamZapRouter \
+      lib/openzeppelin-contracts/contracts/governance/TimelockController.sol:TimelockController \
+      && cp out/verify/*.standard-input.json verify/base-v12/
