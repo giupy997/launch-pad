@@ -11,6 +11,14 @@ takes the same files by hand under Verify & publish → Solidity (Standard JSON
 input), compiler v0.8.24. Set `FIRST_TOKEN` in `addresses.sh` once the first
 coin exists to verify its LaunchToken (the others show as similar matches).
 
+`check-base-v12.sh` reads the deployed stack back (read-only, no signer) and
+compares it with what it must be: the pad's owner, fee, treasury, migrator,
+module, factory and quote, the migrator's and the zap's pad and routers, the
+timelock's delay and roles. Every line PASS, or it exits 1 naming the one
+that is not:
+
+    cd ~/launch-pad/contracts && bash verify/base-v12/check-base-v12.sh
+
 The inputs here come from the build that deployed: forge 1.8.3, the deployer's
 checkout on the VPS (`~/launch-pad/contracts`, absolute path included). Both
 matter: forge writes the remappings into the metadata, and 1.8.3 adds context
