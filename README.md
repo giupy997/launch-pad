@@ -119,7 +119,14 @@ and at `/litecoin`, out of the menu.
     its cache key unless a response says otherwise, so every route whose
     answer depends on the query (`holders`, `trades`, `img`, `points`) sends
     `netlify-vary: query`; without it every coin is served the first coin's
-    answer. The browser also checks the chain and coin an answer names.
+    answer. The browser also checks the chain and coin an answer names. The
+    server's scans of Base read a keyed node first when `BASE_RPC_URLS` (the
+    site's environment, comma-separated, never in the repo) names one: the
+    public nodes no longer serve a coin's whole history to a server (Base's
+    rations by IP and takes 500 blocks a call, publicnode only recent
+    blocks), so without it a scan over old blocks can stall for good. The
+    cap one node takes per `eth_getLogs` is learned per node, and a long
+    span is tried in one request before being cut into ranges.
   - `/api/health`: one answer for an uptime monitor, 200 while Base's nodes
     and the Blobs store answer, 503 otherwise, with every check's result (the
     testnet's nodes and the points service are reported, not decisive)

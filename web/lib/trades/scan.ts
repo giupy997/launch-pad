@@ -41,8 +41,12 @@ export type PoolRef = { token: `0x${string}`; pair: `0x${string}`; tokenIsZero: 
 export type ScanTarget = { chainId: number; urls: readonly string[]; chunk: bigint };
 
 /** how far back a first scan reads, in chunks: ~2.3 days on Base at 1,999
- *  blocks a chunk, ~1.3 on Liteforge's 250 ms blocks at 9,000 */
+ *  blocks a chunk (~11.6 at the 9,999 of a keyed node), ~1.3 on Liteforge's
+ *  250 ms blocks at 9,000 */
 export const SPAN_CHUNKS = 50n;
+/** a scan over more ranges than this tries the whole span in one request first */
+const WIDE_FROM_RANGES = 4;
+const WIDE_MS = 3_000; // what that one request may take before the ranges take over
 
 const boughtEvent = parseAbiItem(
   "event Bought(address indexed token, address indexed buyer, uint256 ethIn, uint256 tokensOut, uint256 fee)"
@@ -141,7 +145,9 @@ export function latestBlock(t: ScanTarget, perNodeMs?: number): Promise<bigint> 
 type Range = { lo: bigint; hi: bigint };
 const MIN_CHUNK = 500n;
 const CHUNK_KEY = "notus.getlogs.chunk.";
-const learned = new Map<number, bigint>();
+// the range cap learned from a node's refusal, per node: a keyed node that
+// takes 10,000 blocks is not held to the 500 a public one named
+const learned = new Map<string, bigint>();
 function storage(): Storage | null {
   try {
     return typeof localStorage === "undefined" ? null : localStorage;
@@ -150,16 +156,17 @@ function storage(): Storage | null {
   }
 }
 
-/** the range size this chain's nodes take: learned from a refusal (and kept in
- *  the browser's storage, when there is one), else the target's */
-function chunkFor(t: ScanTarget): bigint {
-  const m = learned.get(t.chainId);
+/** the range size the node at `url` takes: learned from its refusal (and
+ *  kept in the browser's storage, when there is one), else the target's */
+function chunkOf(t: ScanTarget, url: string): bigint {
+  const key = `${t.chainId}.${url}`;
+  const m = learned.get(key);
   if (m !== undefined) return m;
   try {
-    const raw = storage()?.getItem(CHUNK_KEY + t.chainId);
+    const raw = storage()?.getItem(CHUNK_KEY + key);
     if (raw) {
       const v = BigInt(raw);
-      learned.set(t.chainId, v);
+      learned.set(key, v);
       return v;
     }
   } catch {
@@ -168,13 +175,22 @@ function chunkFor(t: ScanTarget): bigint {
   return t.chunk;
 }
 
-/** remember a size the nodes take; only ever shrinks */
-function learnChunk(t: ScanTarget, size: bigint) {
+/** the range size a scan is cut to: what the first node in line takes (the
+ *  preferred one, a keyed node where there is one); a range another node
+ *  refuses is cut again to its size on the spot */
+function chunkFor(t: ScanTarget): bigint {
+  const first = nodesInOrder(scanNodes(t))[0];
+  return first ? chunkOf(t, first.url) : t.chunk;
+}
+
+/** remember a size the node at `url` takes; only ever shrinks */
+function learnChunk(t: ScanTarget, url: string, size: bigint) {
   const v = size < MIN_CHUNK ? MIN_CHUNK : size;
-  if (chunkFor(t) <= v) return;
-  learned.set(t.chainId, v);
+  if (chunkOf(t, url) <= v) return;
+  const key = `${t.chainId}.${url}`;
+  learned.set(key, v);
   try {
-    storage()?.setItem(CHUNK_KEY + t.chainId, v.toString());
+    storage()?.setItem(CHUNK_KEY + key, v.toString());
   } catch {
     /* no storage */
   }
@@ -255,6 +271,13 @@ async function getLogsAdaptive(
         let cap: bigint | undefined;
         for (const n of nodesInOrder(set)) {
           if (left() <= 0) break;
+          // a range wider than this node is known to take is not even asked of it
+          if (span > chunkOf(t, n.url)) {
+            tooBig = true;
+            const c = chunkOf(t, n.url) + 1n;
+            if (cap === undefined || c < cap) cap = c;
+            continue;
+          }
           try {
             const req = n.client.request({
               method: "eth_getLogs",
@@ -272,15 +295,15 @@ async function getLogsAdaptive(
               tooBig = true;
               const c = capNamed(e);
               if (c !== null && (cap === undefined || c < cap)) cap = c;
+              // this node's cap, remembered for it alone
+              learnChunk(t, n.url, cutSize(span, c ?? undefined));
             }
           }
         }
         if (settled) break;
         if (tooBig && span > MIN_CHUNK) {
           // over a node's cap: cut to the size it named (just under), else in half
-          const size = cutSize(span, cap);
-          learnChunk(t, size);
-          queue.push(...splitRange(r.lo, r.hi, size));
+          queue.push(...splitRange(r.lo, r.hi, cutSize(span, cap)));
           settled = true; // handed on in pieces
           break;
         }
@@ -343,6 +366,12 @@ export async function scanTrades(
   // the same ranges for the pad and every pool; a range counts as read only when every scan read it
   const failedKeys = new Set<string>();
   for (const scan of scans) {
+    // a long span in one request first, from a node that takes it (one coin's trades are few): the ranges are spared
+    const wide = ranges.length > WIDE_FROM_RANGES ? await scanLogsWide(t, scan.filter, start, toBlock, WIDE_MS) : null;
+    if (wide) {
+      scan.logs = wide;
+      continue;
+    }
     const r = await getLogsAdaptive(set, t, scan.filter, ranges, concurrency);
     scan.logs = r.logs;
     for (const f of r.failed) failedKeys.add(`${f.lo}-${f.hi}`);
@@ -384,6 +413,8 @@ export async function scanLogsWide(
   for (const n of nodesInOrder(scanNodes(t))) {
     const left = deadline - Date.now();
     if (left <= 0) break;
+    // a node that named a cap under the configured range is known not to take a wide one
+    if (chunkOf(t, n.url) < t.chunk) continue;
     try {
       const got = await Promise.race([
         n.client.request({
@@ -399,6 +430,7 @@ export async function scanLogsWide(
     } catch (e) {
       noteError(n.url, e);
       if (isThrottle(e)) noteThrottle(n);
+      else if (isRangeError(e)) learnChunk(t, n.url, cutSize(toBlock - fromBlock + 1n, capNamed(e) ?? undefined));
     }
   }
   return null;

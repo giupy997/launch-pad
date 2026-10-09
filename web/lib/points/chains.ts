@@ -38,6 +38,17 @@ export type PointsChain = {
   explorer: string;
 };
 
+/** Base nodes with a key, for the server alone: `BASE_RPC_URLS` in the
+ *  site's environment (Netlify), comma-separated, never in the repo. The
+ *  public nodes no longer serve a coin's whole history to a server (Base's
+ *  rations by IP and takes 500 blocks a call, publicnode only recent blocks),
+ *  so with none a scan over old blocks can stall. In the browser this is
+ *  empty: the browser scans the public nodes, short spans, by itself. */
+const KEYED_BASE = (process.env.BASE_RPC_URLS ?? "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter((s) => /^https:\/\//.test(s));
+
 export const POINTS_CHAINS: Record<string, PointsChain> = {
   // LitVM's Liteforge testnet: the v11 rehearsal pad, quoted in native zkLTC
   // with a 0.05 zkLTC virtual reserve so that curves graduate on faucet
@@ -67,11 +78,12 @@ export const POINTS_CHAINS: Record<string, PointsChain> = {
     name: "Base",
     pad: "0xEfbB4ebdf5130cC4fC45899EeBA727fa2F55b5f4",
     deployBlock: 52_180_589n,
-    rpcs: ["https://mainnet.base.org", "https://base-rpc.publicnode.com", "https://base.drpc.org", "https://1rpc.io/base"],
+    rpcs: [...KEYED_BASE, "https://mainnet.base.org", "https://base-rpc.publicnode.com", "https://base.drpc.org", "https://1rpc.io/base"],
     quoteDecimals: 8,
     quoteSymbol: "cbLTC",
     blockSeconds: 2,
-    chunk: 1_999n,
+    // a keyed node takes 10,000 blocks a call; the public ones name their own cap, learned per node
+    chunk: KEYED_BASE.length ? 9_999n : 1_999n,
     lag: 60n,
     hidden: [],
     season: null,

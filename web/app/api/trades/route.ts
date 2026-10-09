@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
   const key = `${chainId}.${token.toLowerCase()}.${pools.map((x) => x.pair.toLowerCase()).sort().join(",")}`;
 
   try {
-    const latest = await latestBlock(target);
+    const latest = await latestBlock(target, 4_000);
     // one coin: the same window a browser's first scan reads; the pad: the last day
     const span = all ? BigInt(Math.round(86_400 / chain.blockSeconds)) : chain.chunk * SPAN_CHUNKS;
     const windowStart = latest - span + 1n > chain.deployBlock ? latest - span + 1n : chain.deployBlock;

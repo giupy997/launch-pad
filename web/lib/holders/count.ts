@@ -36,7 +36,7 @@ const DEAD = "0x000000000000000000000000000000000000dead";
 const MULTICALL3: Record<number, `0x${string}`> = { 8453: "0xcA11bde05977b3631167028862bE2a173976CA11" };
 const CONCURRENCY = 4; // getLogs in flight: a server, but on public nodes
 const WIDE_MS = 4_000; // the one-request read gives up after this, and the rounds take over
-const WIDE_SPAN_CHUNKS = 20n; // a later one-request read is believed over at most this many ranges' worth of blocks
+const WIDE_SPAN_SECONDS = 86_400; // a later one-request read is believed over at most a day's blocks
 const CHUNKS_PER_ROUND = 16n; // getLogs ranges per round of the scan
 const SCAN_BUDGET_MS = 5_500; // the rounds stop here: the balances and the save need the rest of the function's ten seconds
 const BUDGET_MS = 8_300; // what a count may take in all, the answer's own time under the function's ten seconds
@@ -247,7 +247,7 @@ export async function countHolders(chain: PointsChain, token: `0x${string}`): Pr
     if (all) {
       const firstRead = candidates.size === 0 && launched === null;
       const hasMint = all.some((l) => topicAddress(l.topics[1]) === ZERO);
-      if (firstRead ? hasMint : latest - last <= chain.chunk * WIDE_SPAN_CHUNKS) {
+      if (firstRead ? hasMint : latest - last <= BigInt(Math.round(WIDE_SPAN_SECONDS / chain.blockSeconds))) {
         await absorb(all);
         last = latest;
         wide = true;
