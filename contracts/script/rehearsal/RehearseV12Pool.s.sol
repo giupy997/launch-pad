@@ -183,7 +183,11 @@ contract RehearseV12Pool is Script {
         (uint256 tokensIn, uint256 quoteOut, uint256 burned) = s.migrator.harvest(s.token);
         vm.stopBroadcast();
         require(tokensIn != 0 && quoteOut != 0, "the harvest sold nothing");
-        require(_buckets() == buckets - tokensIn, "the buckets did not shrink by the slice");
+        // the slice leaves the buckets; on a DEX whose pair pays its protocol fee out in the
+        // input coin (above), the harvest's own sale puts a little back: that fee leg, taxed
+        uint256 refill = _buckets() + tokensIn - buckets;
+        require(_buckets() < buckets && refill <= tokensIn / 100, "the buckets did not shrink by the slice");
+        if (refill != 0) console.log("         the pair's own fee leg on the sale put back in the buckets", refill);
         // paid in the native coin, a treasury that is also the signer spends it on gas: checked when it is somebody else
         if (treasury != carol || !s.native) require(_quoteBalance(treasury) > treasuryBefore, "the treasury was not paid");
         // the tip: a native one is paid in the coin carol spends on gas, so it is checked on an ERC-20 quote alone
