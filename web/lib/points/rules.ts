@@ -62,6 +62,21 @@ export type Referral = {
 
 export type LedgerKind = "trade" | "grad_holder" | "grad_creator" | "early" | "ref_inviter" | "ref_invitee";
 
+/** whether following `from`'s inviter, then that one's, and so on (a bounded
+ *  walk) reaches `wallet`: true means a binding of `wallet` by `from` would
+ *  close a cycle. `referrals` is keyed by the invitee, lowercase. */
+export function inviterChainHas(referrals: Map<string, { inviter: string }>, from: string, wallet: string): boolean {
+  const target = wallet.toLowerCase();
+  let at = from.toLowerCase();
+  for (let hops = 0; hops < 64; hops++) {
+    if (at === target) return true;
+    const next = referrals.get(at);
+    if (!next) return false;
+    at = next.inviter.toLowerCase();
+  }
+  return true; // a chain this long is not followed: refused rather than trusted
+}
+
 export type LedgerEntry = {
   wallet: `0x${string}`;
   kind: LedgerKind;
@@ -154,13 +169,17 @@ export function computeLedger(input: LedgerInput): LedgerEntry[] {
     }
   }
 
-  // 3. referrals: on trade points earned from the binding on
+  // 3. referrals: on trade points earned from the binding on. A binding that
+  // closes a cycle (A invited by B, B by A, or through others) pays nobody:
+  // the ledger is computed afresh every time, so a cycle bound before the
+  // check at binding existed earns nothing either.
   const bonusBlocks = inviteeBonusBlocks(input.blockSeconds);
   const byInvitee = new Map<string, Referral>();
   for (const r of input.referrals) byInvitee.set(r.invitee.toLowerCase(), r);
   for (const t of trades) {
     const r = byInvitee.get(t.wallet.toLowerCase());
     if (!r || t.block < r.block) continue;
+    if (inviterChainHas(byInvitee, r.inviter, r.invitee)) continue;
     const m = milliOf.get(t) ?? 0n;
     const inv = (m * RULES.inviterPct) / 100n;
     if (inv > 0n) out.push({ wallet: low(r.inviter), kind: "ref_inviter", milli: inv, token: t.token, ref: refOf(t), block: t.block });

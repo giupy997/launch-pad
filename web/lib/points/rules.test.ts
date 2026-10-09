@@ -4,7 +4,7 @@
 //   node --test --experimental-strip-types web/lib/points/rules.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { computeLedger, inviteeBonusBlocks, ranking, totals, tradeMilli, type Coin, type Referral, type Trade } from "./rules.ts";
+import { computeLedger, inviteeBonusBlocks, ranking, totals, tradeMilli, type Coin, type Referral, type Trade, inviterChainHas } from "./rules.ts";
 import type { PointsSeason } from "./chains.ts";
 
 const A = "0x000000000000000000000000000000000000000a" as const;
@@ -98,6 +98,22 @@ test("a binding pays nothing for the past, and the invitee's bonus ends after 30
   const invitee = ledger.filter((e) => e.kind === "ref_invitee").reduce((s, e) => s + e.milli, 0n);
   assert.equal(inviter, 3n * 2_000n);
   assert.equal(invitee, 2n * 1_000n);
+});
+
+test("a cycle of invitations pays nobody: two wallets that invited each other earn no inviter share", () => {
+  const trades = [trade(A, "buy", 1, 200n), trade(D, "buy", 1, 201n)];
+  // bound before the check at binding existed: the ledger alone must refuse it
+  const referrals: Referral[] = [
+    { invitee: A, inviter: D, block: 100n, ts: 0 },
+    { invitee: D, inviter: A, block: 101n, ts: 0 },
+  ];
+  const ledger = computeLedger({ trades, coins: [], referrals, season, quoteDecimals: 18, blockSeconds: 1, hidden: new Set() });
+  assert.equal(ledger.filter((e) => e.kind === "ref_inviter" || e.kind === "ref_invitee").length, 0);
+  assert.equal(ledger.filter((e) => e.kind === "trade").length, 2);
+  // and the walk itself: a chain that leads back is a cycle, one that ends is not
+  const byInvitee = new Map(referrals.map((r) => [r.invitee.toLowerCase(), r]));
+  assert.equal(inviterChainHas(byInvitee, D, A), true);
+  assert.equal(inviterChainHas(new Map([[A.toLowerCase(), referrals[0]]]), D, A), false);
 });
 
 test("a season's bounds and a hidden coin cut trades out, graduations included", () => {

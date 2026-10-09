@@ -47,7 +47,14 @@ async function tick() {
       if (n) log(`paid ${n} payout(s)`);
     }
   } catch (e) {
-    lastError = (e as Error).message.split("\n")[0];
+    // the first line, every URL cut to its host: a node's key never shows in /health
+    lastError = (e as Error).message.split("\n")[0].replace(/https?:\/\/[^\s"'<>)]+/g, (u) => {
+      try {
+        return `https://${new URL(u).host}/…`;
+      } catch {
+        return "https://…";
+      }
+    });
     failures++;
     log(`pass failed: ${lastError}`);
   } finally {
@@ -89,7 +96,8 @@ const server = createServer((req, res) => {
   res.writeHead(404, { "content-type": "application/json" }).end(JSON.stringify({ error: "not found" }));
 });
 
-server.listen(PORT, () => log(`desk serving ${STATE_PATH} on :${PORT} · indexing every ${EVERY / 1000}s · payouts every ${PAY_EVERY || "∞"} passes`));
+// loopback only: Caddy proxies it, nobody else reaches the health details
+server.listen(PORT, "127.0.0.1", () => log(`desk serving ${STATE_PATH} on 127.0.0.1:${PORT} · indexing every ${EVERY / 1000}s · payouts every ${PAY_EVERY || "∞"} passes`));
 void tick();
 const timer = setInterval(tick, EVERY);
 

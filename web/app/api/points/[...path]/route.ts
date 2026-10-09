@@ -21,10 +21,11 @@ const cache = (seconds: number): Record<string, string> =>
       };
 const json = (body: unknown, status = 200) => NextResponse.json(body, { status, headers: cache(0) });
 
+/** who is asking, for the service's rate limit: the address Netlify's edge
+ *  saw, which a client cannot set. Without it (a run outside Netlify) every
+ *  client shares one bucket, rather than naming its own address in a header. */
 function clientIp(req: NextRequest): string {
-  const nf = req.headers.get("x-nf-client-connection-ip");
-  if (nf) return nf;
-  return req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "?";
+  return req.headers.get("x-nf-client-connection-ip") ?? "?";
 }
 
 async function proxy(req: NextRequest, path: string[]) {

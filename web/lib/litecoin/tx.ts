@@ -270,8 +270,10 @@ export function buildTx(opts: BuildOpts & { secret: string }): BuiltTx {
 }
 
 /** A throwaway key for measuring: a transaction signed by it is the size of
- *  the one the wallet will sign, whatever the key (one signature per input). */
-const PROBE_KEY = hex.decode("4e6f747573206d65617375726573206120736967206f6e206120636f696e2e21");
+ *  the one the wallet will sign, whatever the key (one signature per input).
+ *  Drawn at random each time the module loads: a fixed one would be a key
+ *  anybody could read, and coins sent to its address by mistake anybody's. */
+const PROBE_KEY = secp256k1.utils.randomPrivateKey();
 
 /** The same transaction for a wallet that signs elsewhere: coins picked and
  *  fee set as for the browser wallet, measured on a look-alike signed with a

@@ -31,11 +31,11 @@ async function uploader(auth: LogoAuth | undefined, bytes: Uint8Array): Promise<
   return { address };
 }
 
-function origin(req: NextRequest): string {
-  const configured = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "");
-  if (configured) return configured;
-  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "localhost:3000";
-  return `${host.startsWith("localhost") ? "http" : "https"}://${host}`;
+/** where a stored logo is served from: the site's own address, configured or
+ *  the canonical one, never a request header (a caller could name a host of
+ *  theirs and have the coin's logo fetched from there for good) */
+function origin(): string {
+  return process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") || "https://notus-pad.fun";
 }
 
 export async function GET() {
@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
     const id = bytesToHex(sha256(bytes)).slice(0, 16); // content-addressed: the same image is the same URL
     // dated, so the collector (gc/route.ts) can tell an upload nobody used from a fresh one
     await store.set(id, new Blob([new Uint8Array(bytes)], { type }), { metadata: { type, name: name.slice(0, 32), uploadedAt: Math.floor(Date.now() / 1000) } });
-    return NextResponse.json({ uri: `${origin(req)}/i/${id}`, via: "site" }, { headers: { "cache-control": "no-store" } });
+    return NextResponse.json({ uri: `${origin()}/i/${id}`, via: "site" }, { headers: { "cache-control": "no-store" } });
   } catch (e) {
     const msg = (e as Error).message;
     return NextResponse.json({ error: msg.slice(0, 200) }, { status: /pinning failed|store/i.test(msg) ? 502 : 400 });

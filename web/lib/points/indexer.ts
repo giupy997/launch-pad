@@ -20,6 +20,7 @@ import {
   type LedgerKind,
   type Referral,
   type Trade,
+  inviterChainHas,
 } from "./rules.ts";
 import { stretches, type Nodes } from "./scan.ts";
 import type { Store } from "./store.ts";
@@ -267,16 +268,20 @@ export class ChainIndexer {
     };
   }
 
-  /** accept an invite: verified, one per wallet, never itself */
+  /** accept an invite: verified, one per wallet, never itself, never a cycle */
   async bindReferral(claim: { invitee: string; inviter: string; signature: string }): Promise<{ status: number; body: Record<string, unknown> }> {
     const season = this.effectiveSeason();
     if (!season) return { status: 404, body: { error: "no season on this chain" } };
     const v = await verifyReferral({ ...claim, chainKey: this.chain.key, seasonNumber: season.number });
     if (!v.ok) return { status: 400, body: { error: v.reason } };
     const invitee = claim.invitee.toLowerCase() as `0x${string}`;
+    const inviter = claim.inviter.toLowerCase() as `0x${string}`;
     const existing = this.referrals.get(invitee);
     if (existing) return { status: 409, body: { error: "already invited", inviter: existing.inviter } };
-    const r: Referral = { invitee, inviter: claim.inviter.toLowerCase() as `0x${string}`, block: this.head > 0n ? this.head : this.last, ts: Math.floor(this.now() / 1000) };
+    // no cycle: the inviter's own chain of inviters must not lead back to the invitee, or two
+    // wallets would pay each other a share of every trade for good
+    if (inviterChainHas(this.referrals, inviter, invitee)) return { status: 409, body: { error: "that wallet was invited by you, or by someone you invited" } };
+    const r: Referral = { invitee, inviter, block: this.head > 0n ? this.head : this.last, ts: Math.floor(this.now() / 1000) };
     this.store.appendReferral(r);
     this.referrals.set(invitee, r);
     this.recompute();
