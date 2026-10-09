@@ -104,10 +104,23 @@ function noteThrottle(n: Node) {
   throttledUntil.set(n.url, Date.now() + THROTTLE_COOLDOWN_MS);
 }
 
-/** the last few failures, node and message, for a route's debug answer */
+/** a node's host alone: a keyed node's key lives in its path, and never leaves with a log or an answer */
+export function nodeName(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return "a node";
+  }
+}
+/** `text` with every URL cut to its host (viem quotes the request URL in its errors) */
+export function redact(text: string): string {
+  return text.replace(/https?:\/\/[^\s"'<>)]+/g, (u) => `https://${nodeName(u)}/…`);
+}
+
+/** the last few failures, node (by host) and message, for a route's debug answer */
 export const recentScanErrors: string[] = [];
 function noteError(url: string, e: unknown) {
-  recentScanErrors.push(`${new Date().toISOString().slice(11, 19)} ${url}: ${errorText(e).replace(/\s+/g, " ").trim().slice(0, 200)}`);
+  recentScanErrors.push(`${new Date().toISOString().slice(11, 19)} ${nodeName(url)}: ${redact(errorText(e)).replace(/\s+/g, " ").trim().slice(0, 200)}`);
   if (recentScanErrors.length > 20) recentScanErrors.shift();
 }
 

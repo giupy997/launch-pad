@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { EXPLORER_API } from "@/lib/explorers";
 import { POINTS_CHAINS } from "@/lib/points/chains";
 import { countHolders, UnknownCoinError } from "@/lib/holders/count";
-import { recentScanErrors } from "@/lib/trades/scan";
+import { recentScanErrors, redact } from "@/lib/trades/scan";
 
 const TOKEN = /^0x[0-9a-fA-F]{40}$/;
 const FUNCTION_MS = 9_000; // what a request may spend in all, under the hosting function's ten seconds
@@ -50,10 +50,9 @@ export async function GET(req: NextRequest) {
       // an address the pad does not know is no coin: nothing is counted, nothing is kept
       if (e instanceof UnknownCoinError) return NextResponse.json({ error: e.message }, { status: 404, headers: cache(300) });
       // in the function's log, so a count that never comes can be understood from there
-      console.warn(`[holders] the chain's nodes gave no count for ${token} on ${chain}:`, e instanceof Error ? e.message : e);
-      if (debug) {
-        return NextResponse.json({ ...none, debug: { failed: e instanceof Error ? e.message : String(e), errors: recentScanErrors.slice(-12) } }, { headers: NO_STORE });
-      }
+      const why = redact(e instanceof Error ? e.message : String(e));
+      console.warn(`[holders] the chain's nodes gave no count for ${token} on ${chain}:`, why);
+      if (debug) return NextResponse.json({ ...none, debug: { failed: why, errors: recentScanErrors.slice(-12) } }, { headers: NO_STORE });
     }
   }
   // the explorer, in the time the function has left: a fallback that outlives the function answers nobody

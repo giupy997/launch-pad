@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getStore } from "@netlify/blobs";
 import { POINTS_CHAINS } from "@/lib/points/chains";
-import { latestBlock } from "@/lib/trades/scan";
+import { latestBlock, redact } from "@/lib/trades/scan";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +26,8 @@ async function timed(fn: () => Promise<string>): Promise<Check> {
     ]);
     return { ok: true, ms: Date.now() - t0, note };
   } catch (e) {
-    return { ok: false, ms: Date.now() - t0, note: e instanceof Error ? e.message.split("\n")[0].slice(0, 160) : String(e) };
+    // the message's first line, URLs cut to their host: a keyed node's key never leaves here
+    return { ok: false, ms: Date.now() - t0, note: redact(e instanceof Error ? e.message.split("\n")[0] : String(e)).slice(0, 160) };
   }
 }
 
