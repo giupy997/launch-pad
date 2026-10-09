@@ -92,7 +92,9 @@ const read = async (address, abi_, functionName, args_ = [], blockNumber) => {
   await sleep(PACE_MS);
   return client.readContract({ address, abi: abi_, functionName, args: args_, blockNumber });
 };
-console.log(`${rpcs.length} RPC node${rpcs.length === 1 ? "" : "s"}: ${rpcs.join(", ")}`);
+// a keyed node's URL carries its key: shown as its host alone
+const nodeName = (u) => { try { return new URL(u).host; } catch { return u; } };
+console.log(`${rpcs.length} RPC node${rpcs.length === 1 ? "" : "s"}: ${rpcs.map(nodeName).join(", ")}`);
 
 // ---- the block: the freeze, reached
 const freezeBlock = await read(launchpad, padAbi, "freezeBlock");
@@ -135,7 +137,11 @@ async function logsOf(address, event, eventArgs) {
       from = to + 1n;
       waits = 0;
     } catch (e) {
-      const why = String(e?.shortMessage ?? e?.message ?? e).split("\n")[0].slice(0, 120);
+      // what the node said, not viem's summary of it: the JSON-RPC error text or the HTTP body
+      const why = String(e?.details || e?.cause?.details || e?.cause?.message || e?.shortMessage || e?.message || e)
+        .replace(/\s+/g, " ")
+        .replace(/alch_[A-Za-z0-9_-]+|v2\/[A-Za-z0-9_-]{16,}/g, "v2/…")
+        .slice(0, 160);
       if (waits < MAX_WAITS) {
         const wait = Math.min(60_000, 3_000 * 2 ** waits);
         waits++;
