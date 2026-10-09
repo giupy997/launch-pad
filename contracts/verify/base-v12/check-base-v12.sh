@@ -40,7 +40,9 @@ deployed() {  # LABEL ADDRESS: code at the address
   else printf 'FAIL  %-38s no code at %s\n' "$1" "$2"; FAILS=$((FAILS + 1)); fi
 }
 
-echo "Base v12 stack through $RPC · block $(cast block-number --rpc-url "$RPC")"
+# the node's host alone: a keyed URL (Alchemy) must never reach a terminal that gets pasted
+host() { case "$1" in http*) node -e 'console.log(new URL(process.argv[1]).host)' "$1" 2>/dev/null || echo "$1" ;; *) echo "$1" ;; esac; }
+echo "Base v12 stack through $(host "$RPC") · block $(cast block-number --rpc-url "$RPC")"
 echo "== code"
 deployed "Launchpad" "$PAD"
 deployed "LaunchpadMigration (module)" "$MODULE"
