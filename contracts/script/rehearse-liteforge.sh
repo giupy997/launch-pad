@@ -33,8 +33,18 @@ if [ -z "${PRIVATE_KEY:-}" ] && [ -f .env ]; then
   source .env
   set +a
 fi
-# how to sign: a raw key when one is given, else the encrypted keystore
-if [ -n "${PRIVATE_KEY:-}" ]; then SIGNER=("${SIGNER[@]}"); else SIGNER=(--account "${ACCOUNT:-notus}"); fi
+# how to sign: a raw key when one is given, else the encrypted keystore, whose
+# password is asked once here and handed to forge and cast through ETH_PASSWORD
+# (the steps below capture their output, so a prompt of theirs would never show)
+if [ -n "${PRIVATE_KEY:-}" ]; then
+  SIGNER=(--private-key "$PRIVATE_KEY")
+else
+  SIGNER=(--account "${ACCOUNT:-notus}")
+  if [ -z "${ETH_PASSWORD:-}" ]; then
+    read -rsp "password of the keystore ${ACCOUNT:-notus}: " ETH_PASSWORD; echo
+    export ETH_PASSWORD
+  fi
+fi
 # the Base nodes the site uses, in order: the snapshot falls through them when one throttles
 SRC_RPC=${SRC_RPC:-https://mainnet.base.org,https://base-rpc.publicnode.com,https://base.drpc.org,https://1rpc.io/base}
 DST_RPC=${DST_RPC:-https://liteforge.rpc.caldera.xyz/infra-partner-http}
@@ -73,7 +83,7 @@ echo "   pad $TARGET · migrator $MIGRATOR · deploy block $DEPLOY_BLOCK"
 
 echo "== 2. the snapshot of Base: unfrozen, at the latest block, 1,999 blocks per request, four nodes"
 node script/snapshot-evm.mjs --rpc "$SRC_RPC" --launchpad "$SRC_PAD" --quote "$SRC_QUOTE" --from-block "$SRC_FROM" \
-  --network base --chunk 1999 --allow-unfrozen --vault "$DEPLOYER" --scale "$SCALE" --out "$FILE"
+  --network base --chunk 499 --allow-unfrozen --vault "$DEPLOYER" --scale "$SCALE" --out "$FILE"
 
 echo "== 3. the zkLTC the coins need, against the deployer's"
 NEED=$(node -p "require('$FILE').totals.bridgeLtc")
