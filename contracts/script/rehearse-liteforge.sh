@@ -34,16 +34,19 @@ if [ -z "${PRIVATE_KEY:-}" ] && [ -f .env ]; then
   set +a
 fi
 # how to sign: a raw key when one is given, else the encrypted keystore, whose
-# password is asked once here and handed to forge and cast through ETH_PASSWORD
-# (the steps below capture their output, so a prompt of theirs would never show)
+# password is asked once here and handed to forge and cast as a file in memory
+# (--password-file; the steps below capture their output, so a prompt of
+# theirs would never show), gone when the script ends
 if [ -n "${PRIVATE_KEY:-}" ]; then
   SIGNER=(--private-key "$PRIVATE_KEY")
 else
-  SIGNER=(--account "${ACCOUNT:-notus}")
-  if [ -z "${ETH_PASSWORD:-}" ]; then
-    read -rsp "password of the keystore ${ACCOUNT:-notus}: " ETH_PASSWORD; echo
-    export ETH_PASSWORD
-  fi
+  read -rsp "password of the keystore ${ACCOUNT:-notus}: " KEYSTORE_PASSWORD; echo
+  PWFILE=$(mktemp /dev/shm/notus-keystore.XXXXXX)
+  chmod 600 "$PWFILE"
+  printf '%s' "$KEYSTORE_PASSWORD" > "$PWFILE"
+  unset KEYSTORE_PASSWORD
+  trap 'rm -f "$PWFILE"' EXIT
+  SIGNER=(--account "${ACCOUNT:-notus}" --password-file "$PWFILE")
 fi
 # the Base nodes the site uses, in order: the snapshot falls through them when one throttles
 SRC_RPC=${SRC_RPC:-https://mainnet.base.org,https://base-rpc.publicnode.com,https://base.drpc.org,https://1rpc.io/base}
