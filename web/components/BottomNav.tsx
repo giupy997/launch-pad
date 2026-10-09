@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LEGACY_LAUNCHPADS, base } from "@/lib/config";
+import { base } from "@/lib/config";
 import { useAppChain } from "@/lib/hooks";
 
 const items = (chainId: number) => [
@@ -10,8 +10,6 @@ const items = (chainId: number) => [
   { href: "/create", label: "Create", icon: "＋" },
   { href: "/points", label: "Points", icon: "✦" },
   chainId === base.id ? { href: "/bridge", label: "cbLTC", icon: "Ł" } : { href: "/bridge", label: "Bridge", icon: "⇄" },
-  // only on a chain with a pad it moved on from (LEGACY_LAUNCHPADS)
-  ...(LEGACY_LAUNCHPADS[chainId]?.length ? [{ href: "/legacy", label: "Legacy", icon: "◷" }] : []),
   { href: "/profile", label: "Profile", icon: "◉" },
 ];
 
