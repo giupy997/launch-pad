@@ -16,6 +16,7 @@ const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
 const POOL = /^(0x[0-9a-fA-F]{40}):(0x[0-9a-fA-F]{40}):([01])$/;
 const KEEP = { token: 1_000, all: 3_000 }; // trades an answer carries at most, the most recent
 const CONCURRENCY = 4; // ranges in flight: a server, but on public nodes
+const BUDGET_MS = 8_500; // what a request may spend reading, under the hosting function's ten seconds
 // Netlify's CDN leaves the query string out of its cache key unless told
 // otherwise: without `netlify-vary` every coin would be served the first
 // coin's trades.
@@ -43,11 +44,12 @@ export async function GET(req: NextRequest) {
   });
   const all = token === "all";
   const coin = all ? null : (token as `0x${string}`);
-  const target: ScanTarget = { chainId, urls: chain.rpcs, chunk: chain.chunk };
+  const target: ScanTarget = { chainId, urls: chain.rpcs, chunk: chain.chunk, archive: chain.archive };
+  const deadline = Date.now() + BUDGET_MS;
   const key = `${chainId}.${token.toLowerCase()}.${pools.map((x) => x.pair.toLowerCase()).sort().join(",")}`;
 
   try {
-    const latest = await latestBlock(target, 4_000);
+    const latest = await latestBlock(target, 2_500, deadline);
     // one coin: the same window a browser's first scan reads; the pad: the last day
     const span = all ? BigInt(Math.round(86_400 / chain.blockSeconds)) : chain.chunk * SPAN_CHUNKS;
     const windowStart = latest - span + 1n > chain.deployBlock ? latest - span + 1n : chain.deployBlock;
@@ -56,7 +58,7 @@ export async function GET(req: NextRequest) {
     if (held && held.first <= windowStart && latest - held.last <= chain.chunk * 10n) {
       // warm: only the blocks mined since the last answer
       if (latest > held.last) {
-        const fresh = await scanTrades(target, chain.pad, coin, held.last + 1n, latest, pools, CONCURRENCY);
+        const fresh = await scanTrades(target, chain.pad, coin, held.last + 1n, latest, pools, CONCURRENCY, deadline);
         if (fresh.last >= held.last + 1n) {
           held.trades.push(...fresh.trades);
           held.last = fresh.last;
@@ -65,7 +67,7 @@ export async function GET(req: NextRequest) {
       }
       out = held;
     } else {
-      const fresh = await scanTrades(target, chain.pad, coin, windowStart, latest, pools, CONCURRENCY);
+      const fresh = await scanTrades(target, chain.pad, coin, windowStart, latest, pools, CONCURRENCY, deadline);
       if (fresh.last < windowStart) throw new Error("no node served the range");
       out = { first: fresh.first, last: fresh.last, trades: fresh.trades, truncated: fresh.truncated };
     }
@@ -81,7 +83,7 @@ export async function GET(req: NextRequest) {
       out.trades = out.trades.slice(-keep);
       out.truncated = true;
     }
-    await stampTimestamps(target, out.trades);
+    await stampTimestamps(target, out.trades, deadline);
     memory.set(key, out);
     return NextResponse.json(
       { chain: chainId, token, first: out.first.toString(), last: out.last.toString(), truncated: out.truncated, trades: packTrades(out.trades) },

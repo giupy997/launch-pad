@@ -38,7 +38,16 @@ export type PoolRef = { token: `0x${string}`; pair: `0x${string}`; tokenIsZero: 
  *  range one eth_getLogs may cover there (configured; a node's refusal teaches
  *  a smaller one). The browser builds it from lib/config.ts, the server from
  *  lib/points/chains.ts. */
-export type ScanTarget = { chainId: number; urls: readonly string[]; chunk: bigint };
+export type ScanTarget = {
+  chainId: number;
+  urls: readonly string[];
+  chunk: bigint;
+  /** the nodes among `urls` that serve the chain's whole history (a keyed
+   *  node): a trade scan asks only these for a long span in one request, as
+   *  a node that keeps only recent blocks answers such a request with the
+   *  old logs silently left out. None in the browser. */
+  archive?: readonly string[];
+};
 
 /** how far back a first scan reads, in chunks: ~2.3 days on Base at 1,999
  *  blocks a chunk (~11.6 at the 9,999 of a keyed node), ~1.3 on Liteforge's
@@ -92,8 +101,10 @@ function scanNodes(t: ScanTarget): Node[] {
   return set;
 }
 
-// a node that answered "too many requests" sits out for a moment
+// a node that answered "too many requests", or did not answer in time, sits
+// out for a moment: the next requests go to the others first
 const THROTTLE_COOLDOWN_MS = 4_000;
+const PER_REQUEST_MS = 4_000; // one eth_getLogs on one node, under a deadline: a node that hangs gives way
 const throttledUntil = new Map<string, number>();
 function nodesInOrder(set: Node[]): Node[] {
   const now = Date.now();
@@ -125,16 +136,20 @@ function noteError(url: string, e: unknown) {
 }
 
 /** the first node that answers; the last error when none does. `perNodeMs`
- *  caps the wait on each node: a node that hangs gives way to the next. */
-async function firstNode<T>(set: Node[], fn: (c: PublicClient) => Promise<T>, perNodeMs?: number): Promise<T> {
-  let last: unknown;
+ *  caps the wait on each node, `deadline` (a time) the whole: a node that
+ *  hangs gives way to the next, and sits out the next requests. */
+async function firstNode<T>(set: Node[], fn: (c: PublicClient) => Promise<T>, perNodeMs?: number, deadline?: number): Promise<T> {
+  let last: unknown = new Error("no node asked in time");
   for (const n of nodesInOrder(set)) {
+    const left = deadline === undefined ? Infinity : deadline - Date.now();
+    if (left <= 0) break;
+    const ms = Math.min(perNodeMs ?? Infinity, left);
     try {
-      return await (perNodeMs === undefined ? fn(n.client) : inTime(fn(n.client), perNodeMs));
+      return await (ms === Infinity ? fn(n.client) : inTime(fn(n.client), ms));
     } catch (e) {
       last = e;
       noteError(n.url, e);
-      if (isThrottle(e)) noteThrottle(n);
+      if (isThrottle(e) || isSlow(e)) noteThrottle(n);
     }
   }
   throw last;
@@ -150,9 +165,10 @@ function inTime<T>(p: Promise<T>, ms: number): Promise<T> {
 }
 
 /** the chain's latest block, from the first node that answers (each given
- *  `perNodeMs` at most, when said: a server with a budget asks that way) */
-export function latestBlock(t: ScanTarget, perNodeMs?: number): Promise<bigint> {
-  return firstNode(scanNodes(t), (c) => c.getBlockNumber(), perNodeMs);
+ *  `perNodeMs` at most and all of them `deadline`, when said: a server with
+ *  a budget asks that way) */
+export function latestBlock(t: ScanTarget, perNodeMs?: number, deadline?: number): Promise<bigint> {
+  return firstNode(scanNodes(t), (c) => c.getBlockNumber(), perNodeMs, deadline);
 }
 
 type Range = { lo: bigint; hi: bigint };
@@ -229,6 +245,11 @@ function isThrottle(e: unknown): boolean {
   const t = errorText(e);
   return t.includes("status: 429") || t.includes("too many requests") || t.includes("rate limit") || t.includes("rate-limit");
 }
+/** a node that did not answer in time (ours or viem's timeout) */
+function isSlow(e: unknown): boolean {
+  const t = errorText(e);
+  return t.includes("no answer in time") || t.includes("took too long") || t.includes("timeout") || t.includes("timed out");
+}
 /** a refusal over the size of the block range (not over its age, or a key) */
 function isRangeError(e: unknown): boolean {
   const t = errorText(e);
@@ -296,14 +317,15 @@ async function getLogsAdaptive(
               method: "eth_getLogs",
               params: [{ ...filter, fromBlock: numberToHex(r.lo), toBlock: numberToHex(r.hi) }],
             }) as Promise<RpcLog[]>;
-            const got = await (deadline === undefined ? req : inTime(req, left()));
+            // under a deadline no one node gets all the time left: one that hangs gives way to the next
+            const got = await (deadline === undefined ? req : inTime(req, Math.min(left(), PER_REQUEST_MS)));
             logs.push(...got);
             ok.push(r);
             settled = true;
             break;
           } catch (e) {
             noteError(n.url, e);
-            if (isThrottle(e)) noteThrottle(n);
+            if (isThrottle(e) || isSlow(e)) noteThrottle(n);
             else if (isRangeError(e)) {
               tooBig = true;
               const c = capNamed(e);
@@ -315,8 +337,9 @@ async function getLogsAdaptive(
         }
         if (settled) break;
         if (tooBig && span > MIN_CHUNK) {
-          // over a node's cap: cut to the size it named (just under), else in half
-          queue.push(...splitRange(r.lo, r.hi, cutSize(span, cap)));
+          // over a node's cap: cut to the size it named (just under), else in half; the pieces
+          // go to the front, so a scan that reads oldest first stays in order
+          queue.unshift(...splitRange(r.lo, r.hi, cutSize(span, cap)).reverse());
           settled = true; // handed on in pieces
           break;
         }
@@ -353,7 +376,8 @@ export type Scan = { trades: Trade[]; truncated: boolean; first: bigint; last: b
  *  one (its top is where the next scan resumes). Blocks a node did not serve
  *  are left out and flagged truncated. `concurrency` is how many ranges are
  *  in flight at once: 3 from a browser (more trips public nodes' limits), a
- *  few more from the server. */
+ *  few more from the server. A `deadline` (a time) stops the reading there:
+ *  the ranges not read by then count as not served. */
 export async function scanTrades(
   t: ScanTarget,
   pad: `0x${string}`,
@@ -361,7 +385,8 @@ export async function scanTrades(
   fromBlock: bigint,
   toBlock: bigint,
   pools: PoolRef[] = [],
-  concurrency = 3
+  concurrency = 3,
+  deadline?: number
 ): Promise<Scan> {
   const maxSpan = t.chunk * SPAN_CHUNKS;
   // every trade of one token, or (no token) every trade of the pad
@@ -378,14 +403,20 @@ export async function scanTrades(
   ];
   // the same ranges for the pad and every pool; a range counts as read only when every scan read it
   const failedKeys = new Set<string>();
+  // a long span in one request first, from a node that serves the whole history (one coin's
+  // trades are few): the ranges are spared. Not again once no such node took it.
+  let wideWorth = ranges.length > WIDE_FROM_RANGES && !!t.archive?.length;
   for (const scan of scans) {
-    // a long span in one request first, from a node that takes it (one coin's trades are few): the ranges are spared
-    const wide = ranges.length > WIDE_FROM_RANGES ? await scanLogsWide(t, scan.filter, start, toBlock, WIDE_MS) : null;
-    if (wide) {
-      scan.logs = wide;
-      continue;
+    const left = deadline === undefined ? Infinity : deadline - Date.now();
+    if (wideWorth && left > 500) {
+      const wide = await scanLogsWide(t, scan.filter, start, toBlock, Math.min(WIDE_MS, left), t.archive);
+      if (wide) {
+        scan.logs = wide;
+        continue;
+      }
+      wideWorth = false;
     }
-    const r = await getLogsAdaptive(set, t, scan.filter, ranges, concurrency);
+    const r = await getLogsAdaptive(set, t, scan.filter, ranges, concurrency, deadline);
     scan.logs = r.logs;
     for (const f of r.failed) failedKeys.add(`${f.lo}-${f.hi}`);
   }
@@ -413,37 +444,50 @@ export async function scanTrades(
  *  first node that takes the whole span: a sparse filter (one coin's
  *  transfers) answers small however long the span, and the chunked scan is
  *  spared. null when no node takes it within `timeoutMs` (a refusal over the
- *  range, a node that does not answer): the caller falls back to scanLogs. */
+ *  range, a node that does not answer): the caller falls back to scanLogs.
+ *  `only` names the nodes to ask (the ones that serve the whole history);
+ *  else every node is asked, and the caller judges whether to believe the
+ *  answer (a node that keeps only recent blocks leaves old logs out). No
+ *  one node gets all the time: a second one is reached when the first hangs. */
 export async function scanLogsWide(
   t: ScanTarget,
   filter: { address: `0x${string}`; topics: (`0x${string}` | `0x${string}`[])[] },
   fromBlock: bigint,
   toBlock: bigint,
-  timeoutMs = 8_000
+  timeoutMs = 8_000,
+  only?: readonly string[]
 ): Promise<RpcLog[] | null> {
   if (fromBlock > toBlock) return [];
   const deadline = Date.now() + timeoutMs;
+  const span = toBlock - fromBlock + 1n;
+  const perNode = Math.max(2_000, timeoutMs / 2);
   for (const n of nodesInOrder(scanNodes(t))) {
+    if (only && !only.includes(n.url)) continue;
     const left = deadline - Date.now();
     if (left <= 0) break;
     // a node that named a cap under the configured range is known not to take a wide one
     if (chunkOf(t, n.url) < t.chunk) continue;
     try {
-      const got = await Promise.race([
+      const got = await inTime(
         n.client.request({
           method: "eth_getLogs",
           params: [{ ...filter, fromBlock: numberToHex(fromBlock), toBlock: numberToHex(toBlock) }],
         }) as Promise<RpcLog[]>,
-        sleep(left).then(() => {
-          throw new Error("no answer in time");
-        }),
-      ]);
+        Math.min(left, perNode)
+      );
       if (Array.isArray(got)) return got;
       noteError(n.url, new Error(`eth_getLogs answered ${typeof got}`));
     } catch (e) {
       noteError(n.url, e);
+      // a wide read that ran out of its short time is no mark against the node: it is not benched for it
       if (isThrottle(e)) noteThrottle(n);
-      else if (isRangeError(e)) learnChunk(t, n.url, cutSize(toBlock - fromBlock + 1n, capNamed(e) ?? undefined));
+      else if (isRangeError(e)) {
+        // learned only when sure: the cap the node named, or a refusal of a span it was believed to take.
+        // A wide span refused without a figure says nothing about the node's real cap.
+        const cap = capNamed(e);
+        if (cap !== null) learnChunk(t, n.url, cap - 1n);
+        else if (span <= chunkOf(t, n.url)) learnChunk(t, n.url, span / 2n);
+      }
     }
   }
   return null;
@@ -480,18 +524,19 @@ export async function scanLogs(
 }
 
 /** block timestamps for the most recent trades that lack one (bounded; a
- *  block that can't be read now stays unstamped for the next pass) */
-export async function stampTimestamps(t: ScanTarget, trades: Trade[]) {
+ *  block that can't be read now, or not before `deadline`, stays unstamped
+ *  for the next pass) */
+export async function stampTimestamps(t: ScanTarget, trades: Trade[], deadline?: number) {
   const set = scanNodes(t);
   const need = [...new Set(trades.slice(-300).filter((x) => x.timestamp === 0).map((x) => x.block))];
   const stamps = new Map<bigint, number>();
   let next = 0;
   await Promise.all(
     Array.from({ length: Math.min(6, need.length) }, async () => {
-      while (next < need.length) {
+      while (next < need.length && (deadline === undefined || Date.now() < deadline)) {
         const bn = need[next++];
         try {
-          const b = await firstNode(set, (c) => c.getBlock({ blockNumber: bn }));
+          const b = await firstNode(set, (c) => c.getBlock({ blockNumber: bn }), deadline === undefined ? undefined : PER_REQUEST_MS, deadline);
           stamps.set(bn, Number(b.timestamp));
         } catch {
           /* next pass */

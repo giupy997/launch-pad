@@ -2,6 +2,7 @@ import "server-only";
 import { createPublicClient, http } from "viem";
 import { launchpadAbi } from "./abi";
 import { POINTS_CHAINS } from "./points/chains";
+import { redact } from "./trades/scan";
 
 /** Every coin on every pad the site serves, read at build time so that each
  *  coin's page is prerendered (generateStaticParams) and served from the CDN.
@@ -28,9 +29,9 @@ export async function listTokens(): Promise<`0x${string}`[]> {
         out.push(a);
       }
     } catch (e) {
-      console.warn(
-        `[tokens] ${chain.name}: coins not listed at build, their pages render on first visit (${String((e as Error).message ?? e).slice(0, 100)})`
-      );
+      // the build log is not the place for a keyed node's URL, which viem quotes in its messages
+      const why = redact(String((e as { shortMessage?: string; message?: string }).shortMessage ?? (e as Error).message ?? e)).slice(0, 100);
+      console.warn(`[tokens] ${chain.name}: coins not listed at build, their pages render on first visit (${why})`);
     }
   }
   return out;

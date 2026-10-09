@@ -104,7 +104,11 @@ const topicAddress = (topic: string | undefined): string | null => (topic && top
 
 function client(t: ScanTarget): PublicClient {
   return createPublicClient({
-    transport: fallback(t.urls.map((u) => http(u, { timeout: RPC_MS, retryCount: 0, batch: { batchSize: 30, wait: 16 } }))),
+    // no retries of the whole chain of nodes: each gets one go, in order
+    transport: fallback(
+      t.urls.map((u) => http(u, { timeout: RPC_MS, retryCount: 0, batch: { batchSize: 30, wait: 16 } })),
+      { retryCount: 0 }
+    ),
   });
 }
 
@@ -193,12 +197,13 @@ export type HolderCount = { holders: number; launched: number | null; partial: b
  *  read yet, or a read failed this time; the next request reads on. */
 export async function countHolders(chain: PointsChain, token: `0x${string}`): Promise<HolderCount> {
   const started = Date.now();
-  const t: ScanTarget = { chainId: chain.chainId, urls: chain.rpcs, chunk: chain.chunk };
+  const t: ScanTarget = { chainId: chain.chainId, urls: chain.rpcs, chunk: chain.chunk, archive: chain.archive };
   const c = client(t);
-  if (!(await isPadCoin(c, chain, token))) throw new UnknownCoinError();
-  const key = `${chain.chainId}.${token.toLowerCase()}`;
   const deadline = started + BUDGET_MS;
-  const latest = await latestBlock(t, RPC_MS);
+  // the first reads under a short deadline of their own: nodes that all hang leave the function nothing to do
+  if (!(await before(isPadCoin(c, chain, token), started + 3_000))) throw new UnknownCoinError();
+  const key = `${chain.chainId}.${token.toLowerCase()}`;
+  const latest = await latestBlock(t, RPC_MS, started + 4_500);
   const state = (await load(key)) ?? { last: (chain.deployBlock - 1n).toString(), candidates: [], launched: null };
   const candidates = new Set(state.candidates);
   let last = BigInt(state.last);
@@ -227,7 +232,7 @@ export async function countHolders(chain: PointsChain, token: `0x${string}`): Pr
       // the coin's birth: its first transfer out of nowhere, the mint to the pad
       if (launched === null && topicAddress(l.topics[1]) === ZERO) {
         try {
-          const b = await c.getBlock({ blockNumber: BigInt(l.blockNumber ?? "0x0") });
+          const b = await before(c.getBlock({ blockNumber: BigInt(l.blockNumber ?? "0x0") }), deadline);
           launched = Number(b.timestamp);
         } catch {
           /* next time */
@@ -322,7 +327,8 @@ export async function countHolders(chain: PointsChain, token: `0x${string}`): Pr
   const holders = Math.max(0, holding.length - isContract.size);
   const top = holding.slice(0, TOP).map((x) => ({ a: x.a, b: x.b.toString(), c: isContract.has(x.a) }));
 
-  // a count over reads that failed is answered (as not final) but not kept: the next request reads the balances again
-  if (!unreliable) await save(key, { last: at, candidates: list, launched, count: { holders, at, top } });
+  // a count over reads that failed is answered (as not final) but not kept: the next request reads the balances again;
+  // past the budget it is answered but not kept either, rather than a write that outlives the function
+  if (!unreliable && Date.now() < deadline + 400) await save(key, { last: at, candidates: list, launched, count: { holders, at, top } });
   return { holders, launched, partial: partial || unreliable, top, debug: debug() };
 }

@@ -22,12 +22,15 @@ export type PointsChain = {
   pad: `0x${string}`;
   deployBlock: bigint;
   rpcs: string[];
+  /** the nodes among `rpcs` that serve the chain's whole history (a keyed
+   *  one): the only ones a trade scan asks for a long span in one request */
+  archive: string[];
   /** the quote's decimals: 18 for native zkLTC, 8 for cbLTC */
   quoteDecimals: number;
   quoteSymbol: string;
   blockSeconds: number;
-  /** blocks one eth_getLogs may cover on the chain's public nodes; learned
-   *  smaller from a refusal */
+  /** blocks one eth_getLogs may cover on the first of `rpcs`; what each
+   *  node takes is learned per node from its refusals */
   chunk: bigint;
   /** blocks the indexer stays behind the head, so a reorg never credits twice */
   lag: bigint;
@@ -61,6 +64,7 @@ export const POINTS_CHAINS: Record<string, PointsChain> = {
     pad: "0x39D104b3258B6A18c5d5d967CDA182Ded20Bef7F",
     deployBlock: 57_741_789n,
     rpcs: ["https://liteforge.rpc.caldera.xyz/infra-partner-http"],
+    archive: [], // not tried in one request over a long span: the chain's node has not been measured for it
     quoteDecimals: 18,
     quoteSymbol: "zkLTC",
     blockSeconds: 0.25, // measured on the live chain: ~4 blocks a second (Orbit's 250 ms)
@@ -79,6 +83,7 @@ export const POINTS_CHAINS: Record<string, PointsChain> = {
     pad: "0xEfbB4ebdf5130cC4fC45899EeBA727fa2F55b5f4",
     deployBlock: 52_180_589n,
     rpcs: [...KEYED_BASE, "https://mainnet.base.org", "https://base-rpc.publicnode.com", "https://base.drpc.org", "https://1rpc.io/base"],
+    archive: KEYED_BASE,
     quoteDecimals: 8,
     quoteSymbol: "cbLTC",
     blockSeconds: 2,

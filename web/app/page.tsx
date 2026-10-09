@@ -78,8 +78,10 @@ export default function Explore() {
         Number((b.stats.volume24h ?? 0n) - (a.stats.volume24h ?? 0n)) || b.stats.progress - a.stats.progress || b.stats.mcap - a.stats.mcap
     )[0] ?? null;
   const kingPool = king ? (pools.find((x) => x.token.toLowerCase() === king.token.address.toLowerCase()) ?? null) : null;
-  const kingHolders = useHolders(chain.id, king?.token.address ?? ZERO_ADDRESS, !!king);
-  const kingTrades = useTrades(king?.token.address ?? ZERO_ADDRESS, kingPool, !!king && (!king.token.curve.graduated || !!kingPool));
+  // its reads wait for the day's volumes: before them the king is only a guess, and a guess costs a holder count
+  const kingKnown = !!king && volumes !== undefined;
+  const kingHolders = useHolders(chain.id, king?.token.address ?? ZERO_ADDRESS, kingKnown);
+  const kingTrades = useTrades(king?.token.address ?? ZERO_ADDRESS, kingPool, kingKnown && (!king.token.curve.graduated || !!kingPool));
   const kingPoints = pricePoints(kingTrades.data?.trades ?? [], king?.quote.decimals ?? quote.decimals);
 
   return (

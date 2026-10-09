@@ -37,7 +37,8 @@ export async function GET() {
   const runs: Promise<Check>[] = [];
   for (const c of Object.values(POINTS_CHAINS)) {
     names.push(`rpc:${c.key}`);
-    runs.push(timed(async () => `block ${await latestBlock({ chainId: c.chainId, urls: c.rpcs, chunk: c.chunk })}`));
+    // two seconds a node, so one that hangs does not fail the check while the others answer
+    runs.push(timed(async () => `block ${await latestBlock({ chainId: c.chainId, urls: c.rpcs, chunk: c.chunk }, 2_000, Date.now() + CHECK_MS - 500)}`));
   }
   names.push("blobs");
   runs.push(
