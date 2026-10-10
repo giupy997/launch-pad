@@ -1,5 +1,5 @@
 import { ImageResponse } from "next/og";
-import { SITE_URL } from "@/lib/litecoin/server";
+import { SITE_URL } from "@/lib/site";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

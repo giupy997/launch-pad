@@ -1,7 +1,7 @@
 # systemd unit for the Notus points service: indexes the pad's logs on the
 # chains it is configured for (Liteforge for now) and serves the leaderboard,
 # a wallet's points and invite acceptances on 127.0.0.1:8789, behind Caddy
-# (see litecoin/deploy/Caddyfile, the /points/* block).
+# (see points/deploy/Caddyfile, the /points/* block).
 #
 #   cd ~/launch-pad && git pull && (cd web && npm install --no-audit --no-fund)   # viem, from the site's node_modules
 #   sudo cp points/deploy/notus-points.service /etc/systemd/system/

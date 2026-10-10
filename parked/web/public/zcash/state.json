@@ -1,0 +1,24 @@
+{
+ "protocol": "NOTUS1",
+ "network": "test",
+ "height": 0,
+ "stateRoot": null,
+ "memosRead": 0,
+ "treasuryZat": "0",
+ "liabilitiesZat": "0",
+ "coins": [],
+ "balances": {},
+ "claimable": {},
+ "nonces": {},
+ "payouts": [],
+ "trades": [],
+ "rejected": [],
+ "roots": [],
+ "desk": {
+  "address": "utest1h9kazq4ewtqsadqthdc5744uu9qcxvp9k0dlrnhf59gmch4lpxhhzca6q4a2r9240srkq838u4t70pfaaxcwr6kng8g340fkr3h9t033zunptxt7ypl8alt49ejakvn9985g7ty84up0mr4r3uehan0ffrt6vy3j06vwndtsrwv0gfee4ksxnq9rlyqtg5kw2qn2nthmxq3w27re25s",
+  "birthday": 4374478
+ },
+ "chainTip": 4374601,
+ "confirmations": 2,
+ "updatedAt": 1789989187
+}

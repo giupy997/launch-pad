@@ -3,11 +3,12 @@
 // Reads every coin at the freeze block — its curve, its metadata, its fee
 // configuration, who holds what (from the token's Transfer logs, checked
 // against balanceOf), and for a graduated coin its pool's two sides — and
-// writes the same file litecoin/migration-snapshot.ts writes for the Litecoin
-// ledger, so MigrateFromLedger.s.sol re-creates the coins on the other side
-// unchanged. Every quote figure is written in the DESTINATION quote's units
-// (--out-decimals: 18 for native zkLTC, 8 for cbLTC), so the receiving pad
-// needs no conversion; --dest-quote names that asset in the file.
+// writes the same file parked/litecoin/migration-snapshot.ts wrote for the
+// Litecoin ledger, so MigrateFromLedger.s.sol re-creates the coins on the
+// other side unchanged. Every quote figure is written in the DESTINATION
+// quote's units (--out-decimals: 18 for native zkLTC, 8 for cbLTC), so the
+// receiving pad needs no conversion; --dest-quote names that asset in the
+// file.
 //
 //   node script/snapshot-evm.mjs --launchpad 0x... --quote 0xcb17C9Db87B595717C857a08468793f5bAb6445F --from-block <pad deploy block> \
 //     [--rpc url,url] [--network base] [--dest-quote 0x...|native] [--out-decimals 18] \

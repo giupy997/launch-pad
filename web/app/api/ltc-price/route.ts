@@ -1,8 +1,9 @@
-// The price of LTC in fiat, for market caps and volumes on the Litecoin
-// pages: read server-side from public feeds, one after another until one
-// answers, remembered for five minutes, so visitors' browsers only ever talk
-// to this site. The answer says which feed spoke and why the others did
-// not, so an outage can be read off /api/ltc-price directly.
+// The price of LTC in fiat, for the USD figures of the coins quoted in cbLTC
+// and zkLTC (lib/price.ts): read server-side from public feeds, one after
+// another until one answers, remembered for five minutes, so visitors'
+// browsers only ever talk to this site. The answer says which feed spoke and
+// why the others did not, so an outage can be read off /api/ltc-price
+// directly.
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";

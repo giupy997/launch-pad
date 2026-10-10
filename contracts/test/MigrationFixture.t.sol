@@ -6,8 +6,8 @@ import {Launchpad} from "../src/Launchpad.sol";
 import {MigrateFromLedger} from "../script/MigrateFromLedger.s.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
-/// End to end: the file `litecoin/migration-snapshot.ts` writes from a real
-/// ledger snapshot (here the demo one) goes through the migration script
+/// End to end: the file `parked/litecoin/migration-snapshot.ts` writes from a
+/// real ledger snapshot (here the demo one) goes through the migration script
 /// into a fresh Launchpad, and every holder ends up with their balance.
 contract MigrationFixtureTest is Test {
     function test_demoLedgerMigratesEndToEnd() public {

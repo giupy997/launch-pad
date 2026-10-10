@@ -59,15 +59,16 @@ const CSP = [
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Notus on Litecoin has closed: its explore, deploy and coin pages go home.
-  // The wallet and ledger pages stay, for LTC left in a browser wallet or a
-  // claim to collect (see components/litecoin/ClosedNotice.tsx).
+  // The Litecoin ledger and Zcash sections are parked (parked/ at the
+  // repository's root): the site serves the EVM pads alone, and every old
+  // link into either section, page or file, goes home. The Litecoin fund
+  // page's readers wanted cbLTC: they go to the bridge page. The first rule
+  // that matches wins.
   async redirects() {
     return [
-      { source: "/litecoin", destination: "/", permanent: false },
-      { source: "/litecoin/create", destination: "/", permanent: false },
       { source: "/litecoin/fund", destination: "/bridge", permanent: false },
-      { source: "/litecoin/c/:ticker", destination: "/", permanent: false },
+      { source: "/litecoin/:path*", destination: "/", permanent: false },
+      { source: "/zcash/:path*", destination: "/", permanent: false },
     ];
   },
   poweredByHeader: false,

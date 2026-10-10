@@ -14,9 +14,9 @@
 // directory, default points/data), NOTUS_POINTS_EVERY (seconds between
 // passes, default 10).
 //
-// The logic lives in web/lib/points/ (like the Litecoin desk's in
-// web/lib/litecoin/), so it resolves viem from the site's node_modules and
-// the site reuses the same rules and the same referral message.
+// The logic lives in web/lib/points/, so it resolves viem from the site's
+// node_modules and the site reuses the same rules and the same referral
+// message.
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { join } from "node:path";
 import { POINTS_CHAINS } from "../web/lib/points/chains.ts";

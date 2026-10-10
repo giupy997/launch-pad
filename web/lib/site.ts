@@ -3,11 +3,17 @@
  *  says the code is published at launch). */
 export const SOURCE_URL: string | null =
   process.env.NEXT_PUBLIC_SOURCE_URL === "off" ? null : process.env.NEXT_PUBLIC_SOURCE_URL?.trim() || "https://github.com/giupy997/launch-pad";
-/** `git clone` target for the "rebuild this ledger" instructions. */
+/** `git clone` target for the "rebuild this ledger" instructions of the
+ *  ledger pages (parked: see parked/README.md at the repository's root). */
 export const CLONE_LINE = SOURCE_URL ? `git clone ${SOURCE_URL} && cd ${SOURCE_URL.split("/").pop()?.replace(/\.git$/, "") ?? "notus"}` : null;
 
-/** Hostnames this site has answered on. A logo the site stored carries the
- *  absolute URL of the day it was uploaded (see /api/ltc-logo), so any of these
+/** The site's own address, without a trailing slash: NEXT_PUBLIC_SITE_URL, or
+ *  the canonical one. */
+export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") || "https://notus-pad.fun";
+
+/** Hostnames this site has answered on. A logo the site stored (served at
+ *  /i/<id>) carries the absolute URL of the day it was uploaded, and coins
+ *  migrated onto the pads kept that URL in their metadata, so any of these
  *  hosts in such a URL means "our own store", whatever the domain is today. */
 const configuredHost = (() => {
   try {

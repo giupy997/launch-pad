@@ -1,7 +1,7 @@
-// A coin logo the site stored for a Litecoin coin (see /api/ltc-logo):
-// content-addressed, so it can be cached forever.
+// A coin logo the site stored itself (coins migrated onto the pads still
+// name it in their metadata): content-addressed, so it can be cached forever.
 import { NextResponse, type NextRequest } from "next/server";
-import { siteStore } from "@/lib/litecoin/logoStore";
+import { siteStore } from "@/lib/logoStore";
 
 export const dynamic = "force-dynamic";
 

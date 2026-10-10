@@ -105,16 +105,16 @@ chain: a testnet invite does not carry into Season 1.
 
 ## How it runs
 
-Mirrors the Litecoin desk (`litecoin/desk.ts`): one long-running Node process
-on the VPS (`points/service.ts`), a systemd unit, Caddy in front, the site
-reading it through a same-origin API route. No framework, no database, no
-native modules: Node 22 runs the TypeScript directly, the facts live in JSON
-lines on disk, `fetch` talks to the RPCs. The logic sits in `web/lib/points/`
-(like the desk's in `web/lib/litecoin/`), so it resolves viem from the site's
-node_modules and the site reuses the same rules and the same invite message.
-One process serves every chain it is configured for (today Liteforge, later
-LitVM mainnet), each with its own pad address, deploy block, RPCs and quote
-decimals (18 for native zkLTC, 8 for cbLTC). Running it: `points/README.md`.
+One long-running Node process on the VPS (`points/service.ts`), a systemd
+unit, Caddy in front (`points/deploy/Caddyfile`), the site reading it through
+a same-origin API route. No framework, no database, no native modules: Node
+22 runs the TypeScript directly, the facts live in JSON lines on disk,
+`fetch` talks to the RPCs. The logic sits in `web/lib/points/`, so it
+resolves viem from the site's node_modules and the site reuses the same rules
+and the same invite message. One process serves every chain it is configured
+for (today Liteforge, later LitVM mainnet), each with its own pad address,
+deploy block, RPCs and quote decimals (18 for native zkLTC, 8 for cbLTC).
+Running it: `points/README.md`.
 
 **Indexer.** Reads the pad's logs in ranges the chain's public nodes accept
 (1,999 blocks on Base, measured; Liteforge takes far wider ones; the size is
@@ -164,9 +164,10 @@ GET  /health
 ```
 
 Caddy exposes it under the desk's hostname, `desk.notus-pad.fun/points/*`,
-no new DNS. The site proxies it at `/api/points/*` (`POINTS_URL` in Netlify's
-environment, like `LTC_STATE_URL`), with the edge caching GETs for 30 seconds
-and passing POSTs through; the service rate-limits POSTs by IP.
+no new DNS (`points/deploy/Caddyfile`; the Litecoin desk it was named for is
+parked). The site proxies it at `/api/points/*` (`POINTS_URL` in Netlify's
+environment), with the edge caching GETs for 30 seconds and passing POSTs
+through; the service rate-limits POSTs by IP.
 
 **Site.** Everything below shows on a LitVM chain (Liteforge today) and only
 there; on Base, `/points` is the *Coming with LitVM* page.

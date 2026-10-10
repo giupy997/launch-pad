@@ -12,8 +12,9 @@ an OP_RETURN ledger on Litecoin itself — one desk address, instructions in the
 memos of ordinary transactions, balances anyone recomputes from the chain —
 which is winding down: its only buyer was its operator, and a key kept in the
 browser plus LTC that has to arrive from another chain proved more than a user
-takes on. The ledger, its desk and its migration tooling stay in `litecoin/`
-and at `/litecoin`, out of the menu.
+takes on. The ledger, its desk and its tooling are parked, with the Zcash
+testnet ledger, in [`parked/`](parked/README.md): kept for the record, no
+longer served by the site, built or run.
 
 ## Structure
 
@@ -113,20 +114,22 @@ and at `/litecoin`, out of the menu.
     curve state, fee configuration, metadata and holder balances, funded in
     the chain's coin or in an ERC-20 quote (cbLTC), so trading continues at
     the same price; `script/MigrateFromLedger.s.sol` drives it from the file
-    `litecoin/migration-snapshot.ts` or `script/snapshot-evm.mjs` writes;
+    `script/snapshot-evm.mjs` (or the parked
+    `parked/litecoin/migration-snapshot.ts`) writes, in `litecoin/migration/`;
     `script/rehearse-local.sh` rehearses the whole move on one anvil node
     (both quotes, owner or operator), `script/rehearse-base-fork.sh` a
     same-chain move (Base v11 → v12) on a fork of Base — built and
     rehearsed, not used: v12 launched clean
-- `zcash/` — **Notus on Zcash** (testnet): a launchpad with no contracts — one
-  shielded address, a published viewing key and a bonding-curve ledger
-  replayed from encrypted memos. See [zcash/README.md](zcash/README.md)
-- `litecoin/` — **Notus on Litecoin** (mainnet, live at
-  [notus-pad.fun/litecoin](https://notus-pad.fun/litecoin)): the same idea on a
-  transparent chain — one desk address, instructions in OP_RETURN, balances
-  owned by the paying address, every transaction signed by an in-browser
-  Litecoin wallet or by a Litecoin browser extension (Litescribe, Enkrypt).
-  See [litecoin/README.md](litecoin/README.md)
+- `parked/` — the two contract-less launchpads, **parked**: kept for the
+  record, not served by the site, not built, not run. **Notus on Zcash**
+  (testnet: one shielded address and a bonding-curve ledger replayed from
+  encrypted memos) and **Notus on Litecoin** (the same idea on a transparent
+  chain: one desk address, instructions in OP_RETURN, balances owned by the
+  paying address), with their pages, desks and tools. What is there, why,
+  and how to bring a section back: [parked/README.md](parked/README.md)
+- `litecoin/migration/` — the EVM migration's working directory (not part of
+  the parked ledger): the snapshot files `MIGRATION.md` and the rehearsal
+  scripts write and read
 - `web/` — Next.js 16 + React 19 + wagmi v2 + viem frontend
   - `/` Explore: King of the Hill (the coin on its curve closest to
     graduating, with the shape of its day, its price, volume and holders),
@@ -263,8 +266,8 @@ the deployer owns for the migration day and the timelock takes right after
 (`MODE=schedule`, then `MODE=execute`). On Liteforge the pad the site uses
 (`0x39D1…ef7F`, a v11 rehearsal pad) is owned by the deployer; the timelock
 there (`0xFaFc…0C87`, 10 minutes) owns an older, parked pad (v7.7). A pad no
-timelock owns is the deployer key's. The migration of the Litecoin ledger to
-LitVM mainnet, step by step: [`litecoin/MIGRATION.md`](litecoin/MIGRATION.md).
+timelock owns is the deployer key's. The migration of the Base pad's coins
+to LitVM mainnet, step by step: [`MIGRATION.md`](MIGRATION.md).
 
 Points and referrals, a season-based record of every wallet's contribution
 derived from the pad's events off-chain (20 points per LTC traded, bonuses on
@@ -300,15 +303,16 @@ equity, no backing, no affiliation with the companies.
 
 The app has a chain switcher in the header. It offers **Base** (chain 8453,
 RPC `https://mainnet.base.org`, explorer `https://base.blockscout.com`, gas in
-ETH), where every coin is quoted in cbLTC; LitVM Liteforge, GIWA Sepolia,
-Robinhood Chain, the Litecoin ledger (`/litecoin`) and Zcash Testnet (`/zcash`)
-stay wired — addresses, assets, pages — but out of the menu (`VISIBLE_CHAINS`
-in `web/lib/config.ts` lists what the menu shows; Base is the default chain).
+ETH), where every coin is quoted in cbLTC, and LitVM Liteforge; GIWA Sepolia
+and Robinhood Chain stay wired — addresses, assets, pages — but out of the
+menu (`VISIBLE_CHAINS` in `web/lib/config.ts` lists what the menu shows; Base
+is the default chain). The Litecoin ledger and Zcash Testnet are parked
+(`parked/`): their old `/litecoin` and `/zcash` links go home.
 LitVM (chain 4441, RPC `https://liteforge.rpc.caldera.xyz/infra-partner-http`,
 explorer `https://liteforge.explorer.caldera.xyz`, gas in zkLTC) is Litecoin's
-EVM layer 2: when LitVM mainnet goes live, the Litecoin ledger's coins migrate
-there automatically — same holders, same price, each coin's pool moved to a
-DEX — see [litecoin/README.md](litecoin/README.md#the-road-to-litvm). The
+EVM layer 2: when LitVM mainnet goes live, the Base pad's coins migrate
+there — same holders, same price, each coin's pool moved to a DEX — see
+[`MIGRATION.md`](MIGRATION.md). The
 mainnet pad opens its zkLTC curves with the same virtual reserve as Base's
 cbLTC ones — 50 from v12 on (160 zkLTC raised to graduate; v11 opened with
 60, decided 2026-10-05, 192 to graduate); the Liteforge rehearsal pad runs

@@ -1,11 +1,11 @@
 # Notus points — the service
 
-One long-running Node process on the VPS, like the Litecoin desk: for every
-chain it is configured for, it reads the launchpad's logs a stretch at a time,
-keeps them on disk, recomputes the season's ledger after every pass, and
-answers the leaderboard, a wallet's points and invite acceptances over HTTP.
-The website reads it through its `/api/points` route. The design, the rules
-and why they are what they are: [`POINTS.md`](../POINTS.md).
+One long-running Node process on the VPS: for every chain it is configured
+for, it reads the launchpad's logs a stretch at a time, keeps them on disk,
+recomputes the season's ledger after every pass, and answers the leaderboard,
+a wallet's points and invite acceptances over HTTP. The website reads it
+through its `/api/points` route. The design, the rules and why they are what
+they are: [`POINTS.md`](../POINTS.md).
 
 No key, no wallet. The only writes are invite bindings, each authorised by the
 invitee's own signature.
@@ -23,7 +23,7 @@ invitee's own signature.
 | `web/lib/points/store.ts` | JSON lines on disk: `events.jsonl`, `referrals.jsonl`, `meta.json` |
 | `web/lib/points/referral.ts` | the invite message and its verification (shared with the site) |
 | `points/deploy/notus-points.service` | the systemd unit |
-| `litecoin/deploy/Caddyfile` | the `/points/*` block in front of it |
+| `points/deploy/Caddyfile` | the `/points/*` block in front of it (the VPS's only Caddy config) |
 
 The logic lives under `web/lib/` so it resolves `viem` from the site's
 `node_modules` (the process has none of its own) and so the site reuses the
@@ -54,7 +54,7 @@ cd ~/launch-pad && git pull && (cd web && npm install --no-audit --no-fund)
 sudo cp points/deploy/notus-points.service /etc/systemd/system/
 sudo systemctl daemon-reload && sudo systemctl enable --now notus-points
 journalctl -u notus-points -f                                 # the backfill of Season 0, then a pass every 10s
-sudo cp litecoin/deploy/Caddyfile /etc/caddy/Caddyfile && sudo systemctl reload caddy
+sudo cp points/deploy/Caddyfile /etc/caddy/Caddyfile && sudo systemctl reload caddy
 curl -s https://desk.notus-pad.fun/points/health
 ```
 

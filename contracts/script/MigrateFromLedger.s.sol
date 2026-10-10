@@ -10,11 +10,12 @@ import {ILaunchpadMigration} from "../src/interfaces/ILaunchpadMigration.sol";
 
 /// Re-creates every coin of a frozen Notus ledger — the Litecoin ledger, or
 /// an EVM pad that froze (Base v11) — on a v12 Launchpad, from the file
-/// `node litecoin/migration-snapshot.ts` or `node script/snapshot-evm.mjs`
-/// wrote. Each coin arrives with exactly its reserve and its unspent pots,
-/// in the destination's quote: the chain's own coin (as msg.value) when the
-/// file names none, or the ERC-20 the file's `destQuote` names (cbLTC on
-/// Base), which the broadcaster holds and approves to the pad call by call.
+/// `node script/snapshot-evm.mjs` (or the parked Litecoin ledger's
+/// `parked/litecoin/migration-snapshot.ts`) wrote. Each coin arrives with
+/// exactly its reserve and its unspent pots, in the destination's quote: the
+/// chain's own coin (as msg.value) when the file names none, or the ERC-20
+/// the file's `destQuote` names (cbLTC on Base), which the broadcaster holds
+/// and approves to the pad call by call.
 ///
 /// Who runs it decides how it runs:
 ///   MODE=direct    the broadcaster is the pad's owner (a rehearsal pad) or its
@@ -35,7 +36,8 @@ import {ILaunchpadMigration} from "../src/interfaces/ILaunchpadMigration.sol";
 /// whose token exists is not created twice, holders already delivered are
 /// skipped, an operation already scheduled is not scheduled twice. When every
 /// coin has its token and its holders, it writes the ticker → token map the
-/// site reads (copy it to web/public/litecoin/migrated.json).
+/// site reads (copy it to web/public/migrated/<source chain id>.json, see
+/// MIGRATION.md).
 ///
 ///   LAUNCHPAD=0x... MIGRATION_FILE=../litecoin/migration/base-<freeze>.json \
 ///   [MODE=schedule|execute TIMELOCK=0x...] \
@@ -450,7 +452,7 @@ contract MigrateFromLedger is Script {
         }
     }
 
-    /// The ticker → token map the site serves as /litecoin/migrated.json,
+    /// The ticker → token map the site serves as /migrated/<source chain id>.json,
     /// written next to the migration file.
     function writeMigrated(Launchpad pad, Coin[] memory coins, string memory file) public {
         string memory tokensKey = "tokens";

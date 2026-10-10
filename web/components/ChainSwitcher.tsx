@@ -1,27 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
 import { useSwitchChain } from "wagmi";
 import { CHAIN_LABEL, VISIBLE_CHAINS } from "@/lib/config";
 import { useAppChain } from "@/lib/hooks";
-
-// The contract-less networks (Litecoin, Zcash) are not EVM chains: each has
-// its own section of the site, which the switcher can list as one more
-// network. Notus on Litecoin has closed: its section stays known here so its
-// remaining pages (/litecoin/wallet, /litecoin/ledger) show "Litecoin" in the
-// chip, but it is not listed. Zcash was a testnet.
-const SECTIONS: { id: number; path: string; name: string; label: string; testnet: boolean; listed: boolean }[] = [
-  { id: -2, path: "/litecoin", name: "Litecoin", label: "Litecoin", testnet: false, listed: false },
-];
 
 const CHAIN_LOGOS: Record<number, string> = {
   8453: "/chains/cbltc.svg", // Base goes by its quote asset
   91342: "/chains/giwa.png",
   4663: "/chains/robinhood.png",
   4441: "/chains/litvm.svg",
-  [-1]: "/chains/zcash.svg",
-  [-2]: "/chains/litecoin.svg",
 };
 
 function ChainLogo({ id, size = 18 }: { id: number; size?: number }) {
@@ -43,10 +31,7 @@ function ChainLogo({ id, size = 18 }: { id: number; size?: number }) {
 export function ChainSwitcher() {
   const evmChain = useAppChain();
   const { switchChain, isPending } = useSwitchChain();
-  const pathname = usePathname();
-  const router = useRouter();
-  const section = SECTIONS.find((s) => pathname.startsWith(s.path));
-  const chain = section ? { id: section.id, name: section.label } : { id: evmChain.id, name: CHAIN_LABEL[evmChain.id] ?? evmChain.name };
+  const chain = { id: evmChain.id, name: CHAIN_LABEL[evmChain.id] ?? evmChain.name };
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -76,31 +61,6 @@ export function ChainSwitcher() {
 
       {open && (
         <div className="absolute right-0 mt-2 w-60 glass rounded-2xl p-1.5 z-20 shadow-2xl shadow-black/70 fade-up">
-          {SECTIONS.filter((sec) => sec.listed).map((sec) => {
-            const active = section?.path === sec.path;
-            return (
-              <button
-                key={sec.path}
-                type="button"
-                onClick={() => {
-                  setOpen(false);
-                  if (!active) router.push(sec.path);
-                }}
-                className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm ${
-                  active ? "bg-zinc-900 text-white" : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
-                }`}
-              >
-                <ChainLogo id={sec.id} size={22} />
-                <span className="flex-1">
-                  {sec.name}
-                  {sec.testnet && (
-                    <span className="ml-2 font-mono text-[10px] tracking-widest uppercase text-zinc-500">testnet</span>
-                  )}
-                </span>
-                {active && <span className="text-xs">●</span>}
-              </button>
-            );
-          })}
           {VISIBLE_CHAINS.map((c) => {
             const active = c.id === chain.id;
             return (
@@ -110,7 +70,6 @@ export function ChainSwitcher() {
                 onClick={() => {
                   setOpen(false);
                   if (c.id !== evmChain.id) switchChain({ chainId: c.id });
-                  if (section) router.push("/");
                 }}
                 className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm ${
                   active ? "bg-zinc-900 text-white" : "text-zinc-400 hover:bg-zinc-900 hover:text-white"

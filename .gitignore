@@ -14,12 +14,21 @@ node_modules/
 # OS
 .DS_Store
 
-# Notus on Zcash: desk wallet (seed, keys, sqlite) and the devtool build
+# Notus on Zcash (parked): desk wallet (seed, keys, sqlite) and the devtool build
+parked/zcash/desk/
+parked/zcash/user/
+parked/zcash/tool/
 zcash/desk/
 zcash/user/
 zcash/tool/
 
-# Notus on Litecoin: desk and test-user keys, explorer cache
+# Notus on Litecoin (parked): desk and test-user keys, explorer cache. The old
+# paths stay ignored: a checkout the desk ran from keeps its data there
+parked/litecoin/desk/
+parked/litecoin/desk-*/
+parked/litecoin/user/
+parked/litecoin/user-*/
+parked/litecoin/cache/
 litecoin/desk/
 litecoin/desk-*/
 litecoin/user/

@@ -7,8 +7,8 @@
 // preview images already require; anything else is a 404 the <img> falls
 // back from. Cached at the edge for a day.
 import { NextResponse, type NextRequest } from "next/server";
-import { fetchPublicImage } from "@/lib/litecoin/safeFetch";
-import { imageTypeOf } from "@/lib/litecoin/pin";
+import { fetchPublicImage } from "@/lib/safeFetch";
+import { imageTypeOf } from "@/lib/imageType";
 
 export const dynamic = "force-dynamic";
 

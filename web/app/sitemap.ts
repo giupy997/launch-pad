@@ -1,9 +1,8 @@
 import type { MetadataRoute } from "next";
-import { SITE_URL } from "@/lib/litecoin/server";
+import { SITE_URL } from "@/lib/site";
 
 /** The pages worth indexing: the launchpad's own, all static. A coin's page
- *  (/token/<address>) is reached from Explore and from links; the closed
- *  Litecoin and Zcash sections are left out (their main pages redirect home).
+ *  (/token/<address>) is reached from Explore and from links.
  *  Nothing here is read from the network, so the sitemap answers at once. */
 export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date();
