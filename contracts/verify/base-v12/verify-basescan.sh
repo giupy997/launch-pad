@@ -17,8 +17,10 @@
 # LaunchToken of every coin is created by the factory and shares its runtime
 # bytecode (the immutable is the pad, the same
 # for every coin of this pad), so once the first coin's is verified Basescan
-# shows every other coin's source as a "similar match": pass its address and
-# name/symbol as FIRST_TOKEN, FIRST_NAME, FIRST_SYMBOL to verify that one.
+# shows every other coin's source as a "similar match": set its address as
+# FIRST_TOKEN in addresses.sh, or pass it in the environment
+# (FIRST_TOKEN=0x... bash verify/base-v12/verify-basescan.sh); its name and
+# symbol are read from the chain unless FIRST_NAME / FIRST_SYMBOL are given.
 set -euo pipefail
 cd "$(dirname "$0")"
 HERE=$PWD

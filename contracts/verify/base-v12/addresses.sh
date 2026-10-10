@@ -9,5 +9,6 @@ TREASURY=0x24622320D93Da2d9c626EE469ad0C2c48a1ED7F7
 PROPOSER=0x707f56C25e5d8cc12d08A3bf73f54dBeD0CD9A02
 DELAY=86400
 # the first coin launched on the pad, to verify its LaunchToken (every later coin shows as a
-# similar match); set once a coin exists; its name and symbol are read from the chain
-FIRST_TOKEN=
+# similar match); set it here once a coin exists, or pass it in the environment
+# (FIRST_TOKEN=0x... bash verify-basescan.sh); its name and symbol are read from the chain
+FIRST_TOKEN=${FIRST_TOKEN:-}

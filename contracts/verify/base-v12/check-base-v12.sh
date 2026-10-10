@@ -6,17 +6,19 @@
 # and roles (the proposer schedules and cancels, anyone executes, nobody
 # administers). Every line PASS, or the one that is not says what it found.
 #
-#   cd ~/launch-pad/contracts && bash verify/base-v12/check-base-v12.sh      # reads .env for BASE_RPC, else foundry's `base`
+#   cd ~/launch-pad/contracts && bash verify/base-v12/check-base-v12.sh      # node: BASE_RPC, else SRC_RPC's first, else foundry's `base`
 #
-# Read-only: no signer, no gas. The addresses come from addresses.sh.
+# Read-only: no signer, no gas. The addresses come from addresses.sh, read
+# after .env so that a TREASURY (or any other name) in .env never replaces
+# the recorded deployment the chain is compared with.
 set -uo pipefail
-cd "$(dirname "$0")"
-# shellcheck disable=SC1091
-source ./addresses.sh
-cd ../..
+cd "$(dirname "$0")/../.."
 export PATH="$HOME/.foundry/bin:$PATH"
 if [ -f .env ]; then set -a; source .env; set +a; fi
-RPC=${BASE_RPC:-${SRC_RPC%%,*}}
+# shellcheck disable=SC1091
+source verify/base-v12/addresses.sh
+RPC=${BASE_RPC:-${SRC_RPC:-}}
+RPC=${RPC%%,*}
 RPC=${RPC:-base}
 CBLTC=0xcb17C9Db87B595717C857a08468793f5bAb6445F
 UNIV2_ROUTER=0x4752ba5DBc23f44D87826276BF6Fd6b1C372aD24
