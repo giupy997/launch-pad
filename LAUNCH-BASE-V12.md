@@ -59,7 +59,9 @@ arguments (the header of `DeployBase.s.sol`): Launchpad (treasury),
 LaunchpadMigration and LaunchTokenFactory (no arguments; `pad.MIGRATION_MODULE()`,
 `pad.tokenFactory()`), UniV2Migrator (pad, router), SlipstreamZapRouter (pad,
 router, weth), TimelockController (delay, proposers, executors, 0). Keep the
-standard-input JSONs in `contracts/verify/base-v12/`.
+standard-input JSONs in `contracts/verify/base-v12/`: they are the deployed
+sources, and this checkout has moved on since (the harvest in
+`UniV2Migrator.sol`, below).
 
 ## 2. The site
 
@@ -112,9 +114,21 @@ rehearsal pad (Season 0 of the points runs on it) until decided otherwise.
   Lester cashback (0.2254 cbLTC) and any creator fees are claimed on the v11
   pad's contract page on Blockscout whenever.
 - On v12 the pool fees run: anyone may `harvest` a coin (the site has the
-  button; the caller is tipped), the treasury gets 0.5% of every trade, the
-  creator's and the holders' shares accrue as before, the burn share is
-  burned, the liquidity share deepens the locked pool.
+  button; the caller is tipped), a capped slice a block — both buckets
+  whole in one call, uncapped, once a freeze is announced, which is why
+  `MIGRATION.md` empties the buckets first — the treasury gets 0.5% of
+  every trade, the creator's and the holders' shares accrue as before, the
+  burn share is burned, the liquidity share deepens the locked pool.
+- The v12 migrator keeps the code it was deployed with
+  (`contracts/verify/base-v12/`). For a coin with a liquidity share, a
+  harvest of a few tens of satoshis of tax can revert there (the sizes:
+  `MIGRATION.md`, step 2): it decides whether the pool mints for that share
+  on an estimate, which at some sizes says yes while the share's cbLTC
+  rounds to nothing, and the pair's mint refuses. Nothing moves and nothing
+  is lost; the next trade adds tax and the harvest goes through. The
+  repository's `UniV2Migrator.sol` now decides that leg on the exact
+  amounts (a dust harvest sends the share to the burn pot), for the LitVM
+  pads.
 - The move to LitVM mainnet, when it comes, starts from v12 (`MIGRATION.md`);
   the v11 coins can be moved the same way if ever wanted, the machinery
   having been rehearsed for exactly that (`script/rehearse-base-fork.sh`).
