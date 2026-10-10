@@ -122,6 +122,45 @@ export const IMMUTABLE = { staleTime: Infinity, gcTime: Infinity } as const;
 export const META_REFETCH = { refetchInterval: 30_000, staleTime: 25_000, gcTime: DAY } as const;
 // a warm pass (another chain's list, read ahead) reads once and never polls
 const ONCE = { refetchInterval: false, gcTime: DAY } as const;
+// a read a page waits on is asked again this often until it has answered: one failed RPC
+// call must not leave a figure on "…" for the rest of the visit
+export const RETRY_MS = 5_000;
+
+/** Whether a multicall entry holds the chain's answer: a result, a revert, or no
+ *  contract at the address. A multicall resolves even when the RPC failed; each
+ *  entry then holds the transport's error (a timeout, a rate limit, no network,
+ *  a node's internal error), which says nothing of the chain and is worth asking
+ *  again. The transport is looked for first: viem wraps a node's internal error
+ *  (-32603) in a ContractFunctionRevertedError too, with the RPC error below it. */
+// (RpcRequestError is not among them: it is the base of every error a node answers with, a
+// revert included; the error above it in the chain says which it is)
+const TRANSPORT_FAILURES = new Set([
+  "HttpRequestError",
+  "WebSocketRequestError",
+  "SocketClosedError",
+  "TimeoutError",
+  "InternalRpcError",
+  "LimitExceededRpcError",
+]);
+const CHAIN_ANSWERS = new Set([
+  "ContractFunctionRevertedError",
+  "ContractFunctionZeroDataError",
+  "RawContractError",
+  "AbiDecodingZeroDataError",
+  "ExecutionRevertedError",
+]);
+export function chainAnswered(entry: { status?: unknown; error?: unknown } | undefined): boolean {
+  if (!entry) return false;
+  if (entry.status !== "failure") return true;
+  let answered = false;
+  let e = entry.error as { name?: unknown; cause?: unknown } | undefined;
+  for (let depth = 0; e && depth < 12; depth++, e = e.cause as typeof e) {
+    if (typeof e.name !== "string") continue;
+    if (TRANSPORT_FAILURES.has(e.name)) return false;
+    if (CHAIN_ANSWERS.has(e.name)) answered = true;
+  }
+  return answered;
+}
 
 export function parseCurve(result: unknown): CurveInfo {
   const [vEth, vToken, realEth, sold, graduated, creator, quoteAsset] = result as readonly [

@@ -87,8 +87,8 @@ export const LAUNCHPAD_ADDRESS: Record<number, `0x${string}` | undefined> = {
   [base.id]: "0x23231924281B34Bb28F10D854DB8D2DcBd7F78c5",
   [giwaSepolia.id]: "0x8E1a1308E3b176528Ee9278d7a531F185F9fBeFD",
   [robinhood.id]: "0x4A84c7B0dc45a473eA67f56617BC5903CA2c001c", // v7.4
-  // v11 rehearsal pad quoted in native zkLTC with a 0.05 zkLTC virtual reserve (a curve graduates with 0.16 zkLTC, faucet
-  // money); UniV2Migrator v2 0xD45e4011Dae718aAF95DB5BdCA8e7Ee3ca8F413F → Lester Labs' v2 router; deploy block 57,741,789. Parked: the v9
+  // v11 rehearsal pad quoted in native zkLTC: opened with a 0.05 zkLTC virtual reserve (0.16 zkLTC to graduate), raised
+  // on 2026-10-10 to 0.9375 zkLTC for the coins created since (3 zkLTC to graduate); UniV2Migrator v2 0xD45e4011Dae718aAF95DB5BdCA8e7Ee3ca8F413F → Lester Labs' v2 router; deploy block 57,741,789. Parked: the v9
   // rehearsal pad 0xcaB7…42EF (Notus's twin migrated from Base at 1:100, with the v1 migrator), the v7.x pads.
   [litvmTestnet.id]: "0x39D104b3258B6A18c5d5d967CDA182Ded20Bef7F",
 };

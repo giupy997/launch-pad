@@ -14,8 +14,11 @@ import {
   quoteInfo,
   isQuoteAsset,
   IMMUTABLE,
+  RETRY_MS,
+  chainAnswered,
   usePadVersion,
 } from "@/lib/hooks";
+import type { PadVersion } from "@/lib/abi";
 import { BLOCK_SECONDS, PRE_IPO_DISCLAIMER, isHiddenToken } from "@/lib/config";
 import { fmtUnits, fmtTokens } from "@/lib/format";
 import { TradeBox } from "@/components/TradeBox";
@@ -38,6 +41,16 @@ import { useHolders } from "@/lib/holders";
 import { fmtNum } from "@/lib/format";
 import { useAccount } from "wagmi";
 
+/** Whether the chain has answered the entries of tokenStaticReads a trade's price rests on:
+ *  the coin's feeConfig (its tax; on v12 the launchpad fee too), and on v11 the pad's fee and
+ *  its split. Not name or symbol, and a revert counts (a coin older than fee configurations
+ *  has none): a page opened on an address that is no coin of the pad would ask for good. */
+const FEE_ENTRIES: Record<PadVersion, readonly number[]> = { 12: [3], 11: [3, 4, 5, 6] };
+function feesAnswered(data: unknown, version: PadVersion): boolean {
+  const reads = data as readonly { status?: unknown; error?: unknown }[] | undefined;
+  return !!reads && FEE_ENTRIES[version].every((i) => chainAnswered(reads[i]));
+}
+
 /** A coin's page, rendered in the browser from the chain; page.tsx (server)
  *  prerenders the shell for every coin known at build time. */
 export function TokenPage({ address }: { address: string }) {
@@ -51,9 +64,16 @@ export function TokenPage({ address }: { address: string }) {
 
   // name/symbol/fee mode never change — read once; only curve + metadata poll.
   // The same two lists the Explore cards read ahead of a tap (lib/tokenReads.ts).
+  // A multicall resolves even when the RPC failed, each entry a failure, and the
+  // fee entries hold up Buy and Sell: until they answer they are asked again,
+  // at once if the cache (a card's prefetch, a failed first visit) holds no answer.
   const { data: statics, isLoading: staticsLoading } = useReadContracts({
     contracts: tokenStaticReads(pad, token, chain.id, version),
-    query: { ...IMMUTABLE },
+    query: {
+      ...IMMUTABLE,
+      refetchInterval: (q) => (feesAnswered(q.state.data, version) ? false : RETRY_MS),
+      refetchOnMount: (q) => (feesAnswered(q.state.data, version) ? false : "always"),
+    },
   });
   const { data: dyn, isLoading: dynLoading } = useReadContracts({
     contracts: tokenLiveReads(pad, token, chain.id),
@@ -102,18 +122,33 @@ export function TokenPage({ address }: { address: string }) {
   const feesToHolders = feeModeR?.status === "success" ? (feeModeR.result as boolean) : false;
   const big = (r: { status: string; result?: unknown } | undefined, fallback = 0n) =>
     r?.status === "success" ? (r.result as bigint) : fallback;
+  const read = (r: { status: string; result?: unknown } | undefined) => (r?.status === "success" ? (r.result as bigint) : undefined);
   // the pad's rate: v11's platform fee, and what a six-field feeConfig falls back to
-  const padFeeBps = big(feeBpsR, 100n);
+  const padFeeBps = read(feeBpsR);
   // pads before v9 know no fee configuration: no panel, and the launch-time choice tells the split
   const hasFees = feesR?.status === "success";
   const fees = hasFees
-    ? parseFeeConfig(feesR.result, Number(padFeeBps))
-    : { ...NO_TAX, platformBps: Number(padFeeBps), creatorBps: feesToHolders ? 0 : 10_000, holdersBps: feesToHolders ? 10_000 : 0 };
+    ? parseFeeConfig(feesR.result, Number(padFeeBps ?? 0n))
+    : { ...NO_TAX, platformBps: Number(padFeeBps ?? 0n), creatorBps: feesToHolders ? 0 : 10_000, holdersBps: feesToHolders ? 10_000 : 0 };
+  // Whether the page knows what a trade pays, from the chain only: on v12 the coin's own feeConfig
+  // (every v12 coin has one, so a failed read is a failed read, not an older coin); on v11 the pad's
+  // fee. Until then nothing quotes and the rates say "…".
+  // On v11 the coin's tax rides the same feeConfig read: a revert there is an older coin with
+  // none, but a failed transport is not yet an answer, and a trade must not price at no tax.
+  const feesKnown = version === 12 ? hasFees : padFeeBps !== undefined && chainAnswered(feesR);
+  const taxKnown = version === 12 ? hasFees : chainAnswered(feesR);
   // the rate the coin trades at and the treasury's cut of it: on v12 both are the coin's own
   // (feeConfig's seventh field, whole to the treasury); on v11 the pad's fee, less the pot's share
-  const platformFeeBps = version === 12 ? BigInt(fees.platformBps) : padFeeBps;
+  const platformFeeBps = !feesKnown ? undefined : version === 12 ? BigInt(fees.platformBps) : padFeeBps;
+  const [creatorShareBps, holderShareBps] = [read(creatorShareR), read(holderShareR)];
   const treasury =
-    version === 12 ? treasuryPct(fees.platformBps) : treasuryPctV11(padFeeBps, big(creatorShareR, 5_000n) + big(holderShareR, 3_000n));
+    platformFeeBps === undefined
+      ? "…"
+      : version === 12
+        ? treasuryPct(fees.platformBps)
+        : creatorShareBps !== undefined && holderShareBps !== undefined
+          ? treasuryPctV11(platformFeeBps, creatorShareBps + holderShareBps)
+          : "…";
   if (curveR.status !== "success" || (curveR.result as readonly unknown[])[0] === 0n) {
     return (
       <p className="text-zinc-500">
@@ -186,10 +221,10 @@ export function TokenPage({ address }: { address: string }) {
           price={price}
           change24h={change24h}
           volume24h={volume24h}
-          buyTaxBps={fees.buyTaxBps}
-          sellTaxBps={fees.sellTaxBps}
+          buyTaxBps={taxKnown ? fees.buyTaxBps : undefined}
+          sellTaxBps={taxKnown ? fees.sellTaxBps : undefined}
           poolFeeBps={curve.graduated ? 30 : null}
-          poolPlatformBps={version === 12 ? fees.platformBps : 0}
+          poolPlatformBps={version !== 12 ? 0 : feesKnown ? fees.platformBps : null}
           explorer={explorer}
           links={links}
         />
@@ -260,9 +295,10 @@ export function TokenPage({ address }: { address: string }) {
 
       <div className="order-1 lg:order-2 space-y-6">
         {/* a graduated coin trades in its pool: the card gets the coin's fees and the pad's generation
-            from here, since on v12 the pool charges them in coins and the quotes must be net of that */}
+            from here, since on v12 the pool charges them in coins and the quotes must be net of that;
+            fees the page could not read it reads again itself, and waits for them */}
         {curve.graduated ? (
-          <PoolCard token={token} symbol={symbol} quote={q} version={version} fees={fees} />
+          <PoolCard token={token} symbol={symbol} quote={q} version={version} fees={feesKnown ? fees : undefined} />
         ) : (
           <TradeBox token={token} symbol={symbol} curve={curve} fees={fees} platformFeeBps={platformFeeBps} treasury={treasury} />
         )}

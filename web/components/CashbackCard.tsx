@@ -34,11 +34,12 @@ export function CashbackCard({
     abi: launchpadAbi,
     functionName: "cashbackOf",
     args: user ? [token, user] : undefined,
+    chainId: appChainId, // the app chain's pad, not the wallet's chain
     query: { enabled: !!pad && !!user, refetchInterval: 10_000 },
   });
 
   const { writeContract, data: hash, isPending, error, reset } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash, chainId: appChainId });
 
   if (!pad || !user || isError || claimable === undefined) return null;
 

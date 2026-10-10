@@ -2,20 +2,23 @@
 
 import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useAccount, useBlockNumber, useReadContracts, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
+import { useAccount, useBlockNumber, useReadContract, useReadContracts, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
+import { launchpadAbi } from "@/lib/abi";
 import { migratorAbi, type PoolInfo } from "@/lib/pool";
-import { useAppChain } from "@/lib/hooks";
+import { useAppChain, useLaunchpadAddress } from "@/lib/hooks";
 import { fmtTokens, fmtUnits } from "@/lib/format";
 import { refreshAfterTrade } from "@/components/TradeBox";
 
 /** The Harvest button of a graduated v12 coin. Anyone may call the migrator's
  *  harvest(token): it sells a slice of the coins waiting in the pad's two
  *  buckets on the pool (harvestCap: half a percent of the pool's quote side,
- *  once a block), burns the burn share, deepens the locked liquidity, and the
- *  pad pays the treasury, the creator and the holders; the caller keeps a
+ *  once a block; once a freeze is announced, both buckets whole in one call,
+ *  uncapped), burns the burn share, deepens the locked liquidity, and the pad
+ *  pays the treasury, the creator and the holders; the caller keeps a
  *  twentieth of the treasury's part. Disabled while nothing waits, while the
- *  last harvest's block has not passed, and while the pad holds no liquidity
- *  in the pool (the migrator has nothing to sell into). */
+ *  last harvest's block has not passed (not once a freeze is announced), while
+ *  the pad holds no liquidity in the pool (the migrator has nothing to sell
+ *  into), and from the freeze block on (the pad stands still). */
 export function Harvest({
   token,
   symbol,
@@ -31,8 +34,8 @@ export function Harvest({
   pool: PoolInfo | undefined;
   /** usePool's `none`: the pad seeded no pool for this coin */
   noPool: boolean;
-  /** what the two buckets hold together, in coins */
-  pending: bigint;
+  /** what the two buckets hold together, in coins; undefined while they are being read */
+  pending: bigint | undefined;
   quoteSymbol: string;
   quoteDecimals: number;
 }) {
@@ -61,9 +64,23 @@ export function Harvest({
   const cap = big(1);
   const locked = big(2);
   const { data: blockNumber } = useBlockNumber({ chainId: chain.id, query: { enabled: !!migrator, refetchInterval: 5_000 } });
+  // a freeze announced lifts the cap and the once-a-block rule (harvestCap still says the slice:
+  // only harvest() looks at the freeze), so the buckets can be emptied before the snapshot; from
+  // the freeze block the pad refuses the harvest
+  const pad = useLaunchpadAddress();
+  const { data: freezeRaw } = useReadContract({
+    address: pad,
+    abi: launchpadAbi,
+    functionName: "freezeBlock",
+    chainId: chain.id,
+    query: { enabled: !!pad && !!migrator, refetchInterval: 15_000 },
+  });
+  const freezeBlock = freezeRaw as bigint | undefined;
+  const rush = freezeBlock !== undefined && freezeBlock !== 0n;
+  const frozen = rush && blockNumber !== undefined && blockNumber >= freezeBlock;
 
   const { writeContract, data: hash, isPending, error, reset } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash, chainId: chain.id });
   // a confirmed harvest moved the buckets, the pool's reserves, the pots and the creator's
   // and holders' claimables: ask for all of it now, and for the block the next one may run from
   const handled = useRef<string | undefined>(undefined);
@@ -74,23 +91,26 @@ export function Harvest({
     void queryClient.invalidateQueries({ queryKey: ["blockNumber"] });
   }, [isSuccess, hash, queryClient]);
 
-  const cooling = nextBlock !== undefined && blockNumber !== undefined && nextBlock > blockNumber;
-  // why the button is off, in the order the migrator would refuse: no pool, no liquidity of
-  // ours in it, nothing in the buckets, a harvest already this block
+  const cooling = !rush && nextBlock !== undefined && blockNumber !== undefined && nextBlock > blockNumber;
+  // why the button is off, in the order the migrator would refuse: no pool, the pad frozen, no
+  // liquidity of ours in it, nothing in the buckets, a harvest already this block
   const state = noPool
     ? "noPool"
-    : !pool || locked === undefined || nextBlock === undefined
+    : !pool || locked === undefined || nextBlock === undefined || pending === undefined || freezeBlock === undefined
       ? "reading"
-      : locked === 0n
-        ? "unseeded"
-        : pending === 0n
-          ? "empty"
-          : cooling
-            ? "cooling"
-            : "ready";
+      : frozen
+        ? "frozen"
+        : locked === 0n
+          ? "unseeded"
+          : pending === 0n
+            ? "empty"
+            : cooling
+              ? "cooling"
+              : "ready";
   const cannot = {
     noPool: "Its pool is not seeded yet: nothing to sell into",
     reading: "Reading the pool…",
+    frozen: "The launchpad stands still from its freeze block: nothing can be harvested",
     unseeded: "The pad holds no liquidity in the pool: nothing to sell into",
     empty: "Nothing waiting: the buckets fill as the pool trades",
     cooling: `A slice went this block; the next may go from block ${nextBlock}`,
@@ -98,7 +118,9 @@ export function Harvest({
   }[state];
   // what the next harvest takes from the buckets, and what that is worth at the pool's
   // price (an estimate: the burn share is burned, not sold, and the sale moves the price)
-  const slice = cap !== undefined && cap < pending ? cap : pending;
+  const waiting = pending ?? 0n; // "ready" has read it
+  const capped = !rush && cap !== undefined && cap < waiting;
+  const slice = capped ? cap : waiting;
   const worth = pool && pool.tokenReserve > 0n ? (slice * pool.quoteReserve) / pool.tokenReserve : undefined;
 
   return (
@@ -109,10 +131,12 @@ export function Harvest({
             <>
               Next harvest takes {fmtTokens(slice)} ${symbol}
               {worth !== undefined && <> ≈ {fmtUnits(worth, quoteDecimals)} {quoteSymbol}</>}
-              {cap !== undefined && cap < pending && " · a slice a block"}
+              {capped ? " · a slice a block" : rush && " · all of it: a freeze is announced"}
             </>
           ) : state === "cooling" ? (
             "A slice went this block; what is left goes the next."
+          ) : state === "frozen" ? (
+            "The launchpad stands still: harvests ended at the freeze block."
           ) : (
             "Anyone may harvest; the caller keeps a twentieth of the treasury's part."
           )}
@@ -128,7 +152,7 @@ export function Harvest({
           className="btn-primary px-4 py-1.5 text-xs shrink-0"
           title={
             cannot ??
-            "Sells a slice of the fees waiting in coins (half a percent of the pool at most, once a block), burns the burn share, deepens the liquidity, pays the treasury, the creator and the holders. Anyone may; the caller keeps a twentieth of the treasury's part."
+            "Sells a slice of the fees waiting in coins (half a percent of the pool at most, once a block; all of it at once, uncapped, after a freeze is announced), burns the burn share, deepens the liquidity, pays the treasury, the creator and the holders. Anyone may; the caller keeps a twentieth of the treasury's part."
           }
         >
           {isPending ? "Sign…" : isConfirming ? "Harvesting…" : state === "cooling" ? "Next block" : "Harvest"}
@@ -136,7 +160,9 @@ export function Harvest({
       </div>
       {isSuccess && (
         <p className="text-xs text-zinc-400">
-          Harvested a slice: the treasury is paid, the creator&apos;s and the holders&apos; shares are claimable. What is left goes the next block.
+          {rush
+            ? "Harvested what was waiting: the treasury is paid, the creator's and the holders' shares are claimable."
+            : "Harvested a slice: the treasury is paid, the creator's and the holders' shares are claimable. What is left goes the next block."}
         </p>
       )}
       {error && (

@@ -17,6 +17,7 @@ import {
   useAppChain,
   useNativeSymbol,
   isQuoteAsset,
+  RETRY_MS,
   ZERO_ADDRESS,
 } from "@/lib/hooks";
 import { fmtEth, fmtTokens } from "@/lib/format";
@@ -63,11 +64,13 @@ export default function SwapPage() {
   const toToken = to !== ETH ? live.find((t) => t.address === to) : undefined;
   const isTokenToToken = from !== ETH && to !== ETH;
 
+  // every read names the app chain: without it wagmi asks the wallet's, which may be another
   const { data: allowance, refetch: refetchAllowance } = useReadContract({
     address: from !== ETH ? from : undefined,
     abi: launchTokenAbi,
     functionName: "allowance",
     args: user && from !== ETH ? [user, pad] : undefined,
+    chainId: appChainId,
     query: { enabled: !!user && from !== ETH, refetchInterval: 5_000 },
   });
 
@@ -76,36 +79,46 @@ export default function SwapPage() {
     abi: launchTokenAbi,
     functionName: "balanceOf",
     args: user && from !== ETH ? [user] : undefined,
+    chainId: appChainId,
     query: { enabled: !!user && from !== ETH, refetchInterval: 5_000 },
   });
 
-  // the pad's fee, and each coin's own: the quotes are the curve's arithmetic, run here
+  // the pad's fee, and each coin's own: the quotes are the curve's arithmetic, run here, and only on
+  // figures read from the pad (no feeConfig at all, a pad before v9, is a coin without a tax); the
+  // fee is asked again until it answers, since no swap goes without it
   const { data: feeBpsRaw } = useReadContract({
     address: pad,
     abi: launchpadAbi,
     functionName: "feeBps",
-    query: { enabled: deployed, staleTime: 60_000 },
+    chainId: appChainId,
+    query: { enabled: deployed, staleTime: 60_000, refetchInterval: (q) => (q.state.data === undefined ? RETRY_MS : false) },
   });
-  const platformFeeBps = (feeBpsRaw as bigint | undefined) ?? 100n;
-  const { data: fromFeesRaw } = useReadContract({
+  const platformFeeBps = feeBpsRaw as bigint | undefined;
+  const fromFeesQ = useReadContract({
     address: pad,
     abi: padAbi,
     functionName: "feeConfig",
     args: from !== ETH ? [from] : undefined,
+    chainId: appChainId,
     query: { enabled: from !== ETH, staleTime: Infinity },
   });
-  const { data: toFeesRaw } = useReadContract({
+  const toFeesQ = useReadContract({
     address: pad,
     abi: padAbi,
     functionName: "feeConfig",
     args: to !== ETH ? [to] : undefined,
+    chainId: appChainId,
     query: { enabled: to !== ETH, staleTime: Infinity },
   });
+  const coinFees = (q: { data?: unknown; isError: boolean }) =>
+    platformFeeBps === undefined ? undefined : q.data ? parseFeeConfig(q.data, Number(platformFeeBps)) : q.isError ? NO_TAX : undefined;
+  const fromFees = coinFees(fromFeesQ);
+  const toFees = coinFees(toFeesQ);
 
   // leg 1 quote: from -> ETH (if from is a token)
   const sellQuote: bigint | undefined =
-    fromToken && parsed > 0n
-      ? quoteSell(fromToken.curve, parsed, platformFeeBps, fromFeesRaw ? parseFeeConfig(fromFeesRaw, Number(platformFeeBps)) : NO_TAX)
+    fromToken && parsed > 0n && platformFeeBps !== undefined && fromFees
+      ? quoteSell(fromToken.curve, parsed, platformFeeBps, fromFees)
       : undefined;
 
   // ETH input for the buy leg
@@ -113,12 +126,12 @@ export default function SwapPage() {
 
   // leg 2 quote: ETH -> to (if to is a token)
   const buyQuote: bigint | undefined =
-    toToken && ethIn > 0n
-      ? quoteBuy(toToken.curve, ethIn, platformFeeBps, toFeesRaw ? parseFeeConfig(toFeesRaw, Number(platformFeeBps)) : NO_TAX)
+    toToken && ethIn > 0n && platformFeeBps !== undefined && toFees
+      ? quoteBuy(toToken.curve, ethIn, platformFeeBps, toFees)
       : undefined;
 
   const { writeContract, data: hash, isPending, error, reset } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash, chainId: appChainId });
 
   // one unlimited approval per coin (the pad only pulls from msg.sender), so
   // no Approve before every swap; refreshed as soon as it confirms
@@ -131,7 +144,7 @@ export default function SwapPage() {
 
   // token->token: after the sell leg confirms, fire the buy leg
   useEffect(() => {
-    if (step === "selling" && isSuccess && to !== ETH && ethIn > 0n) {
+    if (step === "selling" && isSuccess && to !== ETH && ethIn > 0n && buyQuote !== undefined) {
       setStep("buying");
       reset();
       writeContract({
@@ -196,6 +209,8 @@ export default function SwapPage() {
   const invalid = from === to || (from === ETH && to === ETH);
   const outQuote =
     to === ETH ? (sellQuote as bigint | undefined) : (buyQuote as bigint | undefined);
+  // a trade waits for its quote: without one its minimum out would be nothing
+  const quoteMissing = !invalid && parsed > 0n && !needsApproval && outQuote === undefined;
   const busy = isPending || isConfirming || step !== "idle";
 
   return (
@@ -275,7 +290,7 @@ export default function SwapPage() {
 
         <button
           type="submit"
-          disabled={!deployed || !isConnected || invalid || parsed === 0n || busy}
+          disabled={!deployed || !isConnected || invalid || parsed === 0n || quoteMissing || busy}
           className="w-full rounded-full bg-white py-2.5 font-semibold text-black hover:bg-zinc-100 transition-colors disabled:opacity-40"
         >
           {!deployed
@@ -296,7 +311,9 @@ export default function SwapPage() {
                         : "Confirming…"
                       : needsApproval
                         ? `Approve ${fromToken?.symbol}`
-                        : "Swap"}
+                        : quoteMissing
+                          ? "Reading the fees…"
+                          : "Swap"}
         </button>
 
         <div className="flex justify-center">

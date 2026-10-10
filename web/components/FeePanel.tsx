@@ -43,14 +43,15 @@ export function FeePanel({
   const v12 = usePadVersion() === 12;
   const { isConnected } = useAccount();
   const { writeContract, data: hash, isPending, error, reset } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash, chainId: chain.id });
   const parts = splitParts(fees);
   const burnedPct = Number((burned * 10_000n) / TOTAL_SUPPLY) / 100;
-  // a burn needs somewhere to buy: the curve, or a pool the migrator seeded; and a coin fully delivered
+  // a burn needs somewhere to buy: the curve, or a pool the migrator seeded; and a coin fully delivered.
+  // Read on the app chain, as every read here: wagmi would otherwise ask the wallet's
   const { data: state } = useReadContracts({
     contracts: [
-      { address: pad, abi: launchpadAbi, functionName: "graduatedVia", args: [token] },
-      { address: pad, abi: launchpadAbi, functionName: "migrationPending", args: [token] },
+      { address: pad, abi: launchpadAbi, functionName: "graduatedVia", args: [token], chainId: chain.id },
+      { address: pad, abi: launchpadAbi, functionName: "migrationPending", args: [token], chainId: chain.id },
     ],
     query: { enabled: !!pad, refetchInterval: 15_000 },
   });
@@ -65,18 +66,19 @@ export function FeePanel({
   const harvesting = v12 && graduated;
   const { data: buckets } = useReadContracts({
     contracts: [
-      { address: pad, abi: launchpadAbi, functionName: "taxTreasury", args: [token] },
-      { address: pad, abi: launchpadAbi, functionName: "taxPot", args: [token] },
+      { address: pad, abi: launchpadAbi, functionName: "taxTreasury", args: [token], chainId: chain.id },
+      { address: pad, abi: launchpadAbi, functionName: "taxPot", args: [token], chainId: chain.id },
     ],
     query: { enabled: !!pad && harvesting, refetchInterval: 15_000 },
   });
-  const bucketTreasury = buckets?.[0]?.status === "success" ? (buckets[0].result as bigint) : 0n;
-  const bucketPot = buckets?.[1]?.status === "success" ? (buckets[1].result as bigint) : 0n;
+  // undefined until read: an unread bucket is not an empty one
+  const bucketTreasury = buckets?.[0]?.status === "success" ? (buckets[0].result as bigint) : undefined;
+  const bucketPot = buckets?.[1]?.status === "success" ? (buckets[1].result as bigint) : undefined;
   const pool = usePool(pad ?? ZERO_ADDRESS, token, chain.id, !!pad && harvesting);
   // an estimate: the pool's price before the sale moves it
   const worth = (coins: bigint): bigint | undefined =>
     pool.data && pool.data.tokenReserve > 0n ? (coins * pool.data.quoteReserve) / pool.data.tokenReserve : undefined;
-  const share = (bps: number) => (bucketPot * BigInt(bps)) / 10_000n;
+  const share = (bps: number) => ((bucketPot ?? 0n) * BigInt(bps)) / 10_000n;
   const rate = treasuryPct(fees.platformBps); // the launchpad's rate as text, on v12 the coin's own stamp
 
   return (
@@ -110,12 +112,12 @@ export function FeePanel({
               ["Coin's tax", bucketPot],
             ] as const
           ).map(([label, coins]) => {
-            const q = worth(coins);
+            const q = coins === undefined ? undefined : worth(coins);
             return (
               <div key={label} className="flex items-baseline justify-between gap-3 text-xs">
                 <span className="text-zinc-500">{label}</span>
                 <span className="font-mono text-zinc-300 text-right">
-                  {fmtTokens(coins)} ${symbol}
+                  {coins === undefined ? "…" : `${fmtTokens(coins)} $${symbol}`}
                   {q !== undefined && (
                     <span className="text-zinc-500">
                       {" "}
@@ -126,7 +128,7 @@ export function FeePanel({
               </div>
             );
           })}
-          {bucketPot > 0n && parts.length > 0 && (
+          {bucketPot !== undefined && bucketPot > 0n && parts.length > 0 && (
             <p className="text-[11px] text-zinc-600">
               The coin&apos;s tax, by its shares: {parts.map((p) => `${fmtTokens(share(p.bps))} ${p.label}`).join(" · ")}.
             </p>
@@ -136,7 +138,7 @@ export function FeePanel({
             symbol={symbol}
             pool={pool.data}
             noPool={pool.none}
-            pending={bucketTreasury + bucketPot}
+            pending={bucketTreasury !== undefined && bucketPot !== undefined ? bucketTreasury + bucketPot : undefined}
             quoteSymbol={quoteSymbol}
             quoteDecimals={quoteDecimals}
           />
@@ -179,7 +181,7 @@ export function FeePanel({
         <div className="border-t border-white/[0.06] pt-3">
           <div className="text-xs text-zinc-500">Liquidity share · deepens the pool at each harvest</div>
           <div className="font-mono text-sm text-white">
-            {fmtTokens(share(fees.liquidityBps))} ${symbol}{" "}
+            {bucketPot === undefined ? "…" : `${fmtTokens(share(fees.liquidityBps))} $${symbol}`}{" "}
             <span className="text-zinc-500">· waiting; half kept, half sold, both sides into the locked liquidity</span>
           </div>
         </div>

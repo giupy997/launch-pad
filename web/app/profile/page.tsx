@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useAccount, useBalance, useReadContracts } from "wagmi";
 import { launchTokenAbi } from "@/lib/abi";
-import { useTokens, valueOf, useExplorer, useAppChain, useNativeSymbol, isQuoteAsset } from "@/lib/hooks";
-import { fmtEth, fmtTokens, shortAddr } from "@/lib/format";
+import { useTokens, valueOf, useExplorer, useAppChain, useNativeSymbol, isQuoteAsset, quoteInfo } from "@/lib/hooks";
+import { fmtEth, fmtTokens, fmtUnits, shortAddr } from "@/lib/format";
 import { TokenCard } from "@/components/TokenCard";
 import { TokenLogo } from "@/components/TokenLogo";
 import { CreatorFees } from "@/components/CreatorFees";
@@ -16,7 +16,8 @@ export default function ProfilePage() {
   const { tokens } = useTokens();
   const explorer = useExplorer();
   const chainId = useAppChain().id;
-  const { data: ethBal } = useBalance({ address: user, query: { enabled: !!user } });
+  // the app chain's balances, which the page labels with its coin: not the wallet's chain
+  const { data: ethBal } = useBalance({ address: user, chainId, query: { enabled: !!user } });
 
   const { data: balances } = useReadContracts({
     contracts: tokens.map((t) => ({
@@ -24,6 +25,7 @@ export default function ProfilePage() {
       abi: launchTokenAbi,
       functionName: "balanceOf" as const,
       args: [user ?? "0x0000000000000000000000000000000000000000"] as const,
+      chainId,
     })),
     query: { enabled: !!user && tokens.length > 0, refetchInterval: 5_000 },
   });
@@ -58,8 +60,9 @@ export default function ProfilePage() {
     .filter((h) => h.balance > 0n)
     .map((h) => ({
       ...h,
-      // rough value estimate at spot price (ignores curve impact and fees)
+      // rough value estimate at spot price (ignores curve impact and fees), in the coin's own quote
       value: valueOf(h.token.curve, h.balance),
+      quote: quoteInfo(chainId, h.token.curve.quoteAsset),
     }));
 
   return (
@@ -106,7 +109,7 @@ export default function ProfilePage() {
           </p>
         )}
         <div className="space-y-2">
-          {holdings.map(({ token: t, balance, value }) => (
+          {holdings.map(({ token: t, balance, value, quote }) => (
             <Link
               key={t.address}
               href={`/token/${t.address}`}
@@ -123,7 +126,7 @@ export default function ProfilePage() {
               </div>
               <div className="text-right">
                 <div className="font-semibold text-sm">{fmtTokens(balance)}</div>
-                <div className="text-xs text-zinc-500">≈ {fmtEth(value)} {native}</div>
+                <div className="text-xs text-zinc-500">≈ {fmtUnits(value, quote.decimals)} {quote.symbol}</div>
               </div>
             </Link>
           ))}

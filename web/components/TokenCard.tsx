@@ -69,7 +69,7 @@ export function TokenCard({
             )}
             {t.feesToHolders && (
               <span
-                title="100% of the creator fee pot goes to holders as cashback"
+                title="Part of the fee pot goes to holders as cashback"
                 className="font-mono text-[9px] tracking-widest uppercase border border-white rounded-full px-1.5 py-px shrink-0"
               >
                 ✦ Rewards

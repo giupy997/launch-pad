@@ -36,9 +36,10 @@ export function MigrationNotice({ token, symbol, compact = false }: { token?: `0
   const target = MIGRATION_TARGET[chain.id];
   const { data } = useReadContracts({
     contracts: [
-      { address: pad, abi: launchpadAbi, functionName: "freezeBlock" },
-      { address: pad, abi: launchpadAbi, functionName: "frozen" },
-      ...(token ? [{ address: pad, abi: launchpadAbi, functionName: "migratedOut" as const, args: [token] as const }] : []),
+      // the app chain's pad, not the wallet's chain
+      { address: pad, abi: launchpadAbi, functionName: "freezeBlock", chainId: chain.id },
+      { address: pad, abi: launchpadAbi, functionName: "frozen", chainId: chain.id },
+      ...(token ? [{ address: pad, abi: launchpadAbi, functionName: "migratedOut" as const, args: [token] as const, chainId: chain.id }] : []),
     ],
     query: { enabled: !!pad && !!target, refetchInterval: 15_000 },
   });
@@ -74,7 +75,8 @@ export function MigrationNotice({ token, symbol, compact = false }: { token?: `0
         <p className="text-zinc-300">
           {left !== null ? `In about ${left.toLocaleString("en-US")} blocks (~${hours! < 1 ? `${Math.round(hours! * 60)} min` : `${hours!.toFixed(hours! < 10 ? 1 : 0)} h`}) ` : "At that block "}
           this launchpad stands still and every coin is re-created on {target} with the same holders and the same price, its pool
-          included. Trading here goes on until then; nothing to do on your side.
+          included. Trading here goes on until then; nothing to do on your side, unless you hold liquidity in a pool other
+          than the one the launchpad seeded: withdraw it before that block, after which it cannot be taken out.
         </p>
       </div>
     );

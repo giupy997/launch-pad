@@ -5,7 +5,7 @@ import { formatEther, parseEther, parseEventLogs, type Abi } from "viem";
 import Link from "next/link";
 import { useAccount, useReadContract, useReadContracts, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { launchpadAbi, launchpadV11Abi } from "@/lib/abi";
-import { useLaunchpadAddress, useExplorer, useAppChain, usePadAbi, usePadVersion, ZERO_ADDRESS } from "@/lib/hooks";
+import { useLaunchpadAddress, useExplorer, useAppChain, usePadAbi, usePadVersion, RETRY_MS, chainAnswered, ZERO_ADDRESS } from "@/lib/hooks";
 import {
   robinhood,
   QUOTE_ASSETS,
@@ -23,14 +23,14 @@ import { feesLine, treasuryPct, treasuryPctV11 } from "@/lib/curve";
 const inputCls =
   "w-full rounded-lg input px-3 py-2 text-sm focus:border-white outline-none placeholder:text-zinc-600";
 
-// fresh-curve constants for the dev-buy estimate (mirror the contract)
-const V_ETH = 1.25e18;
+// the fresh curve's token side for the dev-buy estimate (mirrors the contract); its quote
+// side is the pad's own virtual reserve for the native coin, read from the chain
 const V_TOK = 1.05e27;
 
-function estimateTokens(ethIn: number, feeBps: number): number {
+function estimateTokens(ethIn: number, feeBps: number, vEth: number): number {
   if (ethIn <= 0) return 0;
   const e = ethIn * 1e18 * (1 - feeBps / 10_000); // the platform fee and the coin's tax off first
-  return (V_TOK - (V_ETH * V_TOK) / (V_ETH + e)) / 1e18;
+  return (V_TOK - (vEth * V_TOK) / (vEth + e)) / 1e18;
 }
 
 function prefixed(value: string, base: string): string {
@@ -51,11 +51,13 @@ export function CreateTokenForm() {
   const { isConnected } = useAccount();
 
   // a v8 pad closes to new coins the moment a migration freeze is announced
-  // (trading goes on until the block); older pads have no freezeBlock and read as open
+  // (trading goes on until the block); older pads have no freezeBlock and read as open.
+  // Every read names the app chain: without it wagmi asks the wallet's, which may be another
   const { data: freezeBlock } = useReadContract({
     address: pad,
     abi: launchpadAbi,
     functionName: "freezeBlock",
+    chainId: chain.id,
     query: { enabled: deployed, refetchInterval: 30_000 },
   });
   const closed = !!freezeBlock && freezeBlock > 0n;
@@ -77,32 +79,60 @@ export function CreateTokenForm() {
   const [sellTax, setSellTax] = useState(0);
   const [split, setSplit] = useState<SplitPct>({ creator: 100, holders: 0, burn: 0, liquidity: 0 });
   // a pad that knows fee configurations answers MAX_TAX_BPS; older ones take the launch-time choice alone.
-  // Until the answer is in, the fee section waits: a choice made on the wrong form would be lost
-  const { data: maxTaxRaw, isFetched: feeUiReady } = useReadContract({
+  // Until the answer is in, the fee section waits: a choice made on the wrong form would be lost. A v12
+  // pad always knows them (PAD_VERSION), so its form never falls back to v11's on a failed read: it waits,
+  // and asks again until the pad answers
+  const { data: maxTaxRaw, isFetched } = useReadContract({
     address: pad,
     abi: launchpadAbi,
     functionName: "MAX_TAX_BPS",
-    query: { enabled: deployed, staleTime: Infinity, retry: 2 },
+    chainId: chain.id,
+    query: {
+      enabled: deployed,
+      staleTime: Infinity,
+      retry: 2,
+      refetchInterval: (q) => (version === 12 && q.state.data === undefined ? RETRY_MS : false),
+    },
   });
-  const customFees = maxTaxRaw !== undefined;
-  const maxTaxPct = customFees ? Number(maxTaxRaw as bigint) / 100 : 10;
+  const customFees = version === 12 || maxTaxRaw !== undefined;
+  const feeUiReady = version === 12 ? maxTaxRaw !== undefined : isFetched;
+  const maxTaxPct = maxTaxRaw !== undefined ? Number(maxTaxRaw as bigint) / 100 : 10;
   // the pad's rate, which a coin created now trades at; on v11 also the pot's share of it (a v12 pad
   // has no such split: the rate goes whole to the treasury, and those two reads are gone)
-  const padReads: { address: `0x${string}`; abi: Abi; functionName: string }[] = [{ address: pad, abi: launchpadAbi, functionName: "feeBps" }];
+  const padReads: { address: `0x${string}`; abi: Abi; functionName: string; chainId: number }[] = [
+    { address: pad, abi: launchpadAbi, functionName: "feeBps", chainId: chain.id },
+  ];
   if (version === 11) {
     padReads.push(
-      { address: pad, abi: launchpadV11Abi, functionName: "creatorFeeShareBps" },
-      { address: pad, abi: launchpadV11Abi, functionName: "holderCashbackBps" }
+      { address: pad, abi: launchpadV11Abi, functionName: "creatorFeeShareBps", chainId: chain.id },
+      { address: pad, abi: launchpadV11Abi, functionName: "holderCashbackBps", chainId: chain.id }
     );
   }
+  // a multicall resolves even when the RPC failed (each entry a failure): asked again until the chain answers
   const { data: padFees } = useReadContracts({
     contracts: padReads,
-    query: { enabled: deployed, staleTime: 60_000 },
+    query: {
+      enabled: deployed,
+      staleTime: 60_000,
+      refetchInterval: (q) => {
+        const reads = q.state.data as readonly { status?: unknown; error?: unknown }[] | undefined;
+        return reads?.every(chainAnswered) ? false : RETRY_MS;
+      },
+    },
   });
-  const padBig = (i: number, fallback: bigint) => (padFees?.[i]?.status === "success" ? (padFees[i].result as bigint) : fallback);
-  const platformFeeBps = padBig(0, 100n);
-  const treasury = version === 12 ? treasuryPct(platformFeeBps) : treasuryPctV11(platformFeeBps, padBig(1, 5_000n) + padBig(2, 3_000n));
-  const platformPct = `${(Number(platformFeeBps) / 100).toString()}%`;
+  // the pad's own figures only: until they are read the form says "…" and estimates nothing
+  const padBig = (i: number) => (padFees?.[i]?.status === "success" ? (padFees[i].result as bigint) : undefined);
+  const platformFeeBps = padBig(0);
+  const [creatorShareBps, holderShareBps] = [padBig(1), padBig(2)];
+  const treasury =
+    platformFeeBps === undefined
+      ? "…"
+      : version === 12
+        ? treasuryPct(platformFeeBps)
+        : creatorShareBps !== undefined && holderShareBps !== undefined
+          ? treasuryPctV11(platformFeeBps, creatorShareBps + holderShareBps)
+          : "…";
+  const platformPct = platformFeeBps === undefined ? "…" : `${(Number(platformFeeBps) / 100).toString()}%`;
   const buyTaxBps = customFees ? Math.round(buyTax * 100) : 0;
   const sellTaxBps = customFees ? Math.round(sellTax * 100) : 0;
   const holdersOn = customFees ? split.holders > 0 : feesToHolders;
@@ -125,7 +155,7 @@ export function CreateTokenForm() {
   const [logoProcessing, setLogoProcessing] = useState(false);
 
   const { writeContract, data: hash, isPending, error, reset } = useWriteContract();
-  const { data: receipt, isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const { data: receipt, isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash, chainId: chain.id });
   const [copied, setCopied] = useState(false);
 
   // the new token's address, from the TokenCreated event in the receipt
@@ -167,6 +197,7 @@ export function CreateTokenForm() {
     abi: launchpadAbi,
     functionName: "quoteVirtualReserve",
     args: [quote.address ?? ZERO_ADDRESS],
+    chainId: chain.id,
     query: { enabled: deployed, staleTime: 60_000 },
   });
   const virtualReserve = (virtualRaw as bigint | undefined) ?? 0n;
@@ -220,8 +251,12 @@ export function CreateTokenForm() {
     }
   }
 
-  const devBuyNum = parseFloat(initialBuy) || 0;
-  const estTokens = estimateTokens(devBuyNum, Number(platformFeeBps) + buyTaxBps);
+  // a dev buy rides the launch only on a native curve: on an asset curve the value sent is 0, so none is taken
+  const devBuyNum = isEthQuote ? parseFloat(initialBuy) || 0 : 0;
+  const estTokens =
+    platformFeeBps === undefined || virtualReserve === 0n
+      ? undefined
+      : estimateTokens(devBuyNum, Number(platformFeeBps) + buyTaxBps, Number(virtualReserve));
   const ticker = symbol.trim().toUpperCase();
 
   return (
@@ -363,32 +398,35 @@ export function CreateTokenForm() {
 
         <div>
           <Label>Dev buy <span className="normal-case text-zinc-600">optional — be the first holder</span></Label>
-          <div className="flex gap-2 items-center flex-wrap">
-            {["0", "0.01", "0.05", "0.1"].map((v) => (
-              <button
-                key={v}
-                type="button"
-                onClick={() => setInitialBuy(v === "0" ? "" : v)}
-                className={`rounded-full px-3 py-1.5 text-xs font-mono ${
-                  (v === "0" && !initialBuy) || initialBuy === v
-                    ? "bg-white text-black"
-                    : "border border-white/15 text-zinc-400 hover:border-white hover:text-white"
-                }`}
-              >
-                {v === "0" ? "Off" : `${v} ${native}`}
-              </button>
-            ))}
-            <input
-              value={initialBuy}
-              onChange={(e) => setInitialBuy(e.target.value)}
-              placeholder="custom"
-              type="number"
-              step="any"
-              min="0"
-              className="w-24 rounded-full input px-3 py-1.5 text-xs font-mono focus:border-white outline-none text-right"
-            />
-          </div>
-          {isEthQuote && devBuyNum > 0 && (
+          {/* only a native curve takes the dev buy with the launch (its value rides the transaction) */}
+          {isEthQuote && (
+            <div className="flex gap-2 items-center flex-wrap">
+              {["0", "0.01", "0.05", "0.1"].map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setInitialBuy(v === "0" ? "" : v)}
+                  className={`rounded-full px-3 py-1.5 text-xs font-mono ${
+                    (v === "0" && !initialBuy) || initialBuy === v
+                      ? "bg-white text-black"
+                      : "border border-white/15 text-zinc-400 hover:border-white hover:text-white"
+                  }`}
+                >
+                  {v === "0" ? "Off" : `${v} ${native}`}
+                </button>
+              ))}
+              <input
+                value={initialBuy}
+                onChange={(e) => setInitialBuy(e.target.value)}
+                placeholder="custom"
+                type="number"
+                step="any"
+                min="0"
+                className="w-24 rounded-full input px-3 py-1.5 text-xs font-mono focus:border-white outline-none text-right"
+              />
+            </div>
+          )}
+          {isEthQuote && devBuyNum > 0 && estTokens !== undefined && (
             <Hint>≈ {fmtTokens(BigInt(Math.floor(estTokens)) * 10n ** 18n)} ${ticker || "TOKENS"} at launch price</Hint>
           )}
           {!isEthQuote && (
@@ -531,7 +569,7 @@ export function CreateTokenForm() {
                 <Row k="Curve raises" v={`~${fmtUnits((virtualReserve * 32n) / 10n, quote.decimals)} ${quote.symbol}, then it graduates`} />
               </>
             ) : (
-              <Row k="Curve" v={isEthQuote ? `800M · graduates at ~4 ${native}` : `800M on the ${quote.symbol} curve`} />
+              <Row k="Curve" v={`800M on the ${quote.symbol} curve`} />
             )}
             <Row
               k="Liquidity"
@@ -539,10 +577,12 @@ export function CreateTokenForm() {
               strong
             />
             {chain.id === robinhood.id && <Row k="After graduation" v="1% fee keeps flowing" strong />}
-            <Row
-              k="Dev buy"
-              v={devBuyNum > 0 ? `${formatEther(parseEtherSafe(initialBuy))} ${native}` : `0 ${native}`}
-            />
+            {isEthQuote && (
+              <Row
+                k="Dev buy"
+                v={devBuyNum > 0 ? `${formatEther(parseEtherSafe(initialBuy))} ${native}` : `0 ${native}`}
+              />
+            )}
           </div>
 
           <p className="text-[11px] text-zinc-600">

@@ -63,9 +63,11 @@ export default function AboutPage() {
           block, the launchpad stands still: no buys, sells or transfers, so the snapshot is final.
         </li>
         <li>
-          The pool that moves is the one the launchpad seeded and locked. Liquidity anyone else added to a coin&apos;s pool on
-          Base stays in that pool and can be withdrawn once the coin has moved; nothing can be sold into it or added to it
-          after the freeze.
+          The pool that moves is the one the launchpad seeded and locked. Liquidity anyone else added to that pool on Base
+          stays in it and can be withdrawn once the coin has moved; nothing can be sold into it or added to it after the
+          freeze. Liquidity in any other pool of a coin — one somebody opened on another DEX, or against another asset — must
+          be withdrawn before the freeze block: from that block the coin cannot leave such a pool, and its liquidity cannot be
+          taken out.
         </li>
         <li>
           The snapshot reads every balance and every curve at that block, from the chain, and anyone can recompute it. The
@@ -74,7 +76,8 @@ export default function AboutPage() {
           here.
         </li>
         <li>
-          Nothing to do on your side: your coins appear at your address on LitVM, and each coin page here links to its new home.
+          Nothing to do on your side for the coins in your wallet: they appear at your address on LitVM, and each coin page
+          here links to its new home.
         </li>
       </Section>
 

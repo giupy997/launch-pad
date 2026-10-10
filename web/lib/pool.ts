@@ -5,7 +5,7 @@ import { parseAbi } from "viem";
 import { useReadContract, useReadContracts } from "wagmi";
 import { launchpadAbi } from "./abi";
 import type { PoolRef } from "./events";
-import { IMMUTABLE, ZERO_ADDRESS } from "./hooks";
+import { IMMUTABLE, RETRY_MS, ZERO_ADDRESS } from "./hooks";
 
 /** What the site reads of a UniV2Migrator: the pool it seeded for a coin,
  *  what the coin is paired against there, the liquidity it holds locked; and
@@ -28,8 +28,6 @@ export const pairAbi = parseAbi([
   "function totalSupply() view returns (uint256)",
 ]);
 
-/** how often an incomplete read of the pool is asked again */
-const RETRY_MS = 5_000;
 const allOk = (reads: readonly { status: string }[] | undefined, n: number) =>
   reads !== undefined && reads.length === n && reads.every((r) => r.status === "success");
 

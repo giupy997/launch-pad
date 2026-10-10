@@ -69,11 +69,13 @@ export function PoolTrade({
   const isNative = quote.address === null;
   const router = pool.router;
 
+  // the wallet's side, read on the app chain (not on whatever chain the wallet sits on)
   const { data: balance, refetch: refetchBalance } = useReadContract({
     address: token,
     abi: launchTokenAbi,
     functionName: "balanceOf",
     args: user ? [user] : undefined,
+    chainId: chain.id,
     query: { enabled: !!user, refetchInterval: 5_000 },
   });
   const { data: allowance, refetch: refetchAllowance } = useReadContract({
@@ -81,6 +83,7 @@ export function PoolTrade({
     abi: launchTokenAbi,
     functionName: "allowance",
     args: user ? [user, router] : undefined,
+    chainId: chain.id,
     query: { enabled: !!user, refetchInterval: 5_000 },
   });
   const { data: quoteBalance, refetch: refetchQuoteBalance } = useReadContract({
@@ -88,6 +91,7 @@ export function PoolTrade({
     abi: erc20Abi,
     functionName: "balanceOf",
     args: user && quote.address ? [user] : undefined,
+    chainId: chain.id,
     query: { enabled: !!user && !isNative, refetchInterval: 5_000 },
   });
   const { data: quoteAllowance, refetch: refetchQuoteAllowance } = useReadContract({
@@ -95,6 +99,7 @@ export function PoolTrade({
     abi: erc20Abi,
     functionName: "allowance",
     args: user && quote.address ? [user, router] : undefined,
+    chainId: chain.id,
     query: { enabled: !!user && !isNative, refetchInterval: 5_000 },
   });
   const { data: ethBal, refetch: refetchEthBal } = useBalance({
@@ -149,7 +154,7 @@ export function PoolTrade({
   const charge = rateBps > 0 ? rateLine(fees, mode) : null;
 
   const { writeContract, data: hash, isPending, error, reset } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash, chainId: chain.id });
   const queryClient = useQueryClient();
   const [lastAction, setLastAction] = useState<"approve" | "trade">("trade");
   const handled = useRef<string | undefined>(undefined);

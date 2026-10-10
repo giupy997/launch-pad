@@ -35,11 +35,12 @@ export function CreatorPanel({
     abi: launchpadAbi,
     functionName: "feeRecipient",
     args: [token],
+    chainId: appChainId, // the app chain's pad, not the wallet's chain
     query: { enabled: !!pad, refetchInterval: 10_000 },
   });
 
   const { writeContract, data: hash, isPending, error, reset } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash, chainId: appChainId });
 
   if (!pad || !user) return null;
 

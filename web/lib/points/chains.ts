@@ -54,8 +54,8 @@ const KEYED_BASE = (process.env.BASE_RPC_URLS ?? "")
 
 export const POINTS_CHAINS: Record<string, PointsChain> = {
   // LitVM's Liteforge testnet: the v11 rehearsal pad, quoted in native zkLTC
-  // with a 0.05 zkLTC virtual reserve so that curves graduate on faucet
-  // money. Season 0, the rehearsal, from the pad's deploy block until LitVM
+  // (a 0.05 zkLTC virtual reserve at first, so that curves graduated on faucet
+  // money; 0.9375 zkLTC, 3 to graduate, for the coins created from 2026-10-10). Season 0, the rehearsal, from the pad's deploy block until LitVM
   // mainnet opens (the v9 pad's season, 56,991,201 on, was wiped with it).
   liteforge: {
     key: "liteforge",

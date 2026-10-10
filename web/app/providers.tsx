@@ -6,6 +6,7 @@ import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persist
 import { WagmiProvider, deserialize, serialize, useAccount } from "wagmi";
 import { useState, type ReactNode, useEffect, useRef } from "react";
 import { config } from "@/lib/config";
+import { chainAnswered } from "@/lib/hooks";
 
 /** When the wallet changes under the page — another account picked in the
  *  extension, or the wallet gone — every read of the old state is asked
@@ -31,6 +32,10 @@ function AccountEffects() {
 // fact misleads. (wagmi's serializer carries the bigints.)
 const WALLET_BOUND = new Set(["balanceOf", "allowance", "cashbackOf", "creatorFees", "balances", "pendingCashback", "cashbackDebt"]);
 type ReadKey = { functionName?: unknown; contracts?: readonly { functionName?: unknown }[] } | undefined;
+// A multicall with an entry the RPC failed on (lib/hooks.ts chainAnswered) is
+// not kept: it would come back on every visit in place of the answer, and the
+// reads fixed once answered would not ask again. A revert is an answer, and the
+// lists rely on it (a slot past the last coin, a read an older token lacks).
 function keepQuery(query: Query): boolean {
   if (query.state.status !== "success") return false;
   const [kind, params] = query.queryKey as [unknown, ReadKey];
@@ -38,11 +43,13 @@ function keepQuery(query: Query): boolean {
   if (kind === "readContracts")
     return (
       !!params?.contracts?.length &&
-      params.contracts.every((c) => typeof c.functionName === "string" && !WALLET_BOUND.has(c.functionName))
+      params.contracts.every((c) => typeof c.functionName === "string" && !WALLET_BOUND.has(c.functionName)) &&
+      ((query.state.data as readonly { status?: unknown; error?: unknown }[] | undefined) ?? []).every(chainAnswered)
     );
   return false;
 }
-const PERSIST = { key: "notus.queries.v1", maxAge: 24 * 60 * 60 * 1000, buster: "1" } as const;
+// buster 2: drops what was kept before transport failures were left out
+const PERSIST = { key: "notus.queries.v1", maxAge: 24 * 60 * 60 * 1000, buster: "2" } as const;
 function makePersister(): Persister {
   let storage: Storage | undefined;
   try {

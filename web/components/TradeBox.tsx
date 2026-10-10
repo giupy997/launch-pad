@@ -84,18 +84,19 @@ export function TradeBox({
   symbol,
   curve,
   fees = NO_TAX,
-  platformFeeBps = 100n,
-  treasury = "0.2%",
+  platformFeeBps,
+  treasury,
 }: {
   token: `0x${string}`;
   symbol: string;
   curve: CurveInfo;
   /** the coin's own tax and split (none on pads before v9) */
   fees?: FeeConfig;
-  /** the pad's platform fee, basis points (on v12 the coin's own stamp, fees.platformBps) */
-  platformFeeBps?: bigint;
+  /** the pad's platform fee, basis points (on v12 the coin's own stamp, fees.platformBps); undefined
+   *  while the page has not read it: then nothing is quoted and no trade is sent, never on a guessed rate */
+  platformFeeBps: bigint | undefined;
   /** the treasury's cut of a trade, as text (v11: the fee less the pot's share; v12 says the rate itself) */
-  treasury?: string;
+  treasury: string;
 }) {
   const padMaybe = useLaunchpadAddress();
   const deployed = !!padMaybe;
@@ -166,11 +167,13 @@ export function TradeBox({
         : encodePacked(["address", "uint24", "address"], [wethAddr, zapFees![0], q.address])
       : undefined;
 
+  // the wallet's side, on the app chain like every read here (not the wallet's own chain)
   const { data: balance, refetch: refetchBalance } = useReadContract({
     address: token,
     abi: launchTokenAbi,
     functionName: "balanceOf",
     args: user ? [user] : undefined,
+    chainId: chain.id,
     query: { enabled: !!user, refetchInterval: 5_000 },
   });
 
@@ -179,6 +182,7 @@ export function TradeBox({
     abi: launchTokenAbi,
     functionName: "allowance",
     args: user ? [user, pad] : undefined,
+    chainId: chain.id,
     query: { enabled: !!user, refetchInterval: 5_000 },
   });
 
@@ -188,6 +192,7 @@ export function TradeBox({
     abi: erc20Abi,
     functionName: "allowance",
     args: user && q.address ? [user, pad] : undefined,
+    chainId: chain.id,
     query: { enabled: !!user && !!q.address, refetchInterval: 5_000 },
   });
 
@@ -196,6 +201,7 @@ export function TradeBox({
     abi: erc20Abi,
     functionName: "balanceOf",
     args: user && q.address ? [user] : undefined,
+    chainId: chain.id,
     query: { enabled: !!user && !!q.address, refetchInterval: 5_000 },
   });
 
@@ -254,7 +260,7 @@ export function TradeBox({
 
   // ETH -> pre-market estimate straight from its own curve (curve route): the pad's arithmetic, run here
   const preQuoteOut: bigint | undefined =
-    curveZapMode && preCurveRaw && parsed > 0n
+    curveZapMode && preCurveRaw && parsed > 0n && platformFeeBps !== undefined
       ? quoteBuy(parseCurve(preCurveRaw), parsed, platformFeeBps, preFeesRaw ? parseFeeConfig(preFeesRaw, Number(platformFeeBps)) : NO_TAX)
       : undefined;
 
@@ -263,12 +269,14 @@ export function TradeBox({
   // what the curve pays or gives, computed here from its reserves and the coin's fees
   const buyAmountForQuote = zapMode ? (zapQuoteOut ?? 0n) : parsed;
   const buyQuote: bigint | undefined =
-    mode === "buy" && buyAmountForQuote > 0n ? quoteBuy(curve, buyAmountForQuote, platformFeeBps, fees) : undefined;
+    mode === "buy" && buyAmountForQuote > 0n && platformFeeBps !== undefined
+      ? quoteBuy(curve, buyAmountForQuote, platformFeeBps, fees)
+      : undefined;
   const sellQuote: bigint | undefined =
-    mode === "sell" && parsed > 0n ? quoteSell(curve, parsed, platformFeeBps, fees) : undefined;
+    mode === "sell" && parsed > 0n && platformFeeBps !== undefined ? quoteSell(curve, parsed, platformFeeBps, fees) : undefined;
 
   const { writeContract, data: hash, isPending, error, reset } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash, chainId: chain.id });
   const queryClient = useQueryClient();
 
   // What the last signed transaction was. A confirmed approval refreshes the
@@ -323,6 +331,8 @@ export function TradeBox({
     parsed > 0n &&
     (quoteAllowance === undefined || (quoteAllowance as bigint) < parsed);
   const needsApproval = needsBuyApproval || needsSellApproval;
+  // a trade waits for the fees: quoted on nothing, its minimum out would be nothing
+  const feesPending = platformFeeBps === undefined && !needsApproval;
 
   function withSlippage(quote: bigint): bigint {
     return quote - (quote * BigInt(slippageBps)) / 10_000n;
@@ -405,7 +415,8 @@ export function TradeBox({
     }
   }
 
-  if (graduated) return <PoolCard token={token} symbol={symbol} quote={q} fees={fees} />;
+  // fees the page has not read yet are not handed down: the card reads them itself and waits
+  if (graduated) return <PoolCard token={token} symbol={symbol} quote={q} fees={platformFeeBps !== undefined ? fees : undefined} />;
 
   return (
     <div className="card p-5 h-fit space-y-4">
@@ -503,7 +514,7 @@ export function TradeBox({
 
         <button
           type="submit"
-          disabled={!deployed || !isConnected || parsed === 0n || isPending || isConfirming}
+          disabled={!deployed || !isConnected || parsed === 0n || feesPending || isPending || isConfirming}
           className={`w-full rounded-lg py-2.5 font-semibold text-black disabled:opacity-40 ${
             mode === "buy" ? "bg-white hover:bg-zinc-100 transition-colors" : "bg-zinc-300 hover:bg-white"
           }`}
@@ -522,9 +533,11 @@ export function TradeBox({
                     ? `Approve ${q.symbol}`
                     : needsSellApproval
                       ? `Approve ${symbol}`
-                      : mode === "buy"
-                        ? "Buy"
-                        : "Sell"}
+                      : feesPending
+                        ? "Reading the fees…"
+                        : mode === "buy"
+                          ? "Buy"
+                          : "Sell"}
         </button>
         {needsApproval && isConnected && !isPending && !isConfirming && (
           <p className="text-xs text-zinc-500">
@@ -539,7 +552,9 @@ export function TradeBox({
       {/* what this side pays: on v12 the launchpad's rate (whole to the treasury) and the coin's tax, split
           as its creator set; on v11 the tax, the split of the pot and the treasury's cut of the platform fee */}
       <p className="text-xs text-zinc-600">
-        {v12 ? (
+        {platformFeeBps === undefined ? (
+          "…"
+        ) : v12 ? (
           <>
             {treasuryPct(fees.platformBps)} launchpad fee · {sideFeeLabel(mode === "buy" ? fees.buyTaxBps : fees.sellTaxBps, mode)}
             {(mode === "buy" ? fees.buyTaxBps : fees.sellTaxBps) > 0 && (

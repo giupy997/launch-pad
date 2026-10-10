@@ -27,12 +27,13 @@ export function CreatorFees() {
       abi: launchpadAbi,
       functionName: "creatorFees" as const,
       args: [user ?? ZERO_ADDRESS, a.address ?? ZERO_ADDRESS] as const,
+      chainId: chain.id, // the app chain's pad, not the wallet's chain
     })),
     query: { enabled: !!pad && !!user, refetchInterval: 10_000 },
   });
 
   const { writeContract, data: hash, isPending, error, reset } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash, chainId: chain.id });
 
   if (!pad || !user || isError || !data) return null;
 
