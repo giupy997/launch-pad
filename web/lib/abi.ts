@@ -2,7 +2,7 @@
 // artifact, JSON.stringify(abi, null, 2)): launchpadAbi and launchTokenAbi
 // are v12, the generation the site is written for; launchpadV11Abi is the
 // pad before it, kept whole because Liteforge runs v11 until its v12 pad is
-// live. The two differ where it matters for a read: feeConfig answers
+// live, and Base's v11 pad stays usable on the legacy page. The two differ where it matters for a read: feeConfig answers
 // six fields on v11 and seven on v12 (platformBps), createTokenWithFees takes
 // the same tuple, and creatorFeeShareBps / holderCashbackBps / the token's
 // transferable() exist on v11 only. Which one a chain reads with is config

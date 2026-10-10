@@ -82,7 +82,7 @@ export const LAUNCHPAD_ADDRESS: Record<number, `0x${string}` | undefined> = {
   // v12 quoted in cbLTC (50 virtual: 160 to graduate), deploy block 52,397,620, owned by the timelock 0xe28f446D3a1DB105F8F9b34A65474E1F6d256f76
   // (24 h, proposer 0x707f…9A02); fees on the pool after graduation, sold by anyone's harvest through UniV2Migrator v3
   // 0x6f3303c520dE1a74a664c3EB3045cfb0380d40B3; the migration module 0x0F41…B2a2 behind the pad's fallback; zap below.
-  // The v11 pad 0xEfbB…b5f4 keeps running with its coins, reachable on the explorer and Uniswap, not from the site; the v9 pad 0xcaB7…42EF (its pools taken), the
+  // The v11 pad 0xEfbB…b5f4 keeps running with its coins (LEGACY_LAUNCHPADS); the v9 pad 0xcaB7…42EF (its pools taken), the
   // v10 pad 0xDd48…74C1 (never used) and the first v12 stack 0x2729…C5CF (a timelock nobody can drive) are retired (README).
   [base.id]: "0x23231924281B34Bb28F10D854DB8D2DcBd7F78c5",
   [giwaSepolia.id]: "0x8E1a1308E3b176528Ee9278d7a531F185F9fBeFD",
@@ -123,6 +123,26 @@ export const PAD_VERSION: Record<number, PadVersion> = {
   [giwaSepolia.id]: 11,
   [robinhood.id]: 11,
   [litvmTestnet.id]: 11,
+};
+
+/** A pad a chain moved on from, kept usable on the legacy page: its coins
+ *  with their state, a sell box for the ones still on their curve, the
+ *  cashback and creator-fee claims, the links to their pools. A pad left
+ *  running with its coins (Base v11) names no `migratedTo`; one whose coins
+ *  were moved names the pad they went to, and the page links each coin's
+ *  twin. `deployBlock` is where its event scans start. */
+export type LegacyPad = {
+  address: `0x${string}`;
+  version: 11;
+  deployBlock: bigint;
+  label: string;
+  migratedTo?: string;
+};
+/** Base's v11 pad, left running with its coins at the v12 launch: the legacy page
+ *  lists them, sells on a curve and pays the claims. */
+export const LEGACY_LAUNCHPADS: Record<number, LegacyPad[]> = {
+  // v11 (2026-10-04 → 2026-10-09): fees on the curve alone; Notus and Lester were launched on it and trade there still
+  [base.id]: [{ address: "0xEfbB4ebdf5130cC4fC45899EeBA727fa2F55b5f4", version: 11, deployBlock: 52_180_589n, label: "Launchpad v11" }],
 };
 
 // Quote assets offered at launch per chain. address null = native ETH.

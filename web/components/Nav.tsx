@@ -2,15 +2,17 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { base } from "@/lib/config";
+import { LEGACY_LAUNCHPADS, base } from "@/lib/config";
 import { useAppChain } from "@/lib/hooks";
 
-/** The main menu; /bridge is "Get cbLTC" where the coins are quoted in it (Base), a bridge elsewhere. */
+/** The main menu; /bridge is "Get cbLTC" where the coins are quoted in it (Base), a bridge elsewhere;
+ *  /legacy only on a chain with a pad it moved on from (LEGACY_LAUNCHPADS). */
 const items = (chainId: number) => [
   { href: "/", label: "Explore" },
   { href: "/create", label: "Create" },
   { href: "/points", label: "Points" },
   { href: "/bridge", label: chainId === base.id ? "Get cbLTC" : "Bridge" },
+  ...(LEGACY_LAUNCHPADS[chainId]?.length ? [{ href: "/legacy", label: "Legacy" }] : []),
   { href: "/profile", label: "Profile" },
 ];
 

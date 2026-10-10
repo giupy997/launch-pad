@@ -19,7 +19,8 @@ import {
   usePadVersion,
 } from "@/lib/hooks";
 import type { PadVersion } from "@/lib/abi";
-import { BLOCK_SECONDS, PRE_IPO_DISCLAIMER, isHiddenToken } from "@/lib/config";
+import Link from "next/link";
+import { BLOCK_SECONDS, LEGACY_LAUNCHPADS, PRE_IPO_DISCLAIMER, isHiddenToken } from "@/lib/config";
 import { fmtUnits, fmtTokens } from "@/lib/format";
 import { TradeBox } from "@/components/TradeBox";
 import { PoolCard } from "@/components/PoolCard";
@@ -153,6 +154,16 @@ export function TokenPage({ address }: { address: string }) {
     return (
       <p className="text-zinc-500">
         Token not found on this launchpad.
+        {!!LEGACY_LAUNCHPADS[chain.id]?.length && (
+          <>
+            {" "}
+            A coin from an earlier launchpad on this chain is on the{" "}
+            <Link href="/legacy" className="underline">
+              legacy page
+            </Link>
+            .
+          </>
+        )}
       </p>
     );
   }

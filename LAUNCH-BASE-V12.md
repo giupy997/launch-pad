@@ -9,8 +9,7 @@ clean: **v11 stays as it is** — not frozen, its coins trading where they
 trade today (Lester on its curve, Notus in its Uniswap pool), its cashback
 and creator fees claimable — and the site moves to v12, where Notus and
 Lester are created again from the Create page, with the taxes their creator
-chooses. The v11 pad is not on the site any more: its coins are reached on
-the explorer and on Uniswap.
+chooses. The v11 pad stays reachable from the site's legacy page.
 
 (The machinery for moving coins from one pad to another on the same chain —
 snapshot, `migrateOut`, `migrateToken` in cbLTC, an operator — was built and
@@ -66,15 +65,13 @@ sources, and this checkout has moved on since (the harvest in
 ## 2. The site
 
 In `web/lib/config.ts`, for Base: `LAUNCHPAD_ADDRESS` → v12, `LAUNCHPAD_DEPLOY_BLOCK`
-→ the deploy block, `ZAP_ROUTER` → the new zap, `PAD_VERSION` → 12. The
-README's Deployments table gets the v12 row. Commit, push; Netlify deploys.
-The Create page now launches on v12. The v11 pad has no page on the site
-(a legacy page listing its coins, with a sell box and the claims, was built
-and then taken down the same day, at the owner's choice): its coins are
-reached on the explorer and on Uniswap, and anything owed there — the
-cashback, the creator fees, a sell on a curve — is claimed on the pad's
-contract page on Blockscout (Write contract: `claimCashback`,
-`claimCreatorFees`, `sell`).
+→ the deploy block, `ZAP_ROUTER` → the new zap, `PAD_VERSION` → 12, and the
+v11 pad into `LEGACY_LAUNCHPADS` (address, deploy block 52,180,589, label
+"Launchpad v11"). The README's Deployments table gets the v12 row. Commit,
+push; Netlify deploys. The Create page now launches on v12; the legacy page
+(`/legacy`) lists the v11 coins with their state, a sell box for the ones on
+their curve, the cashback and creator-fee claims, and the links to their
+pools.
 
 ## 3. Notus and Lester, again
 
@@ -111,8 +108,8 @@ rehearsal pad (Season 0 of the points runs on it) until decided otherwise.
 ## Afterwards
 
 - v11 keeps running untouched: nothing of it is owed a transaction. The
-  Lester cashback (0.2254 cbLTC) and any creator fees are claimed on the v11
-  pad's contract page on Blockscout whenever.
+  Lester cashback (0.2254 cbLTC) and any creator fees are claimed from the
+  legacy page whenever.
 - On v12 the pool fees run: anyone may `harvest` a coin (the site has the
   button; the caller is tipped), a capped slice a block — both buckets
   whole in one call, uncapped, once a freeze is announced, which is why

@@ -75,7 +75,7 @@ export const POINTS_CHAINS: Record<string, PointsChain> = {
     explorer: "https://liteforge.explorer.caldera.xyz",
   },
   // Base: the v12 pad in cbLTC (the v11 pad 0xEfbB…b5f4, block 52,180,589, is
-  // not indexed: it was replaced, its coins left where they trade). No season here (the features
+  // not indexed: its coins are the legacy page's). No season here (the features
   // come with LitVM); indexed only when enabled, for a one-off genesis credit at Season 1.
   base: {
     key: "base",
