@@ -117,12 +117,16 @@ abstract contract V12PoolForkBase is Test {
     Launchpad pad;
     UniV2Migrator migrator;
     bool skipAll;
-    address treasury = makeAddr("treasury");
-    address alice = makeAddr("alice"); // creates the coin
-    address bob = makeAddr("bob"); //     buys the curve out: the big holder, earning cashback
-    address carol = makeAddr("carol"); // trades on the pool through the router
-    address dave = makeAddr("dave"); //   harvests: no role, any EOA
-    address erin = makeAddr("erin"); //   is paid wallet to wallet
+    // The actors are addresses nobody holds a key to (a hash, not a key's address): makeAddr's
+    // come from keys anyone can derive from the label, and on Base some of them carry an EIP-7702
+    // delegation a sweeper set, which forwards every ETH they receive (makeAddr("treasury") has
+    // one on Base: the ETH contract saw the harvest pay it 0, and the sell pay makeAddr("bob") 0).
+    address treasury = _actor("treasury");
+    address alice = _actor("alice"); // creates the coin
+    address bob = _actor("bob"); //     buys the curve out: the big holder, earning cashback
+    address carol = _actor("carol"); // trades on the pool through the router
+    address dave = _actor("dave"); //   harvests: no role, any EOA
+    address erin = _actor("erin"); //   is paid wallet to wallet
     LaunchpadBase.TokenMetadata meta = LaunchpadBase.TokenMetadata("", "", "", "", "", "");
     /// 1% each way; the tax half to the creator, three tenths to holders, a tenth burned, a tenth to liquidity
     LaunchpadBase.FeeConfig taxed = LaunchpadBase.FeeConfig(100, 100, 5000, 3000, 1000, 1000, 0);
@@ -170,6 +174,10 @@ abstract contract V12PoolForkBase is Test {
             return;
         }
         vm.createSelectFork(vm.envOr("FORK_RPC", string("https://mainnet.base.org")));
+        address[6] memory actors = [treasury, alice, bob, carol, dave, erin];
+        for (uint256 i = 0; i < actors.length; i++) {
+            assertEq(actors[i].code.length, 0, "a test actor has code on this chain (an EIP-7702 delegation?)");
+        }
         pad = new Launchpad(treasury); // this contract owns it: no timelock on a fork
         migrator = new UniV2Migrator(address(pad), UNIV2_ROUTER); // finds the factory and WETH through the router
         pad.setMigrator(address(migrator));
@@ -188,6 +196,12 @@ abstract contract V12PoolForkBase is Test {
     }
 
     // ---------------------------------------------------------------- helpers
+
+    /// An address no key controls, labelled for traces.
+    function _actor(string memory label) internal returns (address who) {
+        who = address(uint160(uint256(keccak256(abi.encodePacked("notus.v12pool.fork:", label)))));
+        vm.label(who, label);
+    }
 
     function _path(address a, address b) internal pure returns (address[] memory p) {
         p = new address[](2);
