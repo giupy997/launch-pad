@@ -37,6 +37,8 @@ contract HarvestTest is Test {
     LaunchpadBase.FeeConfig custom = LaunchpadBase.FeeConfig(300, 300, 5000, 2000, 2000, 1000, 0);
     /// 1% each way, the pot half creator half holders: every coin taken is sold, so the split compares with the curve's in quote
     LaunchpadBase.FeeConfig onePercent = LaunchpadBase.FeeConfig(100, 100, 5000, 5000, 0, 0, 0);
+    /// 1% each way, a tenth of the pot to liquidity, the rest half creator half holders
+    LaunchpadBase.FeeConfig onePercentLiquidity = LaunchpadBase.FeeConfig(100, 100, 4500, 4500, 0, 1000, 0);
 
     /// One harvest as §5 computes it from the state before the call.
     struct Exp {
@@ -49,7 +51,7 @@ contract HarvestTest is Test {
         uint256 liqT;
         uint256 creatorT;
         uint256 holdersT;
-        uint256 deepenT; //   the half of the liquidity share kept as coins (0: the pool would mint nothing)
+        uint256 deepenT; //   the half of the liquidity share kept as coins (0: on the exact amounts the pool would mint nothing)
         bool doDeepen;
         uint256 sellT;
         uint256 quoteOut;
@@ -227,14 +229,21 @@ contract HarvestTest is Test {
         e.holdersT = e.sP - e.burnT - e.liqT - e.creatorT;
         (e.rToken, e.rQuote) = _reserves(token);
         uint256 lpTotal = MockV2Pair(migrator.pairOf(token)).totalSupply();
+        // the liquidity leg on the exact amounts: the sale with half the share kept, that half's
+        // part of its quote, both minted against the reserves the sale leaves
         e.deepenT = e.liqT / 2;
-        if (e.deepenT != 0) {
-            uint256 qEst = _amountOut(e.liqT - e.deepenT, e.rToken, e.rQuote);
-            e.doDeepen = (e.deepenT * lpTotal) / e.rToken != 0 && (qEst * lpTotal) / e.rQuote != 0;
-            if (!e.doDeepen) e.deepenT = 0;
-        }
         e.sellT = e.slice - e.burnT - e.deepenT;
         e.quoteOut = _amountOut(e.sellT, e.rToken, e.rQuote);
+        if (e.deepenT != 0) {
+            uint256 qL = (e.quoteOut * (e.liqT - e.deepenT)) / e.sellT;
+            e.doDeepen = qL != 0 && (e.deepenT * lpTotal) / (e.rToken + e.sellT) != 0
+                && (qL * lpTotal) / (e.rQuote - e.quoteOut) != 0;
+            if (!e.doDeepen) {
+                e.deepenT = 0;
+                e.sellT = e.slice - e.burnT;
+                e.quoteOut = _amountOut(e.sellT, e.rToken, e.rQuote);
+            }
+        }
         e.qT = (e.quoteOut * e.sT) / e.sellT;
         e.qC = (e.quoteOut * e.creatorT) / e.sellT;
         e.qH = (e.quoteOut * e.holdersT) / e.sellT;
@@ -496,6 +505,58 @@ contract HarvestTest is Test {
         _check(token, e, s, dave);
         assertEq(MockV2Pair(migrator.pairOf(token)).balanceOf(address(migrator)), lpBefore, "no LP minted");
         assertEq(pad.burnPot(token), s.burnPot + e.qL);
+    }
+
+    /// A few sats of tax in the buckets: the sold half of the liquidity share fetches a sat when priced
+    /// alone against the reserves before the sale, and nothing as its pro rata part of the larger sale
+    /// that actually happens. Decided on that estimate (the deployed Base migrator), the pair was
+    /// handed coins and no quote, and its mint reverted the whole harvest until the next trade grew the
+    /// buckets: here a pool buy of 671 to 695 sats on the 3% coin, about 2,000 on a 1% coin. Decided on
+    /// the exact amounts, every size lands: the pool deepens, or the whole share is sold and its quote
+    /// goes to the burn pot.
+    function test_aHarvestOfAFewSatsDecidesTheLiquidityLegOnTheExactAmounts_threePercentCoin() public {
+        _scanSmallBuys(_create(address(cb), custom), 640, 720);
+    }
+
+    /// The same on a 1% coin with a tenth of its pot to liquidity, alone on its pad (_check weighs the
+    /// pad's whole quote against one coin's debts): the estimate went wrong at 31 sizes from 2,014 to 2,078 sats.
+    function test_aHarvestOfAFewSatsDecidesTheLiquidityLegOnTheExactAmounts_onePercentCoin() public {
+        _scanSmallBuys(_create(address(cb), onePercentLiquidity), 1990, 2110);
+    }
+
+    /// One pool buy of each size from `from` to `to` on a fresh pool, a harvest after each, checked to
+    /// the unit; the state goes back between sizes. The range has to reach both branches and the sizes
+    /// where the estimate and the exact amounts disagree, or the scan proves nothing.
+    function _scanSmallBuys(address token, uint256 from, uint256 to) internal {
+        _graduate(token);
+        uint256 deepened;
+        uint256 sold;
+        uint256 estimateWrong;
+        for (uint256 quoteIn = from; quoteIn <= to; quoteIn++) {
+            uint256 id = vm.snapshotState();
+            _fund(carol, token, quoteIn);
+            _poolBuy(carol, token, quoteIn);
+            Exp memory e = _expected(token, false);
+            if (_estimateDeepens(token, e) && !e.doDeepen) estimateWrong++;
+            Snap memory s = _snap(token, dave);
+            _harvest(token, e, dave);
+            _check(token, e, s, dave);
+            if (e.doDeepen) deepened++;
+            else sold++;
+            vm.revertToState(id);
+        }
+        assertGt(deepened, 0, "the pool deepened at the top of the range");
+        assertGt(sold, 0, "the share was sold at the bottom");
+        assertGt(estimateWrong, 0, "and the range crossed the sizes the estimate got wrong");
+    }
+
+    /// The deployed Base migrator's rule: the sold half priced alone against the reserves before the sale.
+    function _estimateDeepens(address token, Exp memory e) internal view returns (bool) {
+        uint256 half = e.liqT / 2;
+        if (half == 0) return false;
+        uint256 lpTotal = MockV2Pair(migrator.pairOf(token)).totalSupply();
+        uint256 qEst = _amountOut(e.liqT - half, e.rToken, e.rQuote);
+        return (half * lpTotal) / e.rToken != 0 && (qEst * lpTotal) / e.rQuote != 0;
     }
 
     // ---------------------------------------------------------- cap and cooldown

@@ -332,7 +332,7 @@ for (const token of tokens) {
   // a v12 pad keeps the fees its pool trades left in coins, unsold, in two
   // buckets; migrateOut burns whatever a harvest did not sell, so they count as burned
   const taxBuckets = (await readOr(launchpad, padAbi, "taxTreasury", [token], block, 0n)) + (await readOr(launchpad, padAbi, "taxPot", [token], block, 0n));
-  if (taxBuckets !== 0n) warnings.push(`${symbol}: ${taxBuckets} coins of unsold pool fees sit in the pad: migrateOut burns them (harvest first, after the freeze is announced, to turn them into quote)`);
+  if (taxBuckets !== 0n) warnings.push(`${symbol}: ${taxBuckets} coins of unsold pool fees sit in the pad: migrateOut burns them (harvest them in normal mode before the freeze is announced and keep them small through the notice: MIGRATION.md steps 2 and 3)`);
   const burned = burnedOnChain + taxBuckets;
 
   // holders: fold the transfers, then trust only balanceOf at the block

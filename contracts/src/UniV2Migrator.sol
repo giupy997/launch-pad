@@ -287,7 +287,7 @@ contract UniV2Migrator is IDexMigrator, IDexMigratorUnlock, IDexMigratorBuyback,
         uint256 holders;
         uint256 burn; //      burned by the launchpad, never sold
         uint256 liquidity; // half kept as coins, half sold, both to the locked pool
-        uint256 deepenT; //   the half kept (0: the pool would mint nothing, the share is sold and buys back)
+        uint256 deepenT; //   the half kept (0: on the exact amounts the pool would mint nothing, the share is sold and buys back)
         uint256 sellT;
         uint256 quoteOut;
         uint256 qTreasury;
@@ -309,7 +309,10 @@ contract UniV2Migrator is IDexMigrator, IDexMigratorUnlock, IDexMigratorBuyback,
     ///      both sides join the locked position, the rest sold; the quote
     ///      goes to each share pro rata to the coins it sold, rounding dust
     ///      to the treasury, a twentieth of the treasury's part to the
-    ///      caller. The launchpad books the quote (poolFee).
+    ///      caller. The launchpad books the quote (poolFee). In a rush (a
+    ///      freeze announced) the whole bucket is sold in one call at the
+    ///      pool's price with no minimum, which is why the migration runbook
+    ///      empties the buckets in normal mode before announcing a freeze.
     function harvest(address token)
         external
         nonReentrant
@@ -345,16 +348,29 @@ contract UniV2Migrator is IDexMigrator, IDexMigratorUnlock, IDexMigratorBuyback,
         }
         h.pair = factory.getPair(token, h.quote);
         (h.rToken, h.rQuote) = _reserves(token, h.pair);
-        // the liquidity leg, decided before anything moves: only when both sides would mint
+        // the liquidity leg, decided before anything moves, on the exact amounts: the sale is our own
+        // untaxed transfer to the pair, so its quote and the share's part of it are known here to the
+        // unit. An estimate of the sold half alone against these reserves can say one unit where the
+        // pro rata part of the larger sale rounds to none, and the pair's mint then reverts the whole
+        // harvest. Deepen only when both sides mint against the reserves the sale leaves; rToken +
+        // sellT is the most the token side can hold then, which keeps the test conservative on a fork
+        // whose pair pays a protocol fee out in the input coin (Lester Labs' on Liteforge).
         h.deepenT = h.liquidity / 2;
+        h.sellT = h.slice - h.burn - h.deepenT;
+        h.quoteOut = _amountOut(h.sellT, h.rToken, h.rQuote);
         if (h.deepenT != 0) {
             uint256 lpTotal = IUniswapV2Pair(h.pair).totalSupply();
-            uint256 qEst = _amountOut(h.liquidity - h.deepenT, h.rToken, h.rQuote);
-            if ((h.deepenT * lpTotal) / h.rToken == 0 || (qEst * lpTotal) / h.rQuote == 0) h.deepenT = 0;
+            h.qLiquidity = (h.quoteOut * (h.liquidity - h.deepenT)) / h.sellT; // sellT >= the sold half > 0
+            if (
+                h.qLiquidity == 0 || (h.deepenT * lpTotal) / (h.rToken + h.sellT) == 0
+                    || (h.qLiquidity * lpTotal) / (h.rQuote - h.quoteOut) == 0
+            ) {
+                h.deepenT = 0;
+                h.sellT = h.slice - h.burn;
+                h.quoteOut = _amountOut(h.sellT, h.rToken, h.rQuote);
+            }
         }
-        h.sellT = h.slice - h.burn - h.deepenT;
         if (h.sellT == 0) revert NothingToSell();
-        h.quoteOut = _amountOut(h.sellT, h.rToken, h.rQuote);
         if (h.quoteOut == 0) revert NothingToSell();
 
         // the launchpad burns the burn share and sends the rest here
@@ -371,8 +387,8 @@ contract UniV2Migrator is IDexMigrator, IDexMigratorUnlock, IDexMigratorBuyback,
         h.tip = h.qTreasury / TIP_DIVISOR;
         h.qTreasury -= h.tip;
 
-        // the locked position deepens with both sides of the liquidity share; or, when the
-        // pool would mint nothing of it, its quote buys the coin back later (buybackAndBurn)
+        // the locked position deepens with both sides of the liquidity share; or, when on the exact
+        // amounts the pool would mint nothing of it, its quote buys the coin back later (buybackAndBurn)
         if (h.deepenT != 0) {
             IERC20(token).safeTransfer(h.pair, h.deepenT);
             IERC20(h.quote).safeTransfer(h.pair, h.qLiquidity);

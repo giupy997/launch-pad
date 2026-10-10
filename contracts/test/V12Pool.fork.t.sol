@@ -375,7 +375,7 @@ abstract contract V12PoolForkBase is Test {
         uint256 liqT;
         uint256 creatorT;
         uint256 holdersT;
-        uint256 deepenT; //   the half of the liquidity share kept as coins (0: the pool would mint nothing)
+        uint256 deepenT; //   the half of the liquidity share kept as coins (0: on the exact amounts the pool would mint nothing)
         bool doDeepen;
         uint256 sellT;
         uint256 quoteOut;
@@ -421,14 +421,22 @@ abstract contract V12PoolForkBase is Test {
         e.holdersT = e.sP - e.burnT - e.liqT - e.creatorT;
         (e.rToken, e.rQuote) = _reserves();
         uint256 lpTotal = IUniswapV2PairView(pair).totalSupply();
+        // the liquidity leg on the exact amounts, as src/UniV2Migrator.sol decides it (the stack
+        // here is built from src): the sale with half the share kept, that half's part of its
+        // quote, both minted against the reserves the sale leaves
         e.deepenT = e.liqT / 2;
-        if (e.deepenT != 0) {
-            uint256 qEst = _amountOut(e.liqT - e.deepenT, e.rToken, e.rQuote);
-            e.doDeepen = (e.deepenT * lpTotal) / e.rToken != 0 && (qEst * lpTotal) / e.rQuote != 0;
-            if (!e.doDeepen) e.deepenT = 0;
-        }
         e.sellT = e.slice - e.burnT - e.deepenT;
         e.quoteOut = _amountOut(e.sellT, e.rToken, e.rQuote);
+        if (e.deepenT != 0) {
+            uint256 qL = (e.quoteOut * (e.liqT - e.deepenT)) / e.sellT;
+            e.doDeepen = qL != 0 && (e.deepenT * lpTotal) / (e.rToken + e.sellT) != 0
+                && (qL * lpTotal) / (e.rQuote - e.quoteOut) != 0;
+            if (!e.doDeepen) {
+                e.deepenT = 0;
+                e.sellT = e.slice - e.burnT;
+                e.quoteOut = _amountOut(e.sellT, e.rToken, e.rQuote);
+            }
+        }
         e.qT = (e.quoteOut * e.sT) / e.sellT;
         e.qC = (e.quoteOut * e.creatorT) / e.sellT;
         e.qH = (e.quoteOut * e.holdersT) / e.sellT;
