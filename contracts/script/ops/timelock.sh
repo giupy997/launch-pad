@@ -4,7 +4,8 @@
 # machine (the keystore ACCOUNT, default `notus`; PRIVATE_KEY for a test key):
 #
 #   bash script/ops/timelock.sh grant           # an address (a Safe) becomes proposer and canceller too
-#   bash script/ops/timelock.sh revoke          # the deployer's key loses both roles: only after the Safe has proven itself
+#   bash script/ops/timelock.sh revoke          # the deployer's key loses both roles: only after the Safe has proven itself,
+#                                               # or, with no other proposer, to close a timelock for good (v11)
 #   bash script/ops/timelock.sh handover        # grant and revoke in one operation: one delay instead of two, for a
 #                                               # Safe that has already signed a transaction of its own with two keys
 #   bash script/ops/timelock.sh set-treasury    # the pad pays its 0.5% to a new address from the execution on
@@ -118,9 +119,10 @@ case "${1:-}" in
     schedule_batch "handover to $ADDR" "$TIMELOCK,$TIMELOCK,$TIMELOCK,$TIMELOCK" "$D1,$D2,$D3,$D4"
     ;;
   revoke)
-    echo "The deployer's key $PROPOSER loses PROPOSER and CANCELLER on the timelock."
-    echo "Only once the Safe has scheduled AND executed one operation of its own: after this, nothing on"
-    echo "this machine can schedule or cancel on the Base timelock any more."
+    echo "The deployer's key $PROPOSER loses PROPOSER and CANCELLER on the timelock $TIMELOCK."
+    echo "After this, nothing on this machine can schedule or cancel on it any more. With a Safe as proposer:"
+    echo "only once the Safe has scheduled AND executed one operation of its own. With no other proposer:"
+    echo "nobody ever can again, and the pad $PAD keeps its settings for good (no way back)."
     HAS=$(call "hasRole(bytes32,address)(bool)" "$PROPOSER_ROLE" "$PROPOSER")
     [ "$HAS" = true ] || { echo "   $PROPOSER is not a proposer: nothing to revoke"; exit 1; }
     read -rp "   type REVOKE to go on: " yes; [ "$yes" = REVOKE ] || { echo "stopped"; exit 1; }
@@ -138,6 +140,7 @@ case "${1:-}" in
     ;;
   execute)
     ID=${2:?id}; [ -f "$OPS/$ID.json" ] || { echo "no $OPS/$ID.json: not an operation of this script on this machine"; exit 1; }
+    TIMELOCK=$(field "$ID" timelock)  # the one it was scheduled on (v11 or v12), whatever ADDRESSES says now
     READY=$(call "isOperationReady(bytes32)(bool)" "$ID")
     if [ "$READY" != true ]; then
       TS=$(call "getTimestamp(bytes32)(uint256)" "$ID" | awk '{print $1}')
@@ -154,12 +157,14 @@ case "${1:-}" in
     ;;
   status)
     ID=${2:?id}
+    [ -f "$OPS/$ID.json" ] && TIMELOCK=$(field "$ID" timelock)
     TS=$(call "getTimestamp(bytes32)(uint256)" "$ID" | awk '{print $1}')
     case "$TS" in 0) echo "unknown or cancelled";; 1) echo "done";; *) echo "pending: executable from $(when "$TS") (ready now: $(call "isOperationReady(bytes32)(bool)" "$ID"))";; esac
     [ -f "$OPS/$ID.json" ] && echo "kind: $(field "$ID" kind), scheduled $(field "$ID" scheduledAt)"
     ;;
   cancel)
     ID=${2:?id}
+    [ -f "$OPS/$ID.json" ] && TIMELOCK=$(field "$ID" timelock)
     echo "== cancelling $ID$( [ -f "$OPS/$ID.json" ] && echo " ($(field "$ID" kind))")"
     cast send "$TIMELOCK" "cancel(bytes32)" "$ID" "${SIGNER[@]}" --rpc-url "$RPC" >/dev/null
     echo "   cancelled: $([ "$(call "getTimestamp(bytes32)(uint256)" "$ID" | awk '{print $1}')" = 0 ] && echo yes || echo no)"
