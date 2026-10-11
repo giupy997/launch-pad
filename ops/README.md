@@ -46,6 +46,7 @@ executable by anyone after the delay, from the proposer's key on the VPS:
 |---|---|
 | `grant` | an address (a Safe) becomes proposer and canceller next to the deployer's key |
 | `revoke` | the deployer's key loses both roles: only after the Safe has scheduled and executed an operation of its own |
+| `handover` | `grant` and `revoke` in one operation, one delay instead of two: for a Safe whose owners and threshold were read back from the chain and that has already executed a transaction of its own with two signatures |
 | `set-treasury` | the pad pays its 0.5% to a new address from the execution on |
 | `execute ID` | once ready (anyone may) |
 | `status ID`, `cancel ID` | |

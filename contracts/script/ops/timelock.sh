@@ -5,6 +5,8 @@
 #
 #   bash script/ops/timelock.sh grant           # an address (a Safe) becomes proposer and canceller too
 #   bash script/ops/timelock.sh revoke          # the deployer's key loses both roles: only after the Safe has proven itself
+#   bash script/ops/timelock.sh handover        # grant and revoke in one operation: one delay instead of two, for a
+#                                               # Safe that has already signed a transaction of its own with two keys
 #   bash script/ops/timelock.sh set-treasury    # the pad pays its 0.5% to a new address from the execution on
 #   bash script/ops/timelock.sh execute ID      # an operation of this script, once ready (no role needed)
 #   bash script/ops/timelock.sh status ID
@@ -100,6 +102,20 @@ case "${1:-}" in
     D1=$(cast calldata "grantRole(bytes32,address)" "$PROPOSER_ROLE" "$ADDR")
     D2=$(cast calldata "grantRole(bytes32,address)" "$CANCELLER_ROLE" "$ADDR")
     schedule_batch "grant roles to $ADDR" "$TIMELOCK,$TIMELOCK" "$D1,$D2"
+    ;;
+  handover)
+    echo "In one operation: the address below becomes PROPOSER and CANCELLER, and the deployer's key"
+    echo "$PROPOSER loses both. From the execution on, only that address schedules and cancels."
+    echo "Only for a Safe whose owners and threshold you have read back from the chain, and that has"
+    echo "already executed one transaction of its own with two signatures."
+    ask "address to hand over to"
+    [ "$ADDR" != "$PROPOSER" ] || { echo "that is the deployer's own key"; exit 1; }
+    read -rp "   type HANDOVER to go on: " yes; [ "$yes" = HANDOVER ] || { echo "stopped"; exit 1; }
+    D1=$(cast calldata "grantRole(bytes32,address)" "$PROPOSER_ROLE" "$ADDR")
+    D2=$(cast calldata "grantRole(bytes32,address)" "$CANCELLER_ROLE" "$ADDR")
+    D3=$(cast calldata "revokeRole(bytes32,address)" "$PROPOSER_ROLE" "$PROPOSER")
+    D4=$(cast calldata "revokeRole(bytes32,address)" "$CANCELLER_ROLE" "$PROPOSER")
+    schedule_batch "handover to $ADDR" "$TIMELOCK,$TIMELOCK,$TIMELOCK,$TIMELOCK" "$D1,$D2,$D3,$D4"
     ;;
   revoke)
     echo "The deployer's key $PROPOSER loses PROPOSER and CANCELLER on the timelock."
