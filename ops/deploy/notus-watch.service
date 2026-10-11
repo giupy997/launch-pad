@@ -1,0 +1,30 @@
+# systemd unit for the Notus watch (ops/watch.mjs): reads the Base timelocks and
+# pads once a minute and the site every ten, and tells the owner on Telegram of
+# every operation scheduled, executed or cancelled, every role change, every
+# owner-only event on the pads, a deploy of the site, the pad's address gone
+# from it, and a daily heartbeat. Read-only: no key, no wallet.
+#
+#   sudo install -d -m 700 /etc/notus          # once; then the env file, see ops/deploy/watch.env.example
+#   cd ~/launch-pad && git pull
+#   sudo cp ops/deploy/notus-watch.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now notus-watch
+#   journalctl -u notus-watch -f
+[Unit]
+Description=Notus watch (timelocks, pads, site → Telegram)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=notus
+WorkingDirectory=/home/notus/launch-pad
+EnvironmentFile=/etc/notus/watch.env
+Environment=NOTUS_WATCH_STATE=/home/notus/launch-pad/ops/state/watch.json
+ExecStart=/usr/bin/node ops/watch.mjs
+Restart=always
+RestartSec=15
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

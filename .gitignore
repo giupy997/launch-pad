@@ -45,3 +45,6 @@ contracts/test/_review_*
 
 # private handoff notes for the owner: never in the public repository
 HANDOFF.md
+
+# the watch (ops/watch.mjs): the last block read, the pending operations
+ops/state/

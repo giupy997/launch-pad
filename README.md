@@ -130,6 +130,7 @@ longer served by the site, built or run.
 - `litecoin/migration/` — the EVM migration's working directory (not part of
   the parked ledger): the snapshot files `MIGRATION.md` and the rehearsal
   scripts write and read
+- `ops/` — the owner's watch (timelocks, pads, site → Telegram) and the timelock operations, see [`ops/README.md`](ops/README.md)
 - `web/` — Next.js 16 + React 19 + wagmi v2 + viem frontend
   - `/` Explore: King of the Hill (the coin on its curve closest to
     graduating, with the shape of its day, its price, volume and holders),
@@ -268,6 +269,15 @@ the deployer owns for the migration day and the timelock takes right after
 there (`0xFaFc…0C87`, 10 minutes) owns an older, parked pad (v7.7). A pad no
 timelock owns is the deployer key's. The migration of the Base pad's coins
 to LitVM mainnet, step by step: [`MIGRATION.md`](MIGRATION.md).
+
+The owner's side of it lives in `ops/` ([`ops/README.md`](ops/README.md)):
+the watch, a read-only process on the VPS that reports on Telegram every
+operation scheduled, executed or cancelled on the Base timelocks (decoded to
+the call it makes), every role change, the pads' owner-only events, a deploy
+of the site and the pad's address gone from it; and
+`contracts/script/ops/timelock.sh`, the owner's timelock operations (a Safe
+made proposer, the deployer's key revoked, a new treasury), each scheduled
+now and executable by anyone after the delay.
 
 Points and referrals, a season-based record of every wallet's contribution
 derived from the pad's events off-chain (20 points per LTC traded, bonuses on
