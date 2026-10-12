@@ -80,7 +80,7 @@ export const MIGRATION_TARGET: Record<number, string> = { [base.id]: "LitVM main
 // One address per chain: add future deployments here (multichain).
 export const LAUNCHPAD_ADDRESS: Record<number, `0x${string}` | undefined> = {
   // v12 quoted in cbLTC (50 virtual: 160 to graduate), deploy block 52,397,620, owned by the timelock 0xe28f446D3a1DB105F8F9b34A65474E1F6d256f76
-  // (24 h, proposer 0x707f…9A02); fees on the pool after graduation, sold by anyone's harvest through UniV2Migrator v3
+  // (24 h; proposer the Safe 2-of-3 0x934A…d8F4 since 2026-10-12); fees on the pool after graduation, sold by anyone's harvest through UniV2Migrator v3
   // 0x6f3303c520dE1a74a664c3EB3045cfb0380d40B3; the migration module 0x0F41…B2a2 behind the pad's fallback; zap below.
   // The v11 pad 0xEfbB…b5f4 keeps running with its coins, reachable on the explorer and Uniswap, not from the site; the v9 pad 0xcaB7…42EF (its pools taken), the
   // v10 pad 0xDd48…74C1 (never used) and the first v12 stack 0x2729…C5CF (a timelock nobody can drive) are retired (README).

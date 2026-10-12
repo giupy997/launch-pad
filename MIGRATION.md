@@ -70,8 +70,21 @@ LitVM mainnet with a public RPC, a Blockscout, its bridge for LTC, and a
 Uniswap v2 router for the pools (the testnet has several). A Coinbase account
 to turn cbLTC into LTC (sending cbLTC to it credits LTC 1:1). The deployer's
 keystore (`notus`, `cast wallet import notus`; `contracts/.env` holds no key)
-with zkLTC for gas — bridge some first. The Base pad's timelock proposer key:
-the same deployer (`0x707f…9A02`).
+with zkLTC for gas — bridge some first. The Base pad's timelock proposer is
+the Safe 2-of-3 (`0x934A…d8F4`, since 2026-10-12): the freeze, `migrateOut`
+and the operator's nomination are its operations (`timelock.sh
+safe-calldata`, the Transaction Builder), executed from the deployer's key
+after the delay.
+
+**Since 2026-10-12 the Base timelock's proposer and canceller is the Safe
+2-of-3, not the deployer's key.** Every `schedule(...)` and `cancel(...)` on
+`$BASE_TIMELOCK` below is therefore a Safe transaction: the calldata the
+`cast send` line encodes, sent from the Safe's Transaction Builder (two
+signatures), as `timelock.sh safe-calldata` prepares it for `set-treasury`,
+`set-migrator` and `revoke`; the `execute(...)` lines stay the deployer's
+(anyone's). The `announce-freeze`, `migrate-out`, `cancel-freeze` and
+`set-operator` kinds of `safe-calldata` are to be added before the day, and
+these steps rewritten around them (SECURITY.md, the governance section).
 
 One file holds the names as they arrive; every block below sources it. The
 Base addresses are v12's (`contracts/verify/base-v12/addresses.sh`): the v11
@@ -85,7 +98,8 @@ export BASE_TIMELOCK=0xe28f446D3a1DB105F8F9b34A65474E1F6d256f76  # its TimelockC
 export BASE_MIGRATOR=0x6f3303c520dE1a74a664c3EB3045cfb0380d40B3  # its UniV2Migrator: the harvest (step 2)
 export BASE_QUOTE=0xcb17C9Db87B595717C857a08468793f5bAb6445F
 export BASE_FROM_BLOCK=52397620                                   # the pad's deploy block
-export DEPLOYER=0x707f56C25e5d8cc12d08A3bf73f54dBeD0CD9A02        # the keystore notus: the timelock's proposer
+export DEPLOYER=0x707f56C25e5d8cc12d08A3bf73f54dBeD0CD9A02        # the keystore notus: executes what the Safe scheduled
+export SAFE=0x934A82649b4ca538ff47d9090536837B7092d8F4            # the timelock's proposer and canceller (2 of 3)
 export BRIDGE_FROM=         # the EVM account that receives the cbLTC and takes it through Coinbase
 export VAULT=               # an account of yours: coins with no holder to go to are parked there (step 2)
 export LITVM_RPC=           # LitVM mainnet RPC

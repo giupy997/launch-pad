@@ -5,6 +5,8 @@ MIGRATOR=0x8fB7f1D18F4b2ECC79da94aBF51f95B93E07d218
 ZAP=0x072a77dC2a770504A1DA17e2fB6814C9cFf85254
 TIMELOCK=0xeDCe189855E9298C3f5b937fE9Ffe8D5261B9EB2
 TREASURY=0x24622320D93Da2d9c626EE469ad0C2c48a1ED7F7
+# the proposer at the deploy; its roles were revoked on 2026-10-12 and nobody holds them
+# since: the v11 pad keeps its settings for good
 PROPOSER=0x707f56C25e5d8cc12d08A3bf73f54dBeD0CD9A02
 DELAY=86400
 # the first coin launched on the pad, Notus, to verify its LaunchToken (every later coin shows as a

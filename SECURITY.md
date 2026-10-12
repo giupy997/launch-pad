@@ -33,11 +33,11 @@ to (RPC providers, WalletConnect, Netlify).
 - The pad on Base is owned by a TimelockController with a 24-hour delay:
   every owner action (fee, treasury, migrator, quote assets, a freeze, the
   migration operator) is scheduled in the open on chain and can only run a
-  day later; anyone may execute a ready operation. From 2026-10-13 the only
+  day later; anyone may execute a ready operation. Since 2026-10-12 the only
   proposer and canceller is a Safe 2-of-3 (`0x934A…d8F4`); the deployer's key
   alone can no longer schedule or cancel anything.
 - The retired v11 pad on Base keeps its settings for good: its timelock has
-  no proposer from 2026-10-13 on.
+  had no proposer since 2026-10-12.
 - A read-only watch (`ops/watch.mjs`) reports on Telegram every operation
   scheduled, executed or cancelled, every role change, every owner-only event
   on the pads, and every deploy of the site, within a minute.

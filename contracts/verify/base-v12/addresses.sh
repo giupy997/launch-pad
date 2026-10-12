@@ -6,7 +6,11 @@ MIGRATOR=0x6f3303c520dE1a74a664c3EB3045cfb0380d40B3
 ZAP=0x15045E01b6A38f40695EEa0BB31aE0342f7Ee810
 TIMELOCK=0xe28f446D3a1DB105F8F9b34A65474E1F6d256f76
 TREASURY=0x24622320D93Da2d9c626EE469ad0C2c48a1ED7F7
-PROPOSER=0x707f56C25e5d8cc12d08A3bf73f54dBeD0CD9A02
+# the proposer and canceller: the deployer's key at the deploy, the Safe 2-of-3 since the
+# handover executed on 2026-10-12 (block 52528060 or just before), which also revoked the
+# deployer's roles; DEPLOYER is what the timelock was deployed with, for the verification
+PROPOSER=0x934A82649b4ca538ff47d9090536837B7092d8F4
+DEPLOYER=0x707f56C25e5d8cc12d08A3bf73f54dBeD0CD9A02
 DELAY=86400
 # the first coin launched on the pad, to verify its LaunchToken (every later coin shows as a
 # similar match); set it here once a coin exists, or pass it in the environment

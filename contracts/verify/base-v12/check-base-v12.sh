@@ -3,8 +3,10 @@
 # be: who owns the pad, its fee, its treasury, its migrator, module and
 # factory, cbLTC the only quote at 50 cbLTC of virtual reserve, no migration
 # operator, no freeze; the migrator's and the zap's pad; the timelock's delay
-# and roles (the proposer schedules and cancels, anyone executes, nobody
-# administers). Every line PASS, or the one that is not says what it found.
+# and roles (the Safe schedules and cancels, the deployer's key no longer
+# can, anyone executes, nobody administers), and the retired v11 timelock
+# with no proposer left. Every line PASS, or the one that is not says what
+# it found.
 #
 #   cd ~/launch-pad/contracts && bash verify/base-v12/check-base-v12.sh      # node: BASE_RPC, else SRC_RPC's first, else foundry's `base`
 #
@@ -79,12 +81,23 @@ EXECUTOR_ROLE=$(cast keccak "EXECUTOR_ROLE")
 CANCELLER_ROLE=$(cast keccak "CANCELLER_ROLE")
 ADMIN_ROLE=0x0000000000000000000000000000000000000000000000000000000000000000
 expect "minDelay = $DELAY s" "$(call "$TIMELOCK" 'getMinDelay()(uint256)')" "$DELAY"
-expect "proposer may propose" "$(call "$TIMELOCK" 'hasRole(bytes32,address)(bool)' "$PROPOSER_ROLE" "$PROPOSER")" true
-expect "proposer may cancel" "$(call "$TIMELOCK" 'hasRole(bytes32,address)(bool)' "$CANCELLER_ROLE" "$PROPOSER")" true
+expect "the Safe may propose" "$(call "$TIMELOCK" 'hasRole(bytes32,address)(bool)' "$PROPOSER_ROLE" "$PROPOSER")" true
+expect "the Safe may cancel" "$(call "$TIMELOCK" 'hasRole(bytes32,address)(bool)' "$CANCELLER_ROLE" "$PROPOSER")" true
+expect "the deployer's key may not propose" "$(call "$TIMELOCK" 'hasRole(bytes32,address)(bool)' "$PROPOSER_ROLE" "$DEPLOYER")" false
+expect "the deployer's key may not cancel" "$(call "$TIMELOCK" 'hasRole(bytes32,address)(bool)' "$CANCELLER_ROLE" "$DEPLOYER")" false
 expect "anyone may execute (open role)" "$(call "$TIMELOCK" 'hasRole(bytes32,address)(bool)' "$EXECUTOR_ROLE" "$ZERO")" true
-expect "proposer is not admin" "$(call "$TIMELOCK" 'hasRole(bytes32,address)(bool)' "$ADMIN_ROLE" "$PROPOSER")" false
+expect "the Safe is not admin" "$(call "$TIMELOCK" 'hasRole(bytes32,address)(bool)' "$ADMIN_ROLE" "$PROPOSER")" false
+expect "the deployer's key is not admin" "$(call "$TIMELOCK" 'hasRole(bytes32,address)(bool)' "$ADMIN_ROLE" "$DEPLOYER")" false
 expect "timelock is its own admin" "$(call "$TIMELOCK" 'hasRole(bytes32,address)(bool)' "$ADMIN_ROLE" "$TIMELOCK")" true
 expect "forge's stand-in sender is no proposer" "$(call "$TIMELOCK" 'hasRole(bytes32,address)(bool)' "$PROPOSER_ROLE" 0x1804c8AB1F12E6bbf3894d4083f33e07309d1f38)" false
+echo "      the Safe: $(call "$PROPOSER" 'getThreshold()(uint256)') of $(cast call "$PROPOSER" 'getOwners()(address[])' --rpc-url "$RPC" 2>/dev/null | tr -cd ',' | wc -c | awk '{print $1+1}') owners must sign"
+
+echo "== the retired v11 timelock: nobody proposes, nothing changes there again"
+V11_TIMELOCK=0xeDCe189855E9298C3f5b937fE9Ffe8D5261B9EB2
+expect "v11: the deployer's key may not propose" "$(call "$V11_TIMELOCK" 'hasRole(bytes32,address)(bool)' "$PROPOSER_ROLE" "$DEPLOYER")" false
+expect "v11: the deployer's key may not cancel" "$(call "$V11_TIMELOCK" 'hasRole(bytes32,address)(bool)' "$CANCELLER_ROLE" "$DEPLOYER")" false
+expect "v11: the Safe is no proposer either" "$(call "$V11_TIMELOCK" 'hasRole(bytes32,address)(bool)' "$PROPOSER_ROLE" "$PROPOSER")" false
+expect "v11: the timelock is its own admin" "$(call "$V11_TIMELOCK" 'hasRole(bytes32,address)(bool)' "$ADMIN_ROLE" "$V11_TIMELOCK")" true
 
 echo "== balances the pad should not be sitting on"
 echo "      pad's cbLTC: $(call "$CBLTC" 'balanceOf(address)(uint256)' "$PAD") satoshis (the curves' reserves and pots of its coins; 0 while it has none)"

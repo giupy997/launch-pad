@@ -91,8 +91,9 @@ verify "$FACTORY" LaunchTokenFactory.standard-input.json "src/LaunchTokenFactory
 verify "$MODULE" LaunchpadMigration.standard-input.json "src/LaunchpadMigration.sol:LaunchpadMigration"
 verify "$MIGRATOR" UniV2Migrator.standard-input.json "src/UniV2Migrator.sol:UniV2Migrator" "$(enc 'constructor(address,address)' "$PAD" "$UNIV2_ROUTER")"
 verify "$ZAP" SlipstreamZapRouter.standard-input.json "src/SlipstreamZapRouter.sol:SlipstreamZapRouter" "$(enc 'constructor(address,address,address)' "$PAD" "$SLIPSTREAM_ROUTER" "$WETH")"
+DEPLOY_PROPOSER=${DEPLOYER:-$PROPOSER} # the constructor's proposer: the deployer's key (the Safe took the role later)
 verify "$TIMELOCK" TimelockController.standard-input.json "lib/openzeppelin-contracts/contracts/governance/TimelockController.sol:TimelockController" \
-  "$(enc 'constructor(uint256,address[],address[],address)' "$DELAY" "[$PROPOSER]" "[$PROPOSER,0x0000000000000000000000000000000000000000]" 0x0000000000000000000000000000000000000000)"
+  "$(enc 'constructor(uint256,address[],address[],address)' "$DELAY" "[$DEPLOY_PROPOSER]" "[$DEPLOY_PROPOSER,0x0000000000000000000000000000000000000000]" 0x0000000000000000000000000000000000000000)"
 if [ -n "${FIRST_TOKEN:-}" ]; then
   # the coin's name and symbol, from the chain unless given
   RPC=${BASE_RPC:-https://mainnet.base.org}
