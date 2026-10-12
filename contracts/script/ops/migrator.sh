@@ -7,6 +7,7 @@
 # switch comes before any coin graduates on the pad.
 #
 #   bash script/ops/migrator.sh deploy          # forge create, its Standard JSON input for Basescan, the checks
+#   bash script/ops/migrator.sh find            # the migrator the deployer's key deployed last (from its nonce), input and checks
 #   bash script/ops/migrator.sh verify 0x...    # submit that input to Basescan (ETHERSCAN_API_KEY in .env)
 #   bash script/ops/migrator.sh check 0x...     # read it back: its code, its pad, its router
 #
@@ -32,8 +33,24 @@ COMPILER="v0.8.24+commit.e11b9ed9"
 API="https://api.etherscan.io/v2/api?chainid=8453"
 
 lower() { echo "$1" | tr 'A-F' 'a-f'; }
+# a field of the JSON on stdin (forge and cast print it over several lines)
+jfield() { node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const t=s.slice(s.indexOf("{"),s.lastIndexOf("}")+1);console.log(JSON.parse(t)[process.argv[1]]??"")})' "$1"; }
 call() { cast call "$1" "$2" "${@:3}" --rpc-url "$RPC" 2>/dev/null | awk '{print $1}'; }
 json() { node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{try{const j=JSON.parse(d);const v=process.argv[1].split(".").reduce((o,k)=>o==null?undefined:o[k],j);console.log(v==null?"":typeof v==="string"?v:JSON.stringify(v))}catch{console.log("")}})' "$1"; }
+
+# found ADDR: the Standard JSON input for Basescan from this build, the checks, the next steps
+found() {
+  local addr=$1
+  forge build --quiet
+  node script/standard-input.mjs src/UniV2Migrator.sol:UniV2Migrator >/dev/null
+  cp out/verify/UniV2Migrator.standard-input.json "$INPUT"
+  echo "   Standard JSON input written to $INPUT (commit it with the address)"
+  check "$addr"
+  echo
+  echo "next: bash script/ops/migrator.sh verify $addr"
+  echo "      bash script/ops/timelock.sh safe-calldata set-migrator   (paste $addr: the Safe schedules it on the timelock)"
+  echo "      after the execution, MIGRATOR=$addr in $ADDRESSES"
+}
 
 # check ADDR: a migrator of this pad on Base's Uniswap v2, with code
 check() {
@@ -54,17 +71,31 @@ case "${1:-}" in
     forge build --quiet
     # --constructor-args takes every argument after it, so it comes last
     OUT=$(forge create --rpc-url "$RPC" "${SIGNER[@]}" --broadcast --json src/UniV2Migrator.sol:UniV2Migrator --constructor-args "$PAD" "$UNIV2_ROUTER")
-    ADDR=$(echo "$OUT" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const l=s.trim().split("\n").filter(x=>x.startsWith("{")).pop();console.log(JSON.parse(l).deployedTo)})')
-    TX=$(echo "$OUT" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const l=s.trim().split("\n").filter(x=>x.startsWith("{")).pop();console.log(JSON.parse(l).transactionHash)})')
+    ADDR=$(echo "$OUT" | jfield deployedTo)
+    TX=$(echo "$OUT" | jfield transactionHash)
+    [ -n "$ADDR" ] || { echo "forge create answered without an address:"; echo "$OUT"; echo "(if a transaction was sent: bash script/ops/migrator.sh find)"; exit 1; }
     echo "   deployed: $ADDR (tx $TX, block $(cast block-number --rpc-url "$RPC"))"
-    node script/standard-input.mjs src/UniV2Migrator.sol:UniV2Migrator >/dev/null
-    cp out/verify/UniV2Migrator.standard-input.json "$INPUT"
-    echo "   Standard JSON input written to $INPUT (commit it with the address)"
-    check "$ADDR"
-    echo
-    echo "next: bash script/ops/migrator.sh verify $ADDR"
-    echo "      bash script/ops/timelock.sh safe-calldata set-migrator   (paste $ADDR: the Safe schedules it on the timelock)"
-    echo "      after the execution, MIGRATOR=$ADDR in $ADDRESSES"
+    found "$ADDR"
+    ;;
+  find)
+    # the last contracts the deployer's key created: the address a deploy lands at is a function of
+    # the deployer and the nonce it used, so the latest nonces are tried for a migrator of this pad
+    NONCE=$(cast nonce "$DEPLOYER" --rpc-url "$RPC")
+    echo "== the deployer's key $DEPLOYER is at nonce $NONCE: the contracts of its last transactions"
+    ADDR=
+    for ((n = NONCE - 1; n >= NONCE - 5 && n >= 0; n--)); do
+      CAND=$(cast compute-address "$DEPLOYER" --nonce "$n" | awk '{print $NF}')
+      CODE=$(cast code "$CAND" --rpc-url "$RPC" 2>/dev/null || echo 0x)
+      [ "${#CODE}" -gt 4 ] || { echo "   nonce $n: $CAND, no contract"; continue; }
+      if [ "$(lower "$(call "$CAND" 'launchpad()(address)')")" = "$(lower "$PAD")" ]; then
+        echo "   nonce $n: $CAND, a migrator of this pad"
+        ADDR=$CAND
+        break
+      fi
+      echo "   nonce $n: $CAND, a contract, not a migrator of this pad"
+    done
+    [ -n "$ADDR" ] || { echo "no migrator of this pad among the last five contracts of the key"; exit 1; }
+    found "$ADDR"
     ;;
   verify)
     ADDR=${2:?address}

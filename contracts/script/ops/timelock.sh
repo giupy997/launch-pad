@@ -157,7 +157,7 @@ case "${1:-}" in
     else
       RECEIPT=$(cast send "$TIMELOCK" "$SIG_EXECUTE" "$(field "$ID" targets)" 0 "$(field "$ID" payloads)" "$(field "$ID" predecessor)" "$(field "$ID" salt)" "${SIGNER[@]}" --rpc-url "$RPC" --json)
     fi
-    STATUS=$(echo "$RECEIPT" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const l=s.trim().split("\n").filter(x=>x.startsWith("{")).pop();const r=JSON.parse(l);console.log((r.status==="0x1"||r.status===1?"executed":"REVERTED")+" in block "+parseInt(r.blockNumber)+", tx "+r.transactionHash)})')
+    STATUS=$(echo "$RECEIPT" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const r=JSON.parse(s.slice(s.indexOf("{"),s.lastIndexOf("}")+1));console.log((r.status==="0x1"||r.status===1||r.status==="success"?"executed":"REVERTED ("+r.status+")")+" in block "+parseInt(r.blockNumber)+", tx "+r.transactionHash)})')
     echo "   $STATUS"
     ;;
   status)
