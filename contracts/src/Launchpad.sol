@@ -449,7 +449,9 @@ contract Launchpad is LaunchpadBase {
         uint256 total = toTreasury + toCreator + toHolders + toBurnPot;
         if (c.quoteAsset == address(0) ? msg.value != total : msg.value != 0) revert WrongPayment();
         burnPot[token] += toBurnPot;
-        _payOut(c.quoteAsset, treasury, toTreasury + _creditShares(token, c.creator, c.quoteAsset, toCreator, toHolders));
+        _payOut(
+            c.quoteAsset, treasury, toTreasury + _creditShares(token, c.creator, c.quoteAsset, toCreator, toHolders)
+        );
         emit PoolFee(token, toTreasury, toCreator, toHolders, toBurnPot);
     }
 

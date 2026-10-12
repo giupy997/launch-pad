@@ -404,7 +404,9 @@ contract CashbackSolvencyTest is Test {
         assertTrue(done, "the buckets had coins to sell");
         assertGt(fee.toHolders, 0, "the holders' share is the whole of the coin's tax");
         assertEq(fee.toCreator + fee.toBurnPot, 0, "no other share on this coin");
-        assertEq(pad.accCashbackPerShare(token) - acc, (fee.toHolders * ACC) / eligible, "spread over the holders alone");
+        assertEq(
+            pad.accCashbackPerShare(token) - acc, (fee.toHolders * ACC) / eligible, "spread over the holders alone"
+        );
         uint256[] memory after_ = _cashbacks();
         uint256 credited;
         for (uint256 i = 0; i < everyone.length; i++) {
@@ -460,7 +462,9 @@ contract CashbackSolvencyTest is Test {
         // and every claim is backed, the curve's reserve beside them
         (,, uint256 realEth,,,,) = pad.curves(token);
         assertLe(realEth + credited + before, address(pad).balance, "the reserve and every claim are backed");
-        assertLe(address(pad).balance - realEth - credited - before, DUST, "and the pad keeps rounding dust beyond them");
+        assertLe(
+            address(pad).balance - realEth - credited - before, DUST, "and the pad keeps rounding dust beyond them"
+        );
     }
 
     function _claimable() internal view returns (uint256 total) {

@@ -220,7 +220,9 @@ contract MigrateFromLedger is Script {
         // every call, the root and the approval first
         Call[] memory calls = new Call[](_maxCalls(coins) + 2);
         uint256 n = 0;
-        if (needRoot) calls[n++] = Call(address(pad), 0, abi.encodeCall(ILaunchpadMigration.setMigrationRoot, (root, freeze)));
+        if (needRoot) {
+            calls[n++] = Call(address(pad), 0, abi.encodeCall(ILaunchpadMigration.setMigrationRoot, (root, freeze)));
+        }
         if (needApprove) calls[n++] = Call(quote, 0, abi.encodeCall(IERC20.approve, (address(pad), toApprove)));
         for (uint256 i = 0; i < coins.length; i++) {
             n = _coinCalls(pad, coins[i], quote, calls, n);
@@ -291,9 +293,12 @@ contract MigrateFromLedger is Script {
     function scheduleAll(TimelockController timelock, Op[] memory ops) public returns (uint256 scheduled) {
         uint256 delay = timelock.getMinDelay();
         for (uint256 i = 0; i < ops.length; i++) {
-            bytes32 id = timelock.hashOperationBatch(ops[i].targets, ops[i].values, ops[i].payloads, bytes32(0), ops[i].salt);
+            bytes32 id =
+                timelock.hashOperationBatch(ops[i].targets, ops[i].values, ops[i].payloads, bytes32(0), ops[i].salt);
             if (timelock.isOperation(id)) {
-                console.log("operation", i, timelock.isOperationDone(id) ? "already executed" : "already scheduled, ready at");
+                console.log(
+                    "operation", i, timelock.isOperationDone(id) ? "already executed" : "already scheduled, ready at"
+                );
                 if (!timelock.isOperationDone(id)) console.log(timelock.getTimestamp(id));
                 continue;
             }
@@ -308,7 +313,8 @@ contract MigrateFromLedger is Script {
     /// Execute every operation that is ready, sending the native quote its coins need.
     function executeAll(TimelockController timelock, Op[] memory ops) public returns (uint256 executed) {
         for (uint256 i = 0; i < ops.length; i++) {
-            bytes32 id = timelock.hashOperationBatch(ops[i].targets, ops[i].values, ops[i].payloads, bytes32(0), ops[i].salt);
+            bytes32 id =
+                timelock.hashOperationBatch(ops[i].targets, ops[i].values, ops[i].payloads, bytes32(0), ops[i].salt);
             if (timelock.isOperationDone(id)) continue;
             if (!timelock.isOperation(id)) {
                 console.log("operation", i, "is not scheduled: run MODE=schedule first");
@@ -458,7 +464,8 @@ contract MigrateFromLedger is Script {
         string memory tokensKey = "tokens";
         string memory tokensJson = "";
         for (uint256 i = 0; i < coins.length; i++) {
-            tokensJson = vm.serializeAddress(tokensKey, coins[i].symbol, pad.migratedTicker(keccak256(bytes(coins[i].symbol))));
+            tokensJson =
+                vm.serializeAddress(tokensKey, coins[i].symbol, pad.migratedTicker(keccak256(bytes(coins[i].symbol))));
         }
         string memory outKey = "out";
         vm.serializeString(outKey, "network", vm.parseJsonString(vm.readFile(file), ".network"));

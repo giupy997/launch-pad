@@ -28,15 +28,16 @@ contract SlipstreamZapRouter is ZapRouter {
     constructor(address launchpad_, address swapRouter_, address weth_) ZapRouter(launchpad_, swapRouter_, weth_) {}
 
     function _swap(bytes calldata path, uint256 amountIn, uint256 minOut) internal override returns (uint256) {
-        return ISlipstreamRouter(address(swapRouter)).exactInput(
-            ISlipstreamRouter.ExactInputParams({
-                path: path,
-                recipient: address(this),
-                // the transaction is its own deadline: mined now, or not at all
-                deadline: block.timestamp,
-                amountIn: amountIn,
-                amountOutMinimum: minOut
-            })
-        );
+        return ISlipstreamRouter(address(swapRouter))
+            .exactInput(
+                ISlipstreamRouter.ExactInputParams({
+                    path: path,
+                    recipient: address(this),
+                    // the transaction is its own deadline: mined now, or not at all
+                    deadline: block.timestamp,
+                    amountIn: amountIn,
+                    amountOutMinimum: minOut
+                })
+            );
     }
 }

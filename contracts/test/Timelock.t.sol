@@ -182,7 +182,9 @@ contract TimelockTest is Test {
         vm.warp(block.timestamp + DELAY);
         assertEq(script.executeFromFile(timelock, pad, json, coins), 1, "the same plan, now ready, runs");
         assertEq(pad.tokenCount(), 3);
-        assertEq(pad.migrationRoot(), bytes32(uint256(0x28bf69752873a3620128cb7ad5a7b2996f96650d0a165416fdc1980d5651721b)));
+        assertEq(
+            pad.migrationRoot(), bytes32(uint256(0x28bf69752873a3620128cb7ad5a7b2996f96650d0a165416fdc1980d5651721b))
+        );
         assertEq(address(pad).balance, total, "every reserve arrived through the timelock");
         assertTrue(script.allMigrated(pad, coins));
         for (uint256 i = 0; i < coins.length; i++) {
@@ -227,7 +229,8 @@ contract TimelockTest is Test {
 
     /// Schedule, wait out the delay, execute; the plan's shape before it ran.
     function _round(MigrateFromLedger.Coin[] memory coins) internal returns (uint256 calls, bytes4 firstSelector) {
-        (uint256 opCount, uint256[] memory callsPerOp, bytes4[] memory selectors) = script.planSummary(pad, CROWD_JSON, coins);
+        (uint256 opCount, uint256[] memory callsPerOp, bytes4[] memory selectors) =
+            script.planSummary(pad, CROWD_JSON, coins);
         assertEq(opCount, 1);
         calls = callsPerOp[0];
         firstSelector = selectors[0];

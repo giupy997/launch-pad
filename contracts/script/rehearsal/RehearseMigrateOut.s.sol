@@ -18,7 +18,8 @@ contract RehearseMigrateOut is Script {
         uint256 before = quote.balanceOf(cold);
         vm.startBroadcast(Keys.DEPLOYER);
         (uint256 q1,) = ILaunchpadMigration(address(pad)).migrateOut(vm.parseJsonAddress(j, ".curveCoin"), cold);
-        (uint256 q2, uint256 burned) = ILaunchpadMigration(address(pad)).migrateOut(vm.parseJsonAddress(j, ".gradCoin"), cold);
+        (uint256 q2, uint256 burned) =
+            ILaunchpadMigration(address(pad)).migrateOut(vm.parseJsonAddress(j, ".gradCoin"), cold);
         vm.stopBroadcast();
         console.log("CURVE reserve out:", q1);
         console.log("GRAD pool out:", q2, "tokens burned:", burned);

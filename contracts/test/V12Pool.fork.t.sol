@@ -282,7 +282,9 @@ abstract contract V12PoolForkBase is Test {
         _assertMigratorEmpty();
         // the pool: the DEX reserve's share against the raise and the coin's liquidity pot, at the closing price
         (uint256 rToken, uint256 rQuote) = _reserves();
-        assertEq(rToken + pad.lockedAtGraduation(token), pad.DEX_RESERVE(), "the pool and the lock share the DEX reserve");
+        assertEq(
+            rToken + pad.lockedAtGraduation(token), pad.DEX_RESERVE(), "the pool and the lock share the DEX reserve"
+        );
         assertGt(pad.lockedAtGraduation(token), 0, "the curve's virtual share stays locked in the pad");
         (uint256 vEth, uint256 vToken,,,,,) = pad.curves(token);
         uint256 poolSide = rQuote * vToken;
@@ -304,7 +306,9 @@ abstract contract V12PoolForkBase is Test {
         _prepareBuy(carol, spend);
         (uint256 rToken, uint256 rQuote) = _reserves();
         uint256 out = ROUTER.getAmountsOut(spend, _path(pairAsset, token))[1];
-        assertEq(out, _amountOut(spend, rQuote, rToken), "the router quotes Uniswap's arithmetic on the pair's reserves");
+        assertEq(
+            out, _amountOut(spend, rQuote, rToken), "the router quotes Uniswap's arithmetic on the pair's reserves"
+        );
         uint256 tax = (out * RATE) / 10_000;
         uint256 net = out - tax;
         uint256 padCoins = IERC20(token).balanceOf(address(pad));
@@ -344,7 +348,11 @@ abstract contract V12PoolForkBase is Test {
         vm.expectEmit(true, false, false, true, address(pad));
         emit LaunchpadBase.Taxed(token, false, tax);
         _routerSell(bob, amount, quoted); // the minimum at the quote for the net: passes exactly
-        assertEq(_padQuote(bob) - bobQ, quoted + stray, "paid the pair's price for the net (plus what strangers left on the router)");
+        assertEq(
+            _padQuote(bob) - bobQ,
+            quoted + stray,
+            "paid the pair's price for the net (plus what strangers left on the router)"
+        );
         assertEq(IERC20(token).balanceOf(address(pad)) - padCoins, tax, "the tax went to the pad, in coins");
         (uint256 platform, uint256 pot) = _split(tax);
         assertEq(pad.taxTreasury(token), platform, "the launchpad's part");
@@ -511,7 +519,9 @@ abstract contract V12PoolForkBase is Test {
             assertEq(migrator.liquidity(token), s.lp, "nothing minted");
             assertEq(pad.burnPot(token), s.burnPot + e.qL, "the share's quote waits for a buyback");
         }
-        assertEq(IUniswapV2PairView(pair).balanceOf(address(migrator)), migrator.liquidity(token), "the LP is the migrator's");
+        assertEq(
+            IUniswapV2PairView(pair).balanceOf(address(migrator)), migrator.liquidity(token), "the LP is the migrator's"
+        );
         // the quote: the treasury's part less the tip, the tip to the caller, creator and holders booked
         assertEq(_padQuote(treasury) - s.treasuryQ, e.qT, "the treasury: its part, the tip off");
         assertEq(_padQuote(caller) - s.callerQ, e.tip, "the caller: a twentieth of the treasury's part");
@@ -527,7 +537,10 @@ abstract contract V12PoolForkBase is Test {
         // the holders' share reached the holders, pro rata; the pool and the migrator earn none
         uint256 eligible = pad.eligibleSupply(token);
         assertApproxEqAbs(
-            pad.cashbackOf(token, bob) - s.bobCashback, (IERC20(token).balanceOf(bob) * e.qH) / eligible, 1, "bob's cashback"
+            pad.cashbackOf(token, bob) - s.bobCashback,
+            (IERC20(token).balanceOf(bob) * e.qH) / eligible,
+            1,
+            "bob's cashback"
         );
         assertApproxEqAbs(
             pad.cashbackOf(token, carol) - s.carolCashback,
@@ -624,12 +637,16 @@ contract V12PoolEthForkTest is V12PoolForkBase {
 
     function _routerBuy(address who, uint256 quoteIn, uint256 minOut) internal override {
         vm.prank(who);
-        ROUTER.swapExactETHForTokensSupportingFeeOnTransferTokens{value: quoteIn}(minOut, _path(WETH, token), who, _deadline());
+        ROUTER.swapExactETHForTokensSupportingFeeOnTransferTokens{value: quoteIn}(
+            minOut, _path(WETH, token), who, _deadline()
+        );
     }
 
     function _routerSell(address who, uint256 tokensIn, uint256 minOut) internal override {
         vm.prank(who);
-        ROUTER.swapExactTokensForETHSupportingFeeOnTransferTokens(tokensIn, minOut, _path(token, WETH), who, _deadline());
+        ROUTER.swapExactTokensForETHSupportingFeeOnTransferTokens(
+            tokensIn, minOut, _path(token, WETH), who, _deadline()
+        );
     }
 
     function _routerStray() internal view override returns (uint256) {
@@ -699,7 +716,9 @@ contract V12PoolEthForkTest is V12PoolForkBase {
         assertEq(amounts[0], cost, "the router sized the input from the reserves alone");
         assertEq(amounts[1], want, "and reports the exact amount");
         assertEq(carol.balance, 1 ether - cost, "the ETH not needed came back");
-        assertEq(IERC20(token).balanceOf(carol), want - (want * RATE) / 10_000, "but carol holds less than the exact amount");
+        assertEq(
+            IERC20(token).balanceOf(carol), want - (want * RATE) / 10_000, "but carol holds less than the exact amount"
+        );
         assertLt(IERC20(token).balanceOf(carol), want);
     }
 }
@@ -773,12 +792,16 @@ contract V12PoolCbLtcForkTest is V12PoolForkBase {
 
     function _routerBuy(address who, uint256 quoteIn, uint256 minOut) internal override {
         vm.prank(who);
-        ROUTER.swapExactTokensForTokensSupportingFeeOnTransferTokens(quoteIn, minOut, _path(CBLTC, token), who, _deadline());
+        ROUTER.swapExactTokensForTokensSupportingFeeOnTransferTokens(
+            quoteIn, minOut, _path(CBLTC, token), who, _deadline()
+        );
     }
 
     function _routerSell(address who, uint256 tokensIn, uint256 minOut) internal override {
         vm.prank(who);
-        ROUTER.swapExactTokensForTokensSupportingFeeOnTransferTokens(tokensIn, minOut, _path(token, CBLTC), who, _deadline());
+        ROUTER.swapExactTokensForTokensSupportingFeeOnTransferTokens(
+            tokensIn, minOut, _path(token, CBLTC), who, _deadline()
+        );
     }
 
     function _routerStray() internal pure override returns (uint256) {
@@ -844,7 +867,9 @@ contract V12PoolCbLtcForkTest is V12PoolForkBase {
         assertEq(amounts[0], cost, "the router sized the input from the reserves alone");
         assertEq(amounts[1], want, "and reports the exact amount");
         assertEq(cbBefore - CB.balanceOf(carol), cost, "exactly that much cbLTC was pulled");
-        assertEq(IERC20(token).balanceOf(carol), want - (want * RATE) / 10_000, "but carol holds less than the exact amount");
+        assertEq(
+            IERC20(token).balanceOf(carol), want - (want * RATE) / 10_000, "but carol holds less than the exact amount"
+        );
         assertLt(IERC20(token).balanceOf(carol), want);
     }
 }

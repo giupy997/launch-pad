@@ -44,8 +44,15 @@ contract RehearseCheck is Script {
     /// The coin's fee configuration (the pad's own rate stamped on it), its
     /// fee recipient, its metadata, its burn and its pots, as frozen.
     function _checkFees(Launchpad pad, MigrateFromLedger.Coin memory c, address token) internal view {
-        (uint16 buyTax, uint16 sellTax, uint16 creatorBps, uint16 holdersBps, uint16 burnBps, uint16 liquidityBps, uint16 platformBps) =
-            pad.feeConfig(token);
+        (
+            uint16 buyTax,
+            uint16 sellTax,
+            uint16 creatorBps,
+            uint16 holdersBps,
+            uint16 burnBps,
+            uint16 liquidityBps,
+            uint16 platformBps
+        ) = pad.feeConfig(token);
         require(
             buyTax == c.buyTaxBps && sellTax == c.sellTaxBps && creatorBps == c.creatorBps && holdersBps == c.holdersBps
                 && burnBps == c.burnBps && liquidityBps == c.liquidityBps,
@@ -74,10 +81,18 @@ contract RehearseCheck is Script {
         uint256 price = (vEth * 1e18) / vToken;
         uint256 expected = ((c.virtualQuote + c.realQuote) * 1e18) / (pad.VIRTUAL_TOKEN() - c.sold);
         require(price == expected, string.concat(c.symbol, ": the curve price differs"));
-        console.log(string.concat("PASS ", c.symbol, ": curve coin, holders and price as frozen;"), c.holders.length, "holders, price (wei/token)", price);
+        console.log(
+            string.concat("PASS ", c.symbol, ": curve coin, holders and price as frozen;"),
+            c.holders.length,
+            "holders, price (wei/token)",
+            price
+        );
     }
 
-    function _checkPool(Launchpad pad, UniV2Migrator migrator, MigrateFromLedger.Coin memory c, address token) internal view {
+    function _checkPool(Launchpad pad, UniV2Migrator migrator, MigrateFromLedger.Coin memory c, address token)
+        internal
+        view
+    {
         (,,,, bool graduated,,) = pad.curves(token);
         require(graduated, string.concat(c.symbol, ": should have graduated"));
         address pair = migrator.pairOf(token);
@@ -89,6 +104,11 @@ contract RehearseCheck is Script {
         uint256 rhs = (c.realQuote + c.liquidityPot) * rToken;
         uint256 tol = rhs / 1000;
         require(lhs + tol >= rhs && lhs <= rhs + tol, string.concat(c.symbol, ": the pool price differs"));
-        console.log(string.concat("PASS ", c.symbol, ": graduated coin, holders and pool price as frozen;"), c.holders.length, "holders, pool quote (wei)", rQuote);
+        console.log(
+            string.concat("PASS ", c.symbol, ": graduated coin, holders and pool price as frozen;"),
+            c.holders.length,
+            "holders, pool quote (wei)",
+            rQuote
+        );
     }
 }

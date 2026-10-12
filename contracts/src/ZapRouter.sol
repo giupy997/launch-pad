@@ -88,10 +88,7 @@ contract ZapRouter is ReentrancyGuard {
     function _swap(bytes calldata path, uint256 amountIn, uint256 minOut) internal virtual returns (uint256) {
         return swapRouter.exactInput(
             ISwapRouter02.ExactInputParams({
-                path: path,
-                recipient: address(this),
-                amountIn: amountIn,
-                amountOutMinimum: minOut
+                path: path, recipient: address(this), amountIn: amountIn, amountOutMinimum: minOut
             })
         );
     }

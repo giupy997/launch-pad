@@ -76,7 +76,8 @@ contract FeesTest is Test {
     }
 
     function _fees(address token) internal view returns (LaunchpadBase.FeeConfig memory f) {
-        (f.buyTaxBps, f.sellTaxBps, f.creatorBps, f.holdersBps, f.burnBps, f.liquidityBps, f.platformBps) = pad.feeConfig(token);
+        (f.buyTaxBps, f.sellTaxBps, f.creatorBps, f.holdersBps, f.burnBps, f.liquidityBps, f.platformBps) =
+            pad.feeConfig(token);
     }
 
     function _reserves(address token) internal view returns (uint256 rToken, uint256 rQuote) {
@@ -262,8 +263,11 @@ contract FeesTest is Test {
         (uint256 sellPlatform, uint256 sellPot) = _split(sellFee, 350);
         // not round this time: what the four shares leave over goes to the treasury with the launchpad's part
         uint256 toCreator = (sellPot * 5000) / 10_000;
-        uint256 dust = sellPot - toCreator - (sellPot * 2000) / 10_000 - (sellPot * 2000) / 10_000 - (sellPot * 1000) / 10_000;
-        assertEq(quote.balanceOf(treasury) - treasuryBefore, sellPlatform + dust, "the launchpad's part, and the rounding");
+        uint256 dust =
+            sellPot - toCreator - (sellPot * 2000) / 10_000 - (sellPot * 2000) / 10_000 - (sellPot * 1000) / 10_000;
+        assertEq(
+            quote.balanceOf(treasury) - treasuryBefore, sellPlatform + dust, "the launchpad's part, and the rounding"
+        );
         assertEq(pad.creatorFees(alice, address(quote)) - creatorBefore, toCreator);
     }
 
@@ -275,7 +279,9 @@ contract FeesTest is Test {
         _buy(bob, token, 10e8);
         assertEq(_curve(token).realEth, 10e8 - 0.05e8, "0.5% off");
         assertEq(quote.balanceOf(treasury), 0.05e8, "whole to the treasury");
-        assertEq(pad.creatorFees(alice, address(quote)), 0, "the launchpad's fee feeds no share: nothing for the creator");
+        assertEq(
+            pad.creatorFees(alice, address(quote)), 0, "the launchpad's fee feeds no share: nothing for the creator"
+        );
         assertEq(pad.burnPot(token) + pad.liquidityPot(token) + pad.cashbackOf(token, bob), 0);
         // nor for the holders of a coin that would have given its tax to them
         vm.prank(alice);
@@ -332,7 +338,9 @@ contract FeesTest is Test {
         assertEq(then.sold, c.sold + burned, "the burned coins left the curve too");
         assertEq(IERC20(token).balanceOf(address(pad)), pad.TOTAL_SUPPLY() - then.sold, "the pad's inventory agrees");
         assertEq(
-            IERC20(token).balanceOf(bob) + IERC20(token).balanceOf(carol), then.sold - pad.burned(token), "holders own sold less burned"
+            IERC20(token).balanceOf(bob) + IERC20(token).balanceOf(carol),
+            then.sold - pad.burned(token),
+            "holders own sold less burned"
         );
         vm.roll(block.number + 1);
         vm.expectRevert(LaunchpadBase.ZeroAmount.selector);
@@ -367,12 +375,18 @@ contract FeesTest is Test {
         assertLt(pad.burnPot(token), burnPot);
         assertEq(pad.liquidityPot(token), 0, "the liquidity pot went into the pool");
         (uint256 rToken, uint256 rQuote) = _reserves(token);
-        assertEq(rToken + pad.lockedAtGraduation(token), pad.DEX_RESERVE(), "the pool and the lock share the DEX reserve");
+        assertEq(
+            rToken + pad.lockedAtGraduation(token), pad.DEX_RESERVE(), "the pool and the lock share the DEX reserve"
+        );
         assertEq(rQuote, (c.vEth - 30e8) + liqPot, "the pool holds the raise and the liquidity pot");
         // against coins at the closing price, never more than the reserve: a pot this big asks for more
         // than the 200M, so the whole reserve goes in and the pool opens above the closing price
         uint256 atClosing = (rQuote * c.vToken) / c.vEth;
-        assertEq(rToken, atClosing > pad.DEX_RESERVE() ? pad.DEX_RESERVE() : atClosing, "coins at the closing price, capped by the reserve");
+        assertEq(
+            rToken,
+            atClosing > pad.DEX_RESERVE() ? pad.DEX_RESERVE() : atClosing,
+            "coins at the closing price, capped by the reserve"
+        );
 
         // graduated: the leftover pot buys on the pool, a two-hundredth of its quote side at a time, and burns
         uint256 supply = IERC20(token).totalSupply();
@@ -562,7 +576,11 @@ contract FeesTest is Test {
 
         assertEq(pad.taxTreasury(token), 0, "nothing in the launchpad's bucket");
         assertEq(pad.taxPot(token), 0, "nor in the coin's");
-        assertEq(IERC20(token).balanceOf(address(pad)), pad.lockedAtGraduation(token), "the pad holds the lock alone: no coins taxed");
+        assertEq(
+            IERC20(token).balanceOf(address(pad)),
+            pad.lockedAtGraduation(token),
+            "the pad holds the lock alone: no coins taxed"
+        );
         assertEq(IERC20(token).balanceOf(address(migrator)), 0, "nothing parked");
         _assertEligible(token, pair);
 
@@ -876,9 +894,13 @@ contract FeesTest is Test {
         vm.prank(address(migrator));
         pad.poolFee(token, 0, 0, toHolders, 0);
         uint256 supply = pad.eligibleSupply(token);
-        assertApproxEqAbs(pad.cashbackOf(token, bob) - bobBefore, (toHolders * IERC20(token).balanceOf(bob)) / supply, 2);
+        assertApproxEqAbs(
+            pad.cashbackOf(token, bob) - bobBefore, (toHolders * IERC20(token).balanceOf(bob)) / supply, 2
+        );
         assertApproxEqAbs(pad.cashbackOf(token, carol), (toHolders * got) / supply, 2);
-        assertApproxEqAbs(pad.cashbackOf(token, bob) - bobBefore + pad.cashbackOf(token, carol), toHolders, 2, "whole to the holders");
+        assertApproxEqAbs(
+            pad.cashbackOf(token, bob) - bobBefore + pad.cashbackOf(token, carol), toHolders, 2, "whole to the holders"
+        );
     }
 
     /// A registered pool earns no cashback of its own either: the holders' share is spread over the eligible
@@ -892,7 +914,9 @@ contract FeesTest is Test {
         quote.mint(address(pad), toHolders);
         vm.prank(address(migrator));
         pad.poolFee(token, 0, 0, toHolders, 0);
-        assertApproxEqAbs(pad.cashbackOf(token, bob) + pad.cashbackOf(token, carol) - before, toHolders, 2, "whole to the holders");
+        assertApproxEqAbs(
+            pad.cashbackOf(token, bob) + pad.cashbackOf(token, carol) - before, toHolders, 2, "whole to the holders"
+        );
         assertEq(pad.cashbackOf(token, pair), 0, "the pool earns nothing");
         assertEq(pad.cashbackOf(token, address(migrator)), 0, "nor the migrator");
         assertEq(pad.cashbackOf(token, address(pad)), 0, "nor the pad");

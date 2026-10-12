@@ -57,9 +57,15 @@ contract RehearseSource is Script {
 
         vm.startBroadcast(Keys.ALICE);
         // a coin with fees of its own: 3% tax each way, split creator / holders / burn / liquidity
-        e.curveCoin = e.pad.createTokenWithFees(
-            "Curve Coin", "CURVE", 0, meta, address(e.quote), LaunchpadBase.FeeConfig(300, 300, 5000, 2000, 2000, 1000, 0)
-        );
+        e.curveCoin = e.pad
+            .createTokenWithFees(
+                "Curve Coin",
+                "CURVE",
+                0,
+                meta,
+                address(e.quote),
+                LaunchpadBase.FeeConfig(300, 300, 5000, 2000, 2000, 1000, 0)
+            );
         e.quote.approve(address(e.pad), 5e8);
         e.pad.buyWithQuote(e.curveCoin, 5e8, 0);
         vm.stopBroadcast();
@@ -72,9 +78,15 @@ contract RehearseSource is Script {
 
         vm.startBroadcast(Keys.CAROL);
         // taxed too, its pot mostly holders and burn: a buyback mid-curve, then the graduating buy leaves a burn pot behind
-        e.gradCoin = e.pad.createTokenWithFees(
-            "Grad Coin", "GRAD", 0, meta, address(e.quote), LaunchpadBase.FeeConfig(200, 200, 1000, 5000, 3000, 1000, 0)
-        );
+        e.gradCoin = e.pad
+            .createTokenWithFees(
+                "Grad Coin",
+                "GRAD",
+                0,
+                meta,
+                address(e.quote),
+                LaunchpadBase.FeeConfig(200, 200, 1000, 5000, 3000, 1000, 0)
+            );
         e.quote.approve(address(e.pad), 300e8);
         e.pad.buyWithQuote(e.gradCoin, 20e8, 0);
         e.pad.buybackAndBurn(e.gradCoin); // burned coins in a coin that then graduates

@@ -78,9 +78,10 @@ contract MigrationTest is Test {
 
     /// A Notus coin's fees: 1% a side, the pot whole to the holders (holders mode) or to the creator.
     function _fees(bool holdersMode) internal pure returns (LaunchpadBase.FeeConfig memory) {
-        return LaunchpadBase.FeeConfig(
-            uint16(TAX), uint16(TAX), holdersMode ? 0 : 10_000, holdersMode ? 10_000 : 0, 0, 0, 0
-        );
+        return
+            LaunchpadBase.FeeConfig(
+                uint16(TAX), uint16(TAX), holdersMode ? 0 : 10_000, holdersMode ? 10_000 : 0, 0, 0, 0
+            );
     }
 
     /// A curve coin as the ledger left it, funded in the chain's own coin: the reserve the curve
@@ -230,8 +231,15 @@ contract MigrationTest is Test {
 
     /// The coin's own tax came along, and the launchpad's fee is this launchpad's.
     function _assertNotusFees(address token, bool holdersMode) internal view {
-        (uint16 buyTax, uint16 sellTax, uint16 creatorBps, uint16 holdersBps, uint16 burnBps, uint16 liqBps, uint16 platformBps) =
-            pad.feeConfig(token);
+        (
+            uint16 buyTax,
+            uint16 sellTax,
+            uint16 creatorBps,
+            uint16 holdersBps,
+            uint16 burnBps,
+            uint16 liqBps,
+            uint16 platformBps
+        ) = pad.feeConfig(token);
         assertEq(buyTax, TAX);
         assertEq(sellTax, TAX);
         assertEq(creatorBps, holdersMode ? 0 : 10_000, "the pot whole to the creator, or to the holders");
@@ -255,7 +263,11 @@ contract MigrationTest is Test {
         assertEq(IERC20(token).balanceOf(dave), expected);
         assertEq(fee, (ethIn * 150) / 10_000, "1.5% in all: 0.5% the launchpad's, 1% the coin's");
         assertEq(treasury.balance, platform, "the launchpad's 0.5%, whole, to the treasury");
-        assertEq(pad.creatorFees(creator, address(0)), fee - platform, "creator mode: the coin's 1% tax, whole, to the creator");
+        assertEq(
+            pad.creatorFees(creator, address(0)),
+            fee - platform,
+            "creator mode: the coin's 1% tax, whole, to the creator"
+        );
         assertEq(pad.creatorFees(creator, address(0)), ethIn / 100);
 
         // a migrated holder sells into the migrated reserve
@@ -264,9 +276,13 @@ contract MigrationTest is Test {
 
     /// alice sells half her migrated balance at the rate `f`; the reserve, the treasury and the
     /// creator's claim move by exactly the curve's figures from where they stood.
-    function _aliceSellsHalf(address token, uint256 f, uint256 reserveBefore, uint256 treasuryBefore, uint256 creatorBefore)
-        internal
-    {
+    function _aliceSellsHalf(
+        address token,
+        uint256 f,
+        uint256 reserveBefore,
+        uint256 treasuryBefore,
+        uint256 creatorBefore
+    ) internal {
         uint256 half = bals[0] / 2;
         (uint256 out, uint256 sellFee, uint256 sellPlatform) = _quoteSell(token, half, f);
         vm.startPrank(alice);
@@ -277,7 +293,11 @@ contract MigrationTest is Test {
         assertEq(_reserve(token), reserveBefore - out, "reserve moved by the buy and the sell");
         assertEq(treasury.balance, treasuryBefore + sellPlatform, "the launchpad's fee on the sell too");
         assertEq(pad.creatorFees(creator, address(0)), creatorBefore + (sellFee - sellPlatform));
-        assertEq(address(pad).balance, _reserve(token) + pad.creatorFees(creator, address(0)), "the pad holds the reserve and the creator's claim, nothing less");
+        assertEq(
+            address(pad).balance,
+            _reserve(token) + pad.creatorFees(creator, address(0)),
+            "the pad holds the reserve and the creator's claim, nothing less"
+        );
     }
 
     function _reserve(address token) internal view returns (uint256 realEth) {
@@ -495,8 +515,16 @@ contract MigrationTest is Test {
         address token = mig.migrateToken{value: 0.64 ether}(c, holders, full);
         address pair = factory.getPair(token, address(weth));
         assertTrue(pair != address(0), "the pair was created");
-        assertEq(IERC20(token).balanceOf(pair), pad.DEX_RESERVE() - pad.lockedAtGraduation(token), "the pool's share of the reserve sits in the pool");
-        assertEq(IERC20(token).balanceOf(address(pad)), pad.lockedAtGraduation(token), "the virtual share stays locked in the pad");
+        assertEq(
+            IERC20(token).balanceOf(pair),
+            pad.DEX_RESERVE() - pad.lockedAtGraduation(token),
+            "the pool's share of the reserve sits in the pool"
+        );
+        assertEq(
+            IERC20(token).balanceOf(address(pad)),
+            pad.lockedAtGraduation(token),
+            "the virtual share stays locked in the pad"
+        );
         assertEq(weth.balanceOf(pair), 0.64 ether, "the raise sits in the pool");
         (uint256 vEth, uint256 vToken,,,,,) = pad.curves(token);
         assertEq(IERC20(token).balanceOf(pair), (0.64 ether * vToken) / vEth, "coins at the closing price");
@@ -504,7 +532,11 @@ contract MigrationTest is Test {
         assertEq(migrator.pairAsset(token), address(weth));
         assertEq(migrator.pairOf(token), pair);
         assertGt(migrator.liquidity(token), 0);
-        assertEq(MockV2Pair(pair).balanceOf(address(migrator)), migrator.liquidity(token), "the adapter holds the LP tokens, and has no way to give them up");
+        assertEq(
+            MockV2Pair(pair).balanceOf(address(migrator)),
+            migrator.liquidity(token),
+            "the adapter holds the LP tokens, and has no way to give them up"
+        );
         // the pool is the coin's from now on: taxed, and no cashback on what it holds
         assertTrue(pad.taxedPool(token, pair), "the pool migrate returned is registered");
         assertEq(address(pad.graduatedVia(token)), address(migrator));
@@ -631,7 +663,9 @@ contract MigrationTest is Test {
         // and the caller's approval must cover the whole figure
         cb.approve(address(pad), expected - 1);
         vm.expectRevert(
-            abi.encodeWithSelector(IERC20Errors.ERC20InsufficientAllowance.selector, address(pad), expected - 1, expected)
+            abi.encodeWithSelector(
+                IERC20Errors.ERC20InsufficientAllowance.selector, address(pad), expected - 1, expected
+            )
         );
         mig.migrateToken(c, holders, bals);
         cb.approve(address(pad), type(uint256).max);
@@ -671,7 +705,11 @@ contract MigrationTest is Test {
         assertEq(cb.balanceOf(treasury), platform, "the launchpad's 0.5%, in cbLTC");
         assertEq(platform, 5_000);
         assertEq(pad.creatorFees(creator, address(cb)), fee - platform, "the coin's 1%, to the creator, in cbLTC");
-        assertEq(cb.balanceOf(address(pad)), reserve + amountIn - platform, "the pad holds the reserve and the creator's claim");
+        assertEq(
+            cb.balanceOf(address(pad)),
+            reserve + amountIn - platform,
+            "the pad holds the reserve and the creator's claim"
+        );
         // a migrated holder sells for cbLTC
         (uint256 out, uint256 sellFee,) = _quoteSell(token, bals[2], PLATFORM + TAX);
         vm.startPrank(carol);
@@ -788,7 +826,11 @@ contract MigrationTest is Test {
         vm.prank(dave);
         pad.buy{value: ethIn}(later, 0);
         assertEq(treasury.balance, (ethIn * 50) / 10_000 + (ethIn * 100) / 10_000);
-        assertEq(pad.creatorFees(creator, address(0)), 2 * (ethIn * TAX) / 10_000, "the coin's tax is the ledger's either way");
+        assertEq(
+            pad.creatorFees(creator, address(0)),
+            2 * (ethIn * TAX) / 10_000,
+            "the coin's tax is the ledger's either way"
+        );
     }
 
     /// A ledger coin whose creator had redirected the creator share keeps the redirection;
@@ -995,7 +1037,9 @@ contract MigrationTest is Test {
         Launchpad fresh = new Launchpad(treasury);
         ILaunchpadMigration freshMig = ILaunchpadMigration(address(fresh));
         vm.expectRevert(LaunchpadBase.MigrationNotOpen.selector);
-        freshMig.migrateToken{value: realQuote}(_coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold), holders, bals);
+        freshMig.migrateToken{value: realQuote}(
+            _coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold), holders, bals
+        );
         vm.expectRevert(LaunchpadBase.BadMigration.selector);
         freshMig.setMigrationRoot(bytes32(0), 1);
         freshMig.setMigrationRoot(ROOT, 3_600_085);
@@ -1004,7 +1048,9 @@ contract MigrationTest is Test {
         vm.expectRevert(LaunchpadBase.BadMigration.selector);
         freshMig.setMigrationRoot(bytes32(uint256(2)), 1); // never changed
         vm.deal(address(this), 200 ether);
-        address token = freshMig.migrateToken{value: realQuote}(_coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold), holders, bals);
+        address token = freshMig.migrateToken{value: realQuote}(
+            _coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold), holders, bals
+        );
         freshMig.closeMigration();
         vm.expectRevert(LaunchpadBase.MigrationNotOpen.selector);
         freshMig.migrateToken{value: realQuote}(_coin("Dog", "DOG", creator, false, virtualQuote, sold), holders, bals);
@@ -1038,8 +1084,17 @@ contract MigrationTest is Test {
         Before memory b = _snapshot(token, pair);
         assertGt(b.tT, 0, "the launchpad's bucket");
         assertGt(b.tP, 0, "the coin's bucket");
-        assertApproxEqAbs(b.tP, (b.tT * TAX) / PLATFORM, 4, "split at the rate the token applied, 0.5% to 1%: two trades, two units of rounding each");
-        assertEq(IERC20(token).balanceOf(address(pad)), b.locked + b.tT + b.tP, "the pad holds the locked share and the buckets");
+        assertApproxEqAbs(
+            b.tP,
+            (b.tT * TAX) / PLATFORM,
+            4,
+            "split at the rate the token applied, 0.5% to 1%: two trades, two units of rounding each"
+        );
+        assertEq(
+            IERC20(token).balanceOf(address(pad)),
+            b.locked + b.tT + b.tP,
+            "the pad holds the locked share and the buckets"
+        );
         assertEq(pad.burned(token), 0, "nothing burned yet");
 
         mig.announceFreeze(block.number + 5);
@@ -1049,19 +1104,37 @@ contract MigrationTest is Test {
 
         assertEq(pad.taxTreasury(token), 0, "the launchpad's bucket is gone");
         assertEq(pad.taxPot(token), 0, "the coin's bucket is gone");
-        assertEq(pad.burned(token), b.tT + b.tP, "burned grew by the buckets: coins that left the curve and exist no more");
+        assertEq(
+            pad.burned(token), b.tT + b.tP, "burned grew by the buckets: coins that left the curve and exist no more"
+        );
         assertEq(IERC20(token).totalSupply(), b.supply - tokensBurned, "the supply fell by everything burned");
         assertGt(tokensBurned, b.tT + b.tP, "the pool's token side came back and was burned too");
         assertLe(tokensBurned, b.tT + b.tP + b.pairTokens);
-        assertGe(tokensBurned, b.tT + b.tP + (b.pairTokens * 999) / 1000, "all of the pool's side but Uniswap's minimum liquidity");
-        assertEq(IERC20(token).balanceOf(address(pad)), b.locked, "nothing of the coin stays here but the share locked at graduation");
+        assertGe(
+            tokensBurned,
+            b.tT + b.tP + (b.pairTokens * 999) / 1000,
+            "all of the pool's side but Uniswap's minimum liquidity"
+        );
+        assertEq(
+            IERC20(token).balanceOf(address(pad)),
+            b.locked,
+            "nothing of the coin stays here but the share locked at graduation"
+        );
         assertEq(IERC20(token).balanceOf(dave), b.daveTokens, "holders keep theirs");
-        assertEq(IERC20(token).totalSupply(), b.daveTokens + b.locked + IERC20(token).balanceOf(pair), "what is left: holders, the lock, the pool's dust");
+        assertEq(
+            IERC20(token).totalSupply(),
+            b.daveTokens + b.locked + IERC20(token).balanceOf(pair),
+            "what is left: holders, the lock, the pool's dust"
+        );
         assertEq(weth.balanceOf(cold), quoteOut, "the pool's quote side, as WETH, to the bridge");
         assertGt(quoteOut, 0);
         assertTrue(pad.migratedOut(token));
         assertEq(pad.migratedPair(token), pair);
-        assertEq(pad.transferRate(token, pair, dave), 0, "the pool it left pays out untaxed: nothing is booked after a coin left");
+        assertEq(
+            pad.transferRate(token, pair, dave),
+            0,
+            "the pool it left pays out untaxed: nothing is booked after a coin left"
+        );
         vm.expectRevert(LaunchpadBase.Frozen.selector);
         pad.transferRate(token, dave, pair); // and nothing goes the other way
     }

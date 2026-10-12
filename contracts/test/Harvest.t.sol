@@ -337,7 +337,10 @@ contract HarvestTest is Test {
         // the holders' share reached the holders, pro rata
         uint256 eligible = pad.eligibleSupply(token);
         assertApproxEqAbs(
-            pad.cashbackOf(token, bob) - s.bobCashback, (IERC20(token).balanceOf(bob) * e.qH) / eligible, 1, "bob's cashback"
+            pad.cashbackOf(token, bob) - s.bobCashback,
+            (IERC20(token).balanceOf(bob) * e.qH) / eligible,
+            1,
+            "bob's cashback"
         );
         assertApproxEqAbs(
             pad.cashbackOf(token, carol) - s.carolCashback,
@@ -478,7 +481,10 @@ contract HarvestTest is Test {
         assertApproxEqAbs(pool.creator * 3, e.quoteOut, 4, "a third the creator's");
         assertApproxEqAbs(pool.holders * 3, e.quoteOut, 4, "a third the holders'");
         assertApproxEqRel(
-            (pool.treasury * 1e18) / pool.creator, (curve.treasury * 1e18) / curve.creator, 1e13, "the curve's proportion"
+            (pool.treasury * 1e18) / pool.creator,
+            (curve.treasury * 1e18) / curve.creator,
+            1e13,
+            "the curve's proportion"
         );
         // and about the same quote: the tax in coins, sold back into the pool it came from
         assertApproxEqRel(e.quoteOut, fee, 0.02e18, "within 2%: the sale's slippage and Uniswap's fee");
@@ -602,7 +608,11 @@ contract HarvestTest is Test {
         // smaller still, since the burn share and the kept half of the liquidity share are never sold,
         // and the deepening puts the liquidity share's quote back in
         assertLe(e.quoteOut, rQuote / 200 + 1, "the sale takes half a percent at most");
-        assertEq(rQuote - rQuoteAfter, e.quoteOut - e.qL, "the quote side moved by the sale, less what the deepening returned");
+        assertEq(
+            rQuote - rQuoteAfter,
+            e.quoteOut - e.qL,
+            "the quote side moved by the sale, less what the deepening returned"
+        );
         assertLe(rQuote - rQuoteAfter, rQuote / 200 + 1, "never more than half a percent out of the quote side");
         assertGt(pad.taxTreasury(token) + pad.taxPot(token), 0, "the rest waits for the next block");
 

@@ -87,7 +87,9 @@ contract RehearseV12Pool is Script {
         _sell();
         _harvest();
         _transfer();
-        console.log(string.concat("POOL PASS ", symbol, ": a taxed buy and sell on the pool, a harvest, a free transfer"));
+        console.log(
+            string.concat("POOL PASS ", symbol, ": a taxed buy and sell on the pool, a harvest, a free transfer")
+        );
     }
 
     /// Who plays a part: anvil's account for that key, or the script's signer for every part.
@@ -156,7 +158,9 @@ contract RehearseV12Pool is Script {
         console.log("sell: quote got", IERC20(s.quote).balanceOf(bob) - before, "expected", out);
         console.log("      buckets grew by", _buckets() - buckets, "expected", amount - net);
         console.log("      buckets now", s.pad.taxTreasury(s.token), s.pad.taxPot(s.token));
-        require(IERC20(s.quote).balanceOf(bob) - before == out, "the seller did not get the pair's price for the net amount");
+        require(
+            IERC20(s.quote).balanceOf(bob) - before == out, "the seller did not get the pair's price for the net amount"
+        );
         // the sell fee, exactly; a DEX whose pair pays a protocol fee out in the input coin
         // on each swap (Lester Labs' on Liteforge: 0.2% of what came in, to its collector)
         // adds that leg, pair -> collector, taxed at the buy rate like any pool payout
@@ -164,7 +168,10 @@ contract RehearseV12Pool is Script {
         require(grew >= amount - net, "the buckets did not grow by the sell fee");
         if (grew > amount - net) {
             uint256 buyRate = uint256(s.platformBps) + s.buyTax;
-            console.log("      and the pair paid its own fee out in coins, taxed as a buy:", buyRate == 0 ? 0 : ((grew - (amount - net)) * 10_000) / buyRate);
+            console.log(
+                "      and the pair paid its own fee out in coins, taxed as a buy:",
+                buyRate == 0 ? 0 : ((grew - (amount - net)) * 10_000) / buyRate
+            );
         }
         console.log("sell: coins in", amount, "of which the pair got", net);
         console.log("      quote out", out);
@@ -189,10 +196,15 @@ contract RehearseV12Pool is Script {
         require(_buckets() < buckets && refill <= tokensIn / 100, "the buckets did not shrink by the slice");
         if (refill != 0) console.log("         the pair's own fee leg on the sale put back in the buckets", refill);
         // paid in the native coin, a treasury that is also the signer spends it on gas: checked when it is somebody else
-        if (treasury != carol || !s.native) require(_quoteBalance(treasury) > treasuryBefore, "the treasury was not paid");
+        if (treasury != carol || !s.native) {
+            require(_quoteBalance(treasury) > treasuryBefore, "the treasury was not paid");
+        }
         // the tip: a native one is paid in the coin carol spends on gas, so it is checked on an ERC-20 quote alone
         if (!s.native) require(_quoteBalance(carol) > carolBefore, "the harvester was not tipped");
-        require(IERC20(s.quote).balanceOf(address(s.migrator)) == 0 && address(s.migrator).balance == 0, "quote stranded in the migrator");
+        require(
+            IERC20(s.quote).balanceOf(address(s.migrator)) == 0 && address(s.migrator).balance == 0,
+            "quote stranded in the migrator"
+        );
         console.log("harvest: coins sold", tokensIn, "quote out", quoteOut);
         console.log("         coins burned", burned);
     }

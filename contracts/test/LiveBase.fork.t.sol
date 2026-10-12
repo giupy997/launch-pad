@@ -18,9 +18,13 @@ interface IUniV2PairView {
 
 interface IUniV2RouterSwap {
     /// the plain swap: the router's figures assume the pair gets and delivers what it computes (v11's pools)
-    function swapExactTokensForTokens(uint256 amountIn, uint256 amountOutMin, address[] calldata path, address to, uint256 deadline)
-        external
-        returns (uint256[] memory amounts);
+    function swapExactTokensForTokens(
+        uint256 amountIn,
+        uint256 amountOutMin,
+        address[] calldata path,
+        address to,
+        uint256 deadline
+    ) external returns (uint256[] memory amounts);
     /// the swap the site makes on a v12 pool: the router measures what the pair got and what `to` received
     function swapExactTokensForTokensSupportingFeeOnTransferTokens(
         uint256 amountIn,
@@ -98,7 +102,9 @@ contract LiveBaseForkTest is Test {
 
     function _create() internal returns (address token) {
         vm.prank(creator);
-        token = PAD.createToken("Fork Test", "FORK", 0, LaunchpadBase.TokenMetadata("", "", "", "", "", ""), address(CBLTC), false);
+        token = PAD.createToken(
+            "Fork Test", "FORK", 0, LaunchpadBase.TokenMetadata("", "", "", "", "", ""), address(CBLTC), false
+        );
     }
 
     /// Buys the whole curve with ETH through the live zap, a few ETH at a time
@@ -122,7 +128,9 @@ contract LiveBaseForkTest is Test {
 
     function test_live_graduationSeedsTheUniswapPoolInOneTransaction() public {
         if (skipAll) return;
-        if (address(PAD) == V11_PAD) assertEq(address(MIGRATOR), V11_MIGRATOR, "the v11 pad's migrator is its v2 adapter");
+        if (address(PAD) == V11_PAD) {
+            assertEq(address(MIGRATOR), V11_MIGRATOR, "the v11 pad's migrator is its v2 adapter");
+        }
         assertEq(MIGRATOR.launchpad(), address(PAD));
         assertEq(address(MIGRATOR.router()), UNIV2_ROUTER);
 
@@ -131,7 +139,11 @@ contract LiveBaseForkTest is Test {
         _checkCurveClosed(token);
         address pair = _checkPoolAtTheClosingPrice(token);
         _checkLocked(token, pair);
-        if (v12) assertTrue(PAD.taxedPool(token, pair), "v12: the pool is registered: taxed, and no cashback on what it holds");
+        if (v12) {
+            assertTrue(
+                PAD.taxedPool(token, pair), "v12: the pool is registered: taxed, and no cashback on what it holds"
+            );
+        }
     }
 
     function _checkCurveClosed(address token) internal {
@@ -140,7 +152,11 @@ contract LiveBaseForkTest is Test {
         assertEq(sold, PAD.CURVE_SUPPLY(), "the whole curve sold");
         assertEq(realQuote, 0, "the reserve left for the pool in the same transaction");
         assertEq(address(PAD.graduatedVia(token)), address(MIGRATOR));
-        assertEq(LaunchToken(token).balanceOf(address(PAD)), PAD.lockedAtGraduation(token), "the pad keeps only the locked share");
+        assertEq(
+            LaunchToken(token).balanceOf(address(PAD)),
+            PAD.lockedAtGraduation(token),
+            "the pad keeps only the locked share"
+        );
         assertGt(CBLTC.balanceOf(whale), 0, "the cbLTC the last buy did not need came back to the buyer");
         // the curve is closed
         vm.startPrank(whale);
@@ -155,7 +171,9 @@ contract LiveBaseForkTest is Test {
         assertTrue(pair != address(0), "the pool exists");
         assertEq(MIGRATOR.pairAsset(token), address(CBLTC));
         (uint256 rToken, uint256 rQuote) = _reserves(token, pair);
-        assertEq(rToken + PAD.lockedAtGraduation(token), PAD.DEX_RESERVE(), "the pool and the lock share the DEX reserve");
+        assertEq(
+            rToken + PAD.lockedAtGraduation(token), PAD.DEX_RESERVE(), "the pool and the lock share the DEX reserve"
+        );
         assertGt(PAD.lockedAtGraduation(token), 0, "the curve's virtual share stays locked");
         // the whole raise is in the pool: what a sold-out curve holds is its virtual
         // reserve grown by VIRTUAL_TOKEN / (VIRTUAL_TOKEN - CURVE_SUPPLY), less the
@@ -258,7 +276,8 @@ contract LiveBaseForkTest is Test {
         address[] memory path = new address[](2);
         path[0] = address(CBLTC);
         path[1] = token;
-        uint256[] memory out = IUniV2RouterSwap(UNIV2_ROUTER).swapExactTokensForTokens(spend, 0, path, whale, block.timestamp + 600);
+        uint256[] memory out =
+            IUniV2RouterSwap(UNIV2_ROUTER).swapExactTokensForTokens(spend, 0, path, whale, block.timestamp + 600);
         vm.stopPrank();
         assertGt(out[1], 0, "bought in the pool");
         return out[1];
@@ -270,7 +289,8 @@ contract LiveBaseForkTest is Test {
         address[] memory path = new address[](2);
         path[0] = token;
         path[1] = address(CBLTC);
-        uint256[] memory out = IUniV2RouterSwap(UNIV2_ROUTER).swapExactTokensForTokens(amount, 0, path, whale, block.timestamp + 600);
+        uint256[] memory out =
+            IUniV2RouterSwap(UNIV2_ROUTER).swapExactTokensForTokens(amount, 0, path, whale, block.timestamp + 600);
         vm.stopPrank();
         return out[1];
     }
@@ -284,7 +304,8 @@ contract LiveBaseForkTest is Test {
         address[] memory path = new address[](2);
         path[0] = address(CBLTC);
         path[1] = token;
-        IUniV2RouterSwap(UNIV2_ROUTER).swapExactTokensForTokensSupportingFeeOnTransferTokens(spend, minOut, path, whale, block.timestamp + 600);
+        IUniV2RouterSwap(UNIV2_ROUTER)
+            .swapExactTokensForTokensSupportingFeeOnTransferTokens(spend, minOut, path, whale, block.timestamp + 600);
         vm.stopPrank();
         uint256 got = LaunchToken(token).balanceOf(whale) - before;
         assertGt(got, 0, "bought in the pool");
@@ -299,7 +320,8 @@ contract LiveBaseForkTest is Test {
         address[] memory path = new address[](2);
         path[0] = token;
         path[1] = address(CBLTC);
-        IUniV2RouterSwap(UNIV2_ROUTER).swapExactTokensForTokensSupportingFeeOnTransferTokens(amount, minOut, path, whale, block.timestamp + 600);
+        IUniV2RouterSwap(UNIV2_ROUTER)
+            .swapExactTokensForTokensSupportingFeeOnTransferTokens(amount, minOut, path, whale, block.timestamp + 600);
         vm.stopPrank();
         return CBLTC.balanceOf(whale) - before;
     }

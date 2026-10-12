@@ -32,7 +32,8 @@ contract UniV2MigratorTest is Test {
 
     function _create() internal returns (address) {
         vm.prank(creator);
-        return pad.createToken("Meme", "MEME", 0, LaunchpadBase.TokenMetadata("", "", "", "", "", ""), address(0), false);
+        return
+            pad.createToken("Meme", "MEME", 0, LaunchpadBase.TokenMetadata("", "", "", "", "", ""), address(0), false);
     }
 
     function _reserves(address token) internal view returns (uint256 rToken, uint256 rWeth, address pair) {
@@ -61,7 +62,10 @@ contract UniV2MigratorTest is Test {
     }
 
     /// Pool price in wei per token, vs the price the migrator was given.
-    function _assertPriceNear(uint256 rToken, uint256 rWeth, uint256 wantWeth, uint256 wantToken, uint256 bps) internal pure {
+    function _assertPriceNear(uint256 rToken, uint256 rWeth, uint256 wantWeth, uint256 wantToken, uint256 bps)
+        internal
+        pure
+    {
         uint256 pool = rWeth * 1e18 / rToken;
         uint256 want = wantWeth * 1e18 / wantToken;
         uint256 diff = pool > want ? pool - want : want - pool;
@@ -114,7 +118,10 @@ contract UniV2MigratorTest is Test {
 
     /// Puts most of the supply in the pair against a little quote: a deep pool
     /// at a fraction of the curve's price, as in the attack this replaces.
-    function _attackerPool(address token) internal returns (address pair, uint256 attackerTokens, uint256 attackerWeth) {
+    function _attackerPool(address token)
+        internal
+        returns (address pair, uint256 attackerTokens, uint256 attackerWeth)
+    {
         pair = factory.createPair(token, address(weth));
         attackerTokens = IERC20(token).balanceOf(buyer);
         attackerWeth = 10 ether;
@@ -189,7 +196,11 @@ contract UniV2MigratorTest is Test {
         assertGt(migrator.liquidity(token), 0);
         (uint256 pT, uint256 pQ) = migrator.parked(token);
         assertEq(pT + pQ, 0, "nothing parked any more");
-        assertLt(IERC20(token).balanceOf(treasury), pad.DEX_RESERVE() / 100, "only the ratio's remainder went to the treasury");
+        assertLt(
+            IERC20(token).balanceOf(treasury),
+            pad.DEX_RESERVE() / 100,
+            "only the ratio's remainder went to the treasury"
+        );
     }
 
     /// A little liquidity at a price far above ours (dust, or a griefer's
@@ -222,7 +233,9 @@ contract UniV2MigratorTest is Test {
         assertEq(pT + pQ, 0);
         uint256 share = MockV2Pair(pair).balanceOf(griefer) * 1e18 / MockV2Pair(pair).totalSupply();
         assertLt(rWeth * share / 1e18, 20 ether, "the manipulator paid for the manipulation");
-        assertGt(treasury.balance, 0, "what the sale brought in beyond the pool's ratio went to the treasury, unwrapped");
+        assertGt(
+            treasury.balance, 0, "what the sale brought in beyond the pool's ratio went to the treasury, unwrapped"
+        );
     }
 
     /// Liquidity already there at our price (within tolerance) is simply
@@ -346,7 +359,11 @@ contract UniV2MigratorTest is Test {
         vm.stopPrank();
         (rToken, rWeth,) = _reserves(token);
         out = rWeth / 200;
-        assertEq(migrator.harvestCap(token), (rToken * out * 1000) / ((rWeth - out) * 997) + 1, "recomputed on the new reserves");
+        assertEq(
+            migrator.harvestCap(token),
+            (rToken * out * 1000) / ((rWeth - out) * 997) + 1,
+            "recomputed on the new reserves"
+        );
     }
 
     /// Nothing to sell: a parked reserve (the pool is somebody else's, we hold no liquidity in it,

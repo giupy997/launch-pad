@@ -12,10 +12,11 @@ interface ILaunchpadMigration {
     function setMigrationOperator(address operator) external;
     function setMigrationRoot(bytes32 root, uint256 freezeHeight) external;
     function closeMigration() external;
-    function migrateToken(LaunchpadBase.LedgerCoin calldata coin, address[] calldata holders, uint256[] calldata balances)
-        external
-        payable
-        returns (address token);
+    function migrateToken(
+        LaunchpadBase.LedgerCoin calldata coin,
+        address[] calldata holders,
+        uint256[] calldata balances
+    ) external payable returns (address token);
     function migrateBalances(address token, address[] calldata holders, uint256[] calldata balances) external;
     function announceFreeze(uint256 atBlock) external;
     function cancelFreeze() external;

@@ -25,7 +25,9 @@ contract MigrationFixtureTest is Test {
         vm.deal(address(script), total);
 
         script.ensureRoot(pad, json);
-        assertEq(pad.migrationRoot(), bytes32(uint256(0x28bf69752873a3620128cb7ad5a7b2996f96650d0a165416fdc1980d5651721b)));
+        assertEq(
+            pad.migrationRoot(), bytes32(uint256(0x28bf69752873a3620128cb7ad5a7b2996f96650d0a165416fdc1980d5651721b))
+        );
         assertEq(pad.migrationFreezeHeight(), 3_600_090);
         address[] memory tokens = script.migrateAll(pad, coins);
         assertEq(tokens.length, 3);

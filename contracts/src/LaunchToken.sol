@@ -42,9 +42,7 @@ contract LaunchToken is ERC20 {
 
     /// @param launchpad_ the launchpad the token answers to and is minted to
     ///        (its factory deploys the token on its behalf).
-    constructor(string memory name_, string memory symbol_, uint256 supply_, address launchpad_)
-        ERC20(name_, symbol_)
-    {
+    constructor(string memory name_, string memory symbol_, uint256 supply_, address launchpad_) ERC20(name_, symbol_) {
         launchpad = launchpad_;
         _mint(launchpad_, supply_);
     }

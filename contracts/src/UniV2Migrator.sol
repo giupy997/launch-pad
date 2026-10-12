@@ -5,7 +5,12 @@ import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "openzeppelin-contracts/contracts/utils/ReentrancyGuard.sol";
 import {Math} from "openzeppelin-contracts/contracts/utils/math/Math.sol";
-import {IDexMigrator, IDexMigratorUnlock, IDexMigratorBuyback, IDexMigratorHarvest} from "./interfaces/IDexMigrator.sol";
+import {
+    IDexMigrator,
+    IDexMigratorUnlock,
+    IDexMigratorBuyback,
+    IDexMigratorHarvest
+} from "./interfaces/IDexMigrator.sol";
 
 interface IUniswapV2Router02 {
     function factory() external view returns (address);
@@ -37,10 +42,7 @@ interface ILaunchpadFees {
     function freezeBlock() external view returns (uint256);
     function taxTreasury(address token) external view returns (uint256);
     function taxPot(address token) external view returns (uint256);
-    function feeConfig(address token)
-        external
-        view
-        returns (uint16, uint16, uint16, uint16, uint16, uint16, uint16);
+    function feeConfig(address token) external view returns (uint16, uint16, uint16, uint16, uint16, uint16, uint16);
     function takeTax(address token, uint256 fromTreasury, uint256 fromPot, uint256 toBurn)
         external
         returns (uint256 toSell);
@@ -108,6 +110,7 @@ contract UniV2Migrator is IDexMigrator, IDexMigratorUnlock, IDexMigratorBuyback,
         uint256 quoteAmount;
     }
     mapping(address token => Parked) public parked;
+
     /// The price the coin's pool is meant to open at — the curve's closing
     /// price, as what the launchpad handed over says it: quote per token.
     struct Price {
@@ -129,7 +132,9 @@ contract UniV2Migrator is IDexMigrator, IDexMigratorUnlock, IDexMigratorBuyback,
     /// The pool held dust at another price: what was traded in to bring it to ours.
     event PoolNudged(address indexed token, address pair, uint256 tokenIn, uint256 quoteIn);
     /// The pool came back out for a migration: what our liquidity (and anything parked) was worth.
-    event PoolUnlocked(address indexed token, address pair, uint256 tokenAmount, uint256 quoteAmount, uint256 liquidity);
+    event PoolUnlocked(
+        address indexed token, address pair, uint256 tokenAmount, uint256 quoteAmount, uint256 liquidity
+    );
     /// The launchpad bought the token back on its pool, to burn it.
     event BoughtBack(address indexed token, address pair, uint256 quoteIn, uint256 tokenOut);
     /// Pool fees realised: coins sold (the burn share burned, `lp` minted from the liquidity share), the quote, the caller's tip.
@@ -485,7 +490,9 @@ contract UniV2Migrator is IDexMigrator, IDexMigratorUnlock, IDexMigratorBuyback,
         // dust on both sides next to what we hold (what a drained pool keeps,
         // at whatever ratio): our deposit sets the price, and whoever owns
         // the dust gets that share of the pool, a ten-thousandth at most
-        if (rToken * DUST_DIVISOR <= p.tokenAmount && rQuote * DUST_DIVISOR <= p.quoteAmount) return (p.tokenAmount, p.quoteAmount);
+        if (rToken * DUST_DIVISOR <= p.tokenAmount && rQuote * DUST_DIVISOR <= p.quoteAmount) {
+            return (p.tokenAmount, p.quoteAmount);
+        }
         if (rToken == 0 || rQuote == 0) return (0, 0);
         if (checkPrice) {
             // pool price vs ours, compared as cross products: rQuote/rToken vs ours.quoteAmount/ours.tokenAmount

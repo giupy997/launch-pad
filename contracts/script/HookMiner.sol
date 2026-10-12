@@ -16,9 +16,8 @@ library HookMiner {
         bytes32 initCodeHash = keccak256(abi.encodePacked(creationCode, constructorArgs));
         for (uint256 i = 0; i < MAX_ATTEMPTS; i++) {
             salt = bytes32(i);
-            hookAddress = address(
-                uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), deployer, salt, initCodeHash))))
-            );
+            hookAddress =
+                address(uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), deployer, salt, initCodeHash)))));
             if (uint160(hookAddress) & Hooks.ALL_HOOK_MASK == flags && hookAddress.code.length == 0) {
                 return (hookAddress, salt);
             }

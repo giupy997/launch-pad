@@ -122,6 +122,8 @@ contract DeployBase is Script {
         console.log("cbLTC virtual:      ", virtualReserve, "(8 decimals)");
         console.log("Native quote:        off");
         console.log("Deploy block:       ", block.number);
-        if (MULTICALL3.code.length == 0) console.log("No Multicall3 on this chain: the web app falls back to single reads");
+        if (MULTICALL3.code.length == 0) {
+            console.log("No Multicall3 on this chain: the web app falls back to single reads");
+        }
     }
 }
