@@ -1,6 +1,7 @@
 // A chain's indexer end to end against a fake node: logs encoded as the pad
 // emits them, passes that advance, a graduation, an invite, a restart that
-// resumes from disk, a stretch the node refuses that is read next time.
+// resumes from disk, a stretch the node refuses that is read next time, a
+// crash between the events and the checkpoint that must count nothing twice.
 //   node --test --experimental-strip-types web/lib/points/indexer.test.ts
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
@@ -44,7 +45,6 @@ const chain: PointsChain = {
 
 type Emitted = { block: bigint; logIndex: number; topics: `0x${string}`[]; data: `0x${string}` };
 const emitted: Emitted[] = [];
-let txn = 0;
 const emit = (block: bigint, topics: `0x${string}`[], data: `0x${string}`) => {
   emitted.push({ block, logIndex: emitted.filter((e) => e.block === block).length, topics, data });
 };
@@ -82,7 +82,7 @@ const transport: Transport = async (_url, method, params) => {
           topics: e.topics,
           data: e.data,
           blockNumber: hex(e.block),
-          transactionHash: `0x${(++txn).toString(16).padStart(64, "0")}`,
+          transactionHash: `0x${(e.block * 1_000n + BigInt(e.logIndex)).toString(16).padStart(64, "0")}`, // one per event, the same on every read, as on a chain
           logIndex: hex(BigInt(e.logIndex)),
         })
       );
@@ -183,4 +183,27 @@ test("a stretch the node refuses is left for the next pass, never skipped", asyn
   const r2 = await ix.pass();
   assert.ok(r2 && r2.to === 1_390n);
   assert.equal(ix.trades.filter((t) => t.block === 1_250n).length, 1);
+});
+
+test("a crash between the events and the checkpoint counts nothing twice on the next start", async () => {
+  const store = new Store(join(dir, "crash"));
+  const nodes = new Nodes(chain.rpcs, chain.chunk, { transport, sleep: async () => {} });
+  const ix = new ChainIndexer(chain, nodes, store);
+  await ix.pass(); // everything emitted so far
+  const trades = ix.trades.length;
+  const board = ix.leaderboard();
+  const onDisk = store.loadEvents().length;
+  assert.ok(trades > 0 && onDisk > 0);
+
+  // the crash: the events reached the disk, the checkpoint did not
+  store.writeMeta({ last: chain.deployBlock - 1n, rulesVersion: 0, chunk: chain.chunk });
+  const again = new ChainIndexer(chain, nodes, store);
+  assert.equal(again.last, chain.deployBlock - 1n);
+  assert.equal(again.trades.length, trades); // the file's events, once
+  const r = await again.pass(); // the same logs read again
+  assert.ok(r && r.events === 0);
+  assert.equal(again.trades.length, trades);
+  assert.deepEqual(again.leaderboard(), board);
+  assert.equal(store.loadEvents().length, onDisk); // and written again to nobody
+  assert.equal(again.last, ix.last);
 });

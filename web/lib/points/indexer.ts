@@ -54,6 +54,10 @@ export class ChainIndexer {
   private readonly maxChunksPerPass: number;
   private readonly now: () => number;
   private readonly hidden: Set<string>;
+  /** every event applied, by transaction and log index: an event is counted once however
+   *  often it is read (a crash between the events and the checkpoint has the next start
+   *  read the same logs again; a log file written twice holds them twice) */
+  private readonly seen = new Set<string>();
 
   constructor(chain: PointsChain, nodes: Nodes, store: Store, opts: IndexerOptions = {}) {
     this.chain = chain;
@@ -70,6 +74,9 @@ export class ChainIndexer {
   }
 
   private apply(ev: PadEvent) {
+    const key = `${ev.tx}:${ev.logIndex}`;
+    if (this.seen.has(key)) return;
+    this.seen.add(key);
     switch (ev.kind) {
       case "created":
         this.coins.set(ev.token, { token: ev.token, creator: ev.creator, createdBlock: ev.block, graduatedBlock: null });
@@ -147,7 +154,7 @@ export class ChainIndexer {
       const upTo = first.hi;
       const events = logs
         .map(decodePadLog)
-        .filter((e): e is PadEvent => e !== null && e.block >= from && e.block <= upTo)
+        .filter((e): e is PadEvent => e !== null && e.block >= from && e.block <= upTo && !this.seen.has(`${e.tx}:${e.logIndex}`))
         .sort(eventOrder);
       this.store.appendEvents(events);
       for (const ev of events) this.apply(ev);
