@@ -31,6 +31,11 @@ robinhood_testnet = { key = "verifyContract", chain = 46630, url = "https://expl
 litvm_testnet = { key = "verifyContract", chain = 4441, url = "https://liteforge.explorer.caldera.xyz/api" }
 base = { key = "verifyContract", chain = 8453, url = "https://base.blockscout.com/api" }
 
+[lint]
+# forge's linter on every build is noise in an operator's terminal: the hints it has (zero-address
+# checks, events after calls) were weighed; the compiler's own warnings and errors still print
+lint_on_build = false
+
 [fmt]
 # the formatting check covers this repository, not the libraries vendored as submodules
 ignore = ["lib/**/*.sol"]

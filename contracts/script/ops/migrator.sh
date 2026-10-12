@@ -51,8 +51,9 @@ check() {
 case "${1:-}" in
   deploy)
     echo "== UniV2Migrator for the pad $PAD, Uniswap v2 Router02 $UNIV2_ROUTER, from $(git rev-parse --short HEAD)"
-    forge build >/dev/null
-    OUT=$(forge create src/UniV2Migrator.sol:UniV2Migrator --constructor-args "$PAD" "$UNIV2_ROUTER" --rpc-url "$RPC" "${SIGNER[@]}" --broadcast --json)
+    forge build --quiet
+    # --constructor-args takes every argument after it, so it comes last
+    OUT=$(forge create --rpc-url "$RPC" "${SIGNER[@]}" --broadcast --json src/UniV2Migrator.sol:UniV2Migrator --constructor-args "$PAD" "$UNIV2_ROUTER")
     ADDR=$(echo "$OUT" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const l=s.trim().split("\n").filter(x=>x.startsWith("{")).pop();console.log(JSON.parse(l).deployedTo)})')
     TX=$(echo "$OUT" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const l=s.trim().split("\n").filter(x=>x.startsWith("{")).pop();console.log(JSON.parse(l).transactionHash)})')
     echo "   deployed: $ADDR (tx $TX, block $(cast block-number --rpc-url "$RPC"))"
