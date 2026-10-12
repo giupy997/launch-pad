@@ -14,6 +14,8 @@ import {IDexMigrator} from "../src/interfaces/IDexMigrator.sol";
 import {ILaunchpadMigration} from "../src/interfaces/ILaunchpadMigration.sol";
 import {MockWETH9, MockV2Factory, MockV2Pair, MockV2Router} from "./mocks/UniV2Mock.sol";
 import {MockCbLTC} from "./mocks/MockCbLTC.sol";
+import {MockFeeOnTransfer} from "./mocks/MockFeeOnTransfer.sol";
+import {MerkleTree} from "../script/MerkleTree.sol";
 
 contract RecordingMigrator is IDexMigrator {
     address public lastToken;
@@ -61,14 +63,85 @@ contract MigrationTest is Test {
     address[] holders = [alice, bob, carol];
     uint256 sold = bals[0] + bals[1] + bals[2];
 
+    /// A root that is nobody's tree: for the calls that must fail before it matters.
     bytes32 constant ROOT = bytes32(uint256(0x28bf69752873a3620128cb7ad5a7b2996f96650d0a165416fdc1980d5651721b));
 
     function setUp() public {
         pad = new Launchpad(treasury);
         mig = ILaunchpadMigration(address(pad));
-        mig.setMigrationRoot(ROOT, 3_600_085);
         vm.deal(address(this), 100 ether);
         vm.deal(dave, 100 ether);
+    }
+
+    // ------------------------------------------------------------ the tree
+
+    /// The snapshot's tree a test commits to: every coin and every holder it will submit,
+    /// the refused ones included, added before the root is set — set once, as on the day.
+    bytes32[] leaves;
+
+    function _add(LaunchpadBase.LedgerCoin memory c, address[] memory hs, uint256[] memory bs) internal {
+        leaves.push(MerkleTree.coinLeaf(c));
+        bytes32 sym = keccak256(bytes(c.symbol));
+        for (uint256 i = 0; i < hs.length; i++) {
+            leaves.push(MerkleTree.holderLeaf(sym, hs[i], i < bs.length ? bs[i] : 0));
+        }
+    }
+
+    function _root() internal view returns (bytes32) {
+        return MerkleTree.root(leaves);
+    }
+
+    function _commit() internal {
+        mig.setMigrationRoot(_root(), 3_600_085);
+    }
+
+    /// The proof of a leaf, or none for one the tree does not hold.
+    function _proofOf(bytes32 leaf) internal view returns (bytes32[] memory) {
+        bytes32[] memory all = leaves;
+        for (uint256 i = 0; i < all.length; i++) {
+            if (all[i] == leaf) return MerkleTree.proof(all, i);
+        }
+        return new bytes32[](0);
+    }
+
+    /// A batch of holders with their proofs (none for a holder the tree does not hold).
+    function _delivery(string memory symbol, address[] memory hs, uint256[] memory bs)
+        internal
+        view
+        returns (LaunchpadBase.Delivery memory d)
+    {
+        bytes32 sym = keccak256(bytes(symbol));
+        d.holders = hs;
+        d.balances = bs;
+        d.proofs = new bytes32[][](hs.length);
+        for (uint256 i = 0; i < hs.length; i++) {
+            d.proofs[i] = _proofOf(MerkleTree.holderLeaf(sym, hs[i], i < bs.length ? bs[i] : 0));
+        }
+    }
+
+    /// migrateToken with the tree's proofs, on this pad or another (`m`).
+    function _mtOn(
+        ILaunchpadMigration m,
+        LaunchpadBase.LedgerCoin memory c,
+        address[] memory hs,
+        uint256[] memory bs,
+        uint256 value
+    ) internal returns (address) {
+        bytes32[] memory coinProof = _proofOf(MerkleTree.coinLeaf(c));
+        LaunchpadBase.Delivery memory d = _delivery(c.symbol, hs, bs);
+        return m.migrateToken{value: value}(c, coinProof, d);
+    }
+
+    function _mt(LaunchpadBase.LedgerCoin memory c, address[] memory hs, uint256[] memory bs, uint256 value)
+        internal
+        returns (address)
+    {
+        return _mtOn(mig, c, hs, bs, value);
+    }
+
+    /// migrateBalances with the tree's proofs; the symbol names the coin without an external call.
+    function _mb(address token, string memory symbol, address[] memory hs, uint256[] memory bs) internal {
+        mig.migrateBalances(token, _delivery(symbol, hs, bs));
     }
 
     function _meta() internal pure returns (LaunchpadBase.TokenMetadata memory m) {
@@ -112,10 +185,12 @@ contract MigrationTest is Test {
         });
     }
 
+    /// Lite Cat with its three holders, the tree committed first.
     function _migrate(bool holdersMode) internal returns (address) {
-        return mig.migrateToken{value: realQuote}(
-            _coin("Lite Cat", "LCAT", creator, holdersMode, virtualQuote, sold), holders, bals
-        );
+        LaunchpadBase.LedgerCoin memory c = _coin("Lite Cat", "LCAT", creator, holdersMode, virtualQuote, sold);
+        _add(c, holders, bals);
+        _commit();
+        return _mt(c, holders, bals, realQuote);
     }
 
     /// The curve's own arithmetic for a buy of `ethIn` at the rate `f`: what the fee is, the
@@ -305,13 +380,14 @@ contract MigrationTest is Test {
     }
 
     function test_tradingWaitsUntilEveryHolderIsServed() public {
+        LaunchpadBase.LedgerCoin memory c = _coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold);
+        _add(c, holders, bals);
+        _commit();
         address[] memory first = new address[](1);
         uint256[] memory firstBal = new uint256[](1);
         first[0] = alice;
         firstBal[0] = bals[0];
-        address token = mig.migrateToken{value: realQuote}(
-            _coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold), first, firstBal
-        );
+        address token = _mt(c, first, firstBal, realQuote);
         assertEq(pad.migrationPending(token), bals[1] + bals[2]);
 
         vm.prank(dave);
@@ -326,17 +402,17 @@ contract MigrationTest is Test {
         rest[0] = bob;
         rest[1] = carol;
         restBal[0] = bals[1];
-        restBal[1] = bals[2] + 1; // one unit more than the ledger sold
-        vm.expectRevert(LaunchpadBase.BadMigration.selector);
-        mig.migrateBalances(token, rest, restBal);
+        restBal[1] = bals[2] + 1; // one unit more than the snapshot says
+        vm.expectRevert(LaunchpadBase.NotInSnapshot.selector);
+        _mb(token, "LCAT", rest, restBal);
 
         restBal[1] = bals[2];
-        mig.migrateBalances(token, rest, restBal);
+        _mb(token, "LCAT", rest, restBal);
         assertEq(pad.migrationPending(token), 0);
         assertEq(IERC20(token).balanceOf(carol), bals[2]);
 
         vm.expectRevert(LaunchpadBase.BadMigration.selector);
-        mig.migrateBalances(token, rest, restBal); // nothing left to deliver
+        _mb(token, "LCAT", rest, restBal); // nothing left to deliver
 
         vm.prank(dave);
         pad.buy{value: 0.01 ether}(token, 0);
@@ -348,63 +424,83 @@ contract MigrationTest is Test {
         assertEq(pad.migrationOperator(), address(0));
         vm.prank(dave);
         vm.expectRevert(LaunchpadBase.NotOperator.selector);
-        mig.migrateToken{value: realQuote}(_coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold), holders, bals);
+        _mt(_coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold), holders, bals, realQuote);
     }
 
     function test_rejectsStateTheLedgerCouldNotHaveProduced() public {
-        vm.expectRevert(LaunchpadBase.BadMigration.selector);
-        mig.migrateToken{value: realQuote}(_coin("X", "X", address(0), false, virtualQuote, sold), holders, bals);
-        vm.expectRevert(LaunchpadBase.BadMigration.selector);
-        mig.migrateToken{value: realQuote}(_coin("X", "X", creator, false, 0, sold), holders, bals);
+        // the snapshot (a corrupt one) holds every variant below: what it says is checked
+        // for sense before it is checked for being in it
         uint256 tooMuch = pad.CURVE_SUPPLY() + 1; // (an external call inside the arguments would eat the expectRevert)
-        vm.expectRevert(LaunchpadBase.BadMigration.selector);
-        mig.migrateToken{value: realQuote}(_coin("X", "X", creator, false, virtualQuote, tooMuch), holders, bals);
         uint256[] memory short = new uint256[](2);
-        vm.expectRevert(LaunchpadBase.BadMigration.selector);
-        mig.migrateToken{value: realQuote}(_coin("X", "X", creator, false, virtualQuote, sold), holders, short);
-        // balances that exceed what the ledger sold
-        uint256[] memory tooMany = new uint256[](3);
+        uint256[] memory tooMany = new uint256[](3); // balances that exceed what the ledger sold
         tooMany[0] = sold;
         tooMany[1] = 1;
+        LaunchpadBase.LedgerCoin memory overBurned = _coin("X", "X", creator, false, virtualQuote, sold);
+        overBurned.burned = sold + 1;
+        LaunchpadBase.LedgerCoin memory overPotted = _coin("X", "X", creator, false, virtualQuote, sold);
+        overPotted.burnPot = realQuote + 1;
+        _add(_coin("X", "X", address(0), false, virtualQuote, sold), holders, bals);
+        _add(_coin("X", "X", creator, false, 0, sold), holders, bals);
+        _add(_coin("X", "X", creator, false, virtualQuote, tooMuch), holders, bals);
+        _add(_coin("X", "X", creator, false, virtualQuote, sold), holders, short);
+        _add(_coin("X", "X", creator, false, virtualQuote, sold), holders, tooMany);
+        _add(overBurned, holders, bals);
+        _add(overPotted, holders, bals);
+        _commit();
+
         vm.expectRevert(LaunchpadBase.BadMigration.selector);
-        mig.migrateToken{value: realQuote}(_coin("X", "X", creator, false, virtualQuote, sold), holders, tooMany);
+        _mt(_coin("X", "X", address(0), false, virtualQuote, sold), holders, bals, realQuote);
+        vm.expectRevert(LaunchpadBase.BadMigration.selector);
+        _mt(_coin("X", "X", creator, false, 0, sold), holders, bals, realQuote);
+        vm.expectRevert(LaunchpadBase.BadMigration.selector);
+        _mt(_coin("X", "X", creator, false, virtualQuote, tooMuch), holders, bals, realQuote);
+        vm.expectRevert(LaunchpadBase.BadMigration.selector);
+        _mt(_coin("X", "X", creator, false, virtualQuote, sold), holders, short, realQuote);
+        vm.expectRevert(LaunchpadBase.BadMigration.selector);
+        _mt(_coin("X", "X", creator, false, virtualQuote, sold), holders, tooMany, realQuote);
         // more burned than ever sold
-        LaunchpadBase.LedgerCoin memory c = _coin("X", "X", creator, false, virtualQuote, sold);
-        c.burned = sold + 1;
         vm.expectRevert(LaunchpadBase.BadMigration.selector);
-        mig.migrateToken{value: realQuote}(c, holders, bals);
+        _mt(overBurned, holders, bals, realQuote);
         // pots larger than the quote delivered
-        c = _coin("X", "X", creator, false, virtualQuote, sold);
-        c.burnPot = realQuote + 1;
         vm.expectRevert(LaunchpadBase.BadMigration.selector);
-        mig.migrateToken{value: realQuote}(c, holders, bals);
+        _mt(overPotted, holders, bals, realQuote);
+    }
+
+    function test_rejectsFeesAndUntradedCoinsTheLedgerCouldNotHaveProduced() public {
         // a fee configuration no coin could have launched with: a tax over the cap, shares that do not add up
-        c = _coin("X", "X", creator, false, virtualQuote, sold);
-        c.fees.buyTaxBps = uint16(pad.MAX_TAX_BPS() + 1);
-        vm.expectRevert(LaunchpadBase.BadFeeConfig.selector);
-        mig.migrateToken{value: realQuote}(c, holders, bals);
-        c = _coin("X", "X", creator, false, virtualQuote, sold);
-        c.fees.creatorBps = 9_999;
-        vm.expectRevert(LaunchpadBase.BadFeeConfig.selector);
-        mig.migrateToken{value: realQuote}(c, holders, bals);
+        LaunchpadBase.LedgerCoin memory overTaxed = _coin("X", "X", creator, false, virtualQuote, sold);
+        overTaxed.fees.buyTaxBps = uint16(pad.MAX_TAX_BPS() + 1);
+        LaunchpadBase.LedgerCoin memory badShares = _coin("X", "X", creator, false, virtualQuote, sold);
+        badShares.fees.creatorBps = 9_999;
         // an untraded coin carries no reserve and no holders
         address[] memory none = new address[](0);
         uint256[] memory noneBal = new uint256[](0);
-        c = _coin("X", "X", creator, false, virtualQuote, 0);
-        c.quoteAmount = 1;
+        LaunchpadBase.LedgerCoin memory untradedPaid = _coin("X", "X", creator, false, virtualQuote, 0);
+        untradedPaid.quoteAmount = 1;
+        LaunchpadBase.LedgerCoin memory untradedHeld = _coin("X", "X", creator, false, virtualQuote, 0);
+        untradedHeld.quoteAmount = 0;
+        LaunchpadBase.LedgerCoin memory empty = _coin("Empty", "EMPTY", creator, false, virtualQuote, 0);
+        empty.quoteAmount = 0;
+        _add(overTaxed, holders, bals);
+        _add(badShares, holders, bals);
+        _add(untradedPaid, none, noneBal);
+        _add(untradedHeld, holders, bals);
+        _add(empty, none, noneBal);
+        _commit();
+
+        vm.expectRevert(LaunchpadBase.BadFeeConfig.selector);
+        _mt(overTaxed, holders, bals, realQuote);
+        vm.expectRevert(LaunchpadBase.BadFeeConfig.selector);
+        _mt(badShares, holders, bals, realQuote);
         vm.expectRevert(LaunchpadBase.BadMigration.selector);
-        mig.migrateToken{value: 1}(c, none, noneBal);
-        c = _coin("X", "X", creator, false, virtualQuote, 0);
-        c.quoteAmount = 0;
+        _mt(untradedPaid, none, noneBal, 1);
         vm.expectRevert(LaunchpadBase.BadMigration.selector);
-        mig.migrateToken(c, holders, bals);
-        c = _coin("Empty", "EMPTY", creator, false, virtualQuote, 0);
-        c.quoteAmount = 0;
-        address empty = mig.migrateToken(c, none, noneBal);
-        assertEq(pad.migrationPending(empty), 0);
+        _mt(untradedHeld, holders, bals, 0);
+        address emptyToken = _mt(empty, none, noneBal, 0);
+        assertEq(pad.migrationPending(emptyToken), 0);
         vm.prank(dave);
-        pad.buy{value: 0.01 ether}(empty, 0);
-        assertGt(IERC20(empty).balanceOf(dave), 0, "an untraded coin opens for trading at once");
+        pad.buy{value: 0.01 ether}(emptyToken, 0);
+        assertGt(IERC20(emptyToken).balanceOf(dave), 0, "an untraded coin opens for trading at once");
     }
 
     function test_soldOutLedgerCurveGraduatesOnceDelivered() public {
@@ -417,7 +513,9 @@ contract MigrationTest is Test {
         uint256 raised = 0.64 ether; // ~3.2x the virtual reserve, like a completed ledger curve
         LaunchpadBase.LedgerCoin memory c = _coin("Done", "DONE", creator, true, virtualQuote, pad.CURVE_SUPPLY());
         c.quoteAmount = raised;
-        address token = mig.migrateToken{value: raised}(c, holders, full);
+        _add(c, holders, full);
+        _commit();
+        address token = _mt(c, holders, full, raised);
         (,, uint256 realEth,, bool graduated,,) = pad.curves(token);
         assertTrue(graduated);
         assertTrue(LaunchToken(token).graduated());
@@ -450,7 +548,9 @@ contract MigrationTest is Test {
         LaunchpadBase.LedgerCoin memory c = _coin("Pooled", "POOL", creator, true, virtualQuote, owned);
         c.poolToken = poolToken;
         c.quoteAmount = poolQuote;
-        address token = mig.migrateToken{value: poolQuote}(c, holders, full);
+        _add(c, holders, full);
+        _commit();
+        address token = _mt(c, holders, full, poolQuote);
 
         (, uint256 vToken, uint256 realEth, uint256 soldNow, bool graduated,,) = pad.curves(token);
         assertTrue(graduated, "the curve was complete on the ledger");
@@ -475,11 +575,11 @@ contract MigrationTest is Test {
         c.poolToken = poolToken + 1;
         c.quoteAmount = poolQuote;
         vm.expectRevert(LaunchpadBase.BadMigration.selector);
-        mig.migrateToken{value: poolQuote}(c, holders, full);
+        _mt(c, holders, full, poolQuote);
         c.poolToken = poolToken;
         c.quoteAmount = 0;
         vm.expectRevert(LaunchpadBase.BadMigration.selector);
-        mig.migrateToken(c, holders, full);
+        _mt(c, holders, full, 0);
     }
 
     function test_holdersModeKeepsPayingMigratedHolders() public {
@@ -512,7 +612,9 @@ contract MigrationTest is Test {
         full[2] = pad.CURVE_SUPPLY() - full[0] - full[1];
         LaunchpadBase.LedgerCoin memory c = _coin("Done", "DONE", creator, false, virtualQuote, pad.CURVE_SUPPLY());
         c.quoteAmount = 0.64 ether;
-        address token = mig.migrateToken{value: 0.64 ether}(c, holders, full);
+        _add(c, holders, full);
+        _commit();
+        address token = _mt(c, holders, full, 0.64 ether);
         address pair = factory.getPair(token, address(weth));
         assertTrue(pair != address(0), "the pair was created");
         assertEq(
@@ -561,21 +663,22 @@ contract MigrationTest is Test {
     }
 
     function test_aBatchSentTwiceRevertsInsteadOfPayingTwice() public {
+        LaunchpadBase.LedgerCoin memory c = _coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold);
+        _add(c, holders, bals);
+        _commit();
         address[] memory first = new address[](1);
         uint256[] memory firstBal = new uint256[](1);
         first[0] = alice;
         firstBal[0] = bals[0];
-        address token = mig.migrateToken{value: realQuote}(
-            _coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold), first, firstBal
-        );
+        address token = _mt(c, first, firstBal, realQuote);
         address[] memory second = new address[](1);
         uint256[] memory secondBal = new uint256[](1);
         second[0] = bob;
         secondBal[0] = bals[1];
-        mig.migrateBalances(token, second, secondBal);
+        _mb(token, "LCAT", second, secondBal);
         // the same batch again (a script retrying after a timeout) must not deliver again
         vm.expectRevert(abi.encodeWithSelector(LaunchpadBase.AlreadyDelivered.selector, bob));
-        mig.migrateBalances(token, second, secondBal);
+        _mb(token, "LCAT", second, secondBal);
         assertEq(IERC20(token).balanceOf(bob), bals[1], "delivered once");
         assertEq(pad.migrationPending(token), bals[2], "carol's share is still there for her");
         assertTrue(pad.migrationDelivered(token, bob));
@@ -589,34 +692,40 @@ contract MigrationTest is Test {
     function test_aCurveCoinMustArriveWithItsReserve() public {
         uint256 expected = Math.mulDiv(virtualQuote, sold, pad.VIRTUAL_TOKEN() - sold);
         uint256 tolerance = expected / 200 + 1e12;
+        // the snapshot: the three coins that arrive within the tolerance
+        LaunchpadBase.LedgerCoin memory dust = _coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold);
+        dust.quoteAmount = realQuote + 1e9;
+        LaunchpadBase.LedgerCoin memory high = _coin("Lite Cat", "LCAT2", creator, false, virtualQuote, sold);
+        high.quoteAmount = expected + tolerance;
+        LaunchpadBase.LedgerCoin memory low = _coin("Lite Cat", "LCAT3", creator, false, virtualQuote, sold);
+        low.quoteAmount = expected - tolerance;
+        _add(dust, holders, bals);
+        _add(high, holders, bals);
+        _add(low, holders, bals);
+        _commit();
         LaunchpadBase.LedgerCoin memory c = _coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold);
         // nothing, or twice as much, is refused
         c.quoteAmount = 0;
         vm.expectRevert(LaunchpadBase.WrongQuote.selector);
-        mig.migrateToken(c, holders, bals);
+        _mt(c, holders, bals, 0);
         c.quoteAmount = realQuote * 2;
         vm.expectRevert(LaunchpadBase.WrongQuote.selector);
-        mig.migrateToken{value: realQuote * 2}(c, holders, bals);
+        _mt(c, holders, bals, realQuote * 2);
         // one unit past the tolerance, either way
         c.quoteAmount = expected + tolerance + 1;
         vm.expectRevert(LaunchpadBase.WrongQuote.selector);
-        mig.migrateToken{value: expected + tolerance + 1}(c, holders, bals);
+        _mt(c, holders, bals, expected + tolerance + 1);
         c.quoteAmount = expected - tolerance - 1;
         vm.expectRevert(LaunchpadBase.WrongQuote.selector);
-        mig.migrateToken{value: expected - tolerance - 1}(c, holders, bals);
+        _mt(c, holders, bals, expected - tolerance - 1);
         // rounding dust either way is fine, up to the tolerance itself
-        c.quoteAmount = realQuote + 1e9;
-        address token = mig.migrateToken{value: realQuote + 1e9}(c, holders, bals);
+        address token = _mt(dust, holders, bals, realQuote + 1e9);
         (,, uint256 realEth,,,,) = pad.curves(token);
         assertEq(realEth, realQuote + 1e9);
-        c.symbol = "LCAT2";
-        c.quoteAmount = expected + tolerance;
-        token = mig.migrateToken{value: expected + tolerance}(c, holders, bals);
+        token = _mt(high, holders, bals, expected + tolerance);
         (,, realEth,,,,) = pad.curves(token);
         assertEq(realEth, expected + tolerance);
-        c.symbol = "LCAT3";
-        c.quoteAmount = expected - tolerance;
-        token = mig.migrateToken{value: expected - tolerance}(c, holders, bals);
+        token = _mt(low, holders, bals, expected - tolerance);
         (,, realEth,,,,) = pad.curves(token);
         assertEq(realEth, expected - tolerance);
     }
@@ -625,18 +734,20 @@ contract MigrationTest is Test {
     /// the reserve check reads quoteAmount, so the two must be one.
     function test_aNativeCoinPaysExactlyWhatItDeclares() public {
         LaunchpadBase.LedgerCoin memory c = _coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold);
+        _add(c, holders, bals);
+        _commit();
         vm.expectRevert(LaunchpadBase.WrongPayment.selector);
-        mig.migrateToken(c, holders, bals); // nothing sent
+        _mt(c, holders, bals, 0); // nothing sent
         vm.expectRevert(LaunchpadBase.WrongPayment.selector);
-        mig.migrateToken{value: realQuote - 1}(c, holders, bals);
+        _mt(c, holders, bals, realQuote - 1);
         vm.expectRevert(LaunchpadBase.WrongPayment.selector);
-        mig.migrateToken{value: realQuote + 1}(c, holders, bals);
+        _mt(c, holders, bals, realQuote + 1);
         c.quoteAmount = realQuote * 2; // a wrong figure, paid in full: the reserve check is what refuses it
         vm.expectRevert(LaunchpadBase.WrongQuote.selector);
-        mig.migrateToken{value: realQuote * 2}(c, holders, bals);
+        _mt(c, holders, bals, realQuote * 2);
         assertEq(address(pad).balance, 0, "nothing stuck in the pad");
         c.quoteAmount = realQuote;
-        mig.migrateToken{value: realQuote}(c, holders, bals);
+        _mt(c, holders, bals, realQuote);
         assertEq(address(pad).balance, realQuote);
     }
 
@@ -650,16 +761,18 @@ contract MigrationTest is Test {
         LaunchpadBase.LedgerCoin memory c = _coin("Lite Cat", "LCAT", creator, false, vq, sold);
         c.quoteAsset = address(cb);
         c.quoteAmount = expected;
+        _add(c, holders, bals);
+        _commit();
         cb.mint(address(this), 10 * expected);
         cb.approve(address(pad), type(uint256).max);
 
         // a quote this pad does not trade in is refused before anything is pulled
         vm.expectRevert(LaunchpadBase.WrongPayment.selector);
-        mig.migrateToken(c, holders, bals);
+        _mt(c, holders, bals, 0);
         pad.setQuoteAsset(address(cb), 30e8); // 30 cbLTC virtual, as on Base
         // no value with an ERC-20 quote
         vm.expectRevert(LaunchpadBase.WrongPayment.selector);
-        mig.migrateToken{value: 1}(c, holders, bals);
+        _mt(c, holders, bals, 1);
         // and the caller's approval must cover the whole figure
         cb.approve(address(pad), expected - 1);
         vm.expectRevert(
@@ -667,10 +780,10 @@ contract MigrationTest is Test {
                 IERC20Errors.ERC20InsufficientAllowance.selector, address(pad), expected - 1, expected
             )
         );
-        mig.migrateToken(c, holders, bals);
+        _mt(c, holders, bals, 0);
         cb.approve(address(pad), type(uint256).max);
 
-        address token = mig.migrateToken(c, holders, bals);
+        address token = _mt(c, holders, bals, 0);
         assertEq(cb.balanceOf(address(pad)), expected, "the reserve was pulled from the caller");
         assertEq(cb.balanceOf(address(this)), 9 * expected);
         assertEq(address(pad).balance, 0);
@@ -729,42 +842,58 @@ contract MigrationTest is Test {
         assertGt(expected, 30_000_000, "a reserve in satoshi, not wei");
         cb.mint(address(this), 10 * expected);
         cb.approve(address(pad), type(uint256).max);
+        // the snapshot: the four coins that arrive within the tolerance
+        LaunchpadBase.LedgerCoin[4] memory fine;
+        string[4] memory syms = ["LCAT", "LCAT2", "LCAT3", "LCAT4"];
+        uint256[4] memory amounts = [expected + 1, expected - 1, expected + tolerance, expected - tolerance];
+        for (uint256 i = 0; i < 4; i++) {
+            fine[i] = _coin("Lite Cat", syms[i], creator, false, vq, sold);
+            fine[i].quoteAsset = address(cb);
+            fine[i].quoteAmount = amounts[i];
+            _add(fine[i], holders, bals);
+        }
+        _commit();
         LaunchpadBase.LedgerCoin memory c = _coin("Lite Cat", "LCAT", creator, false, vq, sold);
         c.quoteAsset = address(cb);
         // a tenth short: the ledger could not have paid its sells
         c.quoteAmount = expected - expected / 10;
         vm.expectRevert(LaunchpadBase.WrongQuote.selector);
-        mig.migrateToken(c, holders, bals);
+        _mt(c, holders, bals, 0);
         // one satoshi past the tolerance, either way
         c.quoteAmount = expected + tolerance + 1;
         vm.expectRevert(LaunchpadBase.WrongQuote.selector);
-        mig.migrateToken(c, holders, bals);
+        _mt(c, holders, bals, 0);
         c.quoteAmount = expected - tolerance - 1;
         vm.expectRevert(LaunchpadBase.WrongQuote.selector);
-        mig.migrateToken(c, holders, bals);
+        _mt(c, holders, bals, 0);
         assertEq(cb.balanceOf(address(pad)), 0, "a refused coin pulls nothing");
-        // one satoshi off: the ledger's own rounding
-        c.quoteAmount = expected + 1;
-        address token = mig.migrateToken(c, holders, bals);
-        (,, uint256 realEth,,,,) = pad.curves(token);
-        assertEq(realEth, expected + 1);
-        c.symbol = "LCAT2";
-        c.quoteAmount = expected - 1;
-        token = mig.migrateToken(c, holders, bals);
-        (,, realEth,,,,) = pad.curves(token);
-        assertEq(realEth, expected - 1);
-        // and the tolerance's own edges
-        c.symbol = "LCAT3";
-        c.quoteAmount = expected + tolerance;
-        token = mig.migrateToken(c, holders, bals);
-        (,, realEth,,,,) = pad.curves(token);
-        assertEq(realEth, expected + tolerance);
-        c.symbol = "LCAT4";
-        c.quoteAmount = expected - tolerance;
-        token = mig.migrateToken(c, holders, bals);
-        (,, realEth,,,,) = pad.curves(token);
-        assertEq(realEth, expected - tolerance);
+        // one satoshi off: the ledger's own rounding; and the tolerance's own edges
+        for (uint256 i = 0; i < 4; i++) {
+            address token = _mt(fine[i], holders, bals, 0);
+            (,, uint256 realEth,,,,) = pad.curves(token);
+            assertEq(realEth, amounts[i]);
+        }
         assertEq(cb.balanceOf(address(pad)), 4 * expected, "every reserve delivered sits in the pad");
+    }
+
+    /// A coin arriving in a quote that keeps a cut of every transfer is refused: the pad is
+    /// credited for what arrives, and less than the coin declares leaves its curve short.
+    function test_aQuoteThatTakesACutOnTheWayIsRefusedAtMigration() public {
+        MockFeeOnTransfer fee = new MockFeeOnTransfer();
+        pad.setQuoteAsset(address(fee), 30e8);
+        uint256 vq = 20_000_000;
+        uint256 expected = Math.mulDiv(vq, sold, pad.VIRTUAL_TOKEN() - sold);
+        LaunchpadBase.LedgerCoin memory c = _coin("Lite Cat", "LCAT", creator, false, vq, sold);
+        c.quoteAsset = address(fee);
+        c.quoteAmount = expected;
+        _add(c, holders, bals);
+        _commit();
+        fee.mint(address(this), 10 * expected);
+        fee.approve(address(pad), type(uint256).max);
+        vm.expectRevert(LaunchpadBase.WrongPayment.selector);
+        _mt(c, holders, bals, 0);
+        assertEq(fee.balanceOf(address(pad)), 0, "nothing pulled");
+        assertEq(pad.tokenCount(), 0);
     }
 
     /// A pooled coin arrives in an ERC-20 as well: its pool's quote side pulled from
@@ -784,9 +913,11 @@ contract MigrationTest is Test {
         c.poolToken = poolToken;
         c.quoteAsset = address(cb);
         c.quoteAmount = poolQuote;
+        _add(c, holders, full);
+        _commit();
         cb.mint(address(this), poolQuote);
         cb.approve(address(pad), poolQuote);
-        address token = mig.migrateToken(c, holders, full);
+        address token = _mt(c, holders, full, 0);
         address pair = factory.getPair(token, address(cb));
         assertTrue(pair != address(0), "a token/cbLTC pair");
         assertEq(cb.balanceOf(pair), poolQuote, "the pool's quote side, in cbLTC");
@@ -805,14 +936,18 @@ contract MigrationTest is Test {
     function test_theLaunchpadsFeeIsStampedNotTheLedgers() public {
         LaunchpadBase.LedgerCoin memory c = _coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold);
         c.fees.platformBps = 123;
-        address token = mig.migrateToken{value: realQuote}(c, holders, bals);
+        LaunchpadBase.LedgerCoin memory c2 = _coin("Lite Cat", "LCAT2", creator, false, virtualQuote, sold);
+        c2.fees.platformBps = 123;
+        _add(c, holders, bals);
+        _add(c2, holders, bals);
+        _commit();
+        address token = _mt(c, holders, bals, realQuote);
         (,,,,,, uint16 platformBps) = pad.feeConfig(token);
         assertEq(platformBps, 50, "the fee as deployed");
         assertEq(platformBps, pad.feeBps());
 
         pad.setFeeBps(100);
-        c.symbol = "LCAT2";
-        address later = mig.migrateToken{value: realQuote}(c, holders, bals);
+        address later = _mt(c2, holders, bals, realQuote);
         (,,,,,, uint16 laterBps) = pad.feeConfig(later);
         assertEq(laterBps, 100, "the fee as it stands at the time");
         (,,,,,, platformBps) = pad.feeConfig(token);
@@ -839,7 +974,11 @@ contract MigrationTest is Test {
         address vault = makeAddr("vault");
         LaunchpadBase.LedgerCoin memory c = _coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold);
         c.feeRecipient = vault;
-        address token = mig.migrateToken{value: realQuote}(c, holders, bals);
+        LaunchpadBase.LedgerCoin memory c2 = _coin("Lite Cat", "LCAT2", creator, false, virtualQuote, sold);
+        _add(c, holders, bals);
+        _add(c2, holders, bals);
+        _commit();
+        address token = _mt(c, holders, bals, realQuote);
         assertEq(pad.feeRecipient(token), vault);
         (,,,,, address creatorNow,) = pad.curves(token);
         assertEq(creatorNow, creator, "the creator is still the creator");
@@ -856,9 +995,7 @@ contract MigrationTest is Test {
         pad.setFeeRecipient(token, address(0));
         assertEq(pad.feeRecipient(token), address(0));
 
-        c.symbol = "LCAT2";
-        c.feeRecipient = address(0);
-        address plain = mig.migrateToken{value: realQuote}(c, holders, bals);
+        address plain = _mt(c2, holders, bals, realQuote);
         assertEq(pad.feeRecipient(plain), address(0), "no override: the creator");
         vm.prank(dave);
         pad.buy{value: ethIn}(plain, 0);
@@ -875,7 +1012,9 @@ contract MigrationTest is Test {
             livestream: "https://live.example/litecat",
             description: "A cat on Litecoin, now here"
         });
-        address token = mig.migrateToken{value: realQuote}(c, holders, bals);
+        _add(c, holders, bals);
+        _commit();
+        address token = _mt(c, holders, bals, realQuote);
         (
             string memory logo,
             string memory website,
@@ -924,14 +1063,14 @@ contract MigrationTest is Test {
         rest[1] = carol;
         restBal[0] = bals[1];
         restBal[1] = bals[2];
+        LaunchpadBase.LedgerCoin memory c = _coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold);
+        _add(c, holders, bals);
         vm.startPrank(op);
-        fm.setMigrationRoot(ROOT, 3_600_085);
-        assertEq(fresh.migrationRoot(), ROOT);
-        address token = fm.migrateToken{value: realQuote}(
-            _coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold), first, firstBal
-        );
+        fm.setMigrationRoot(_root(), 3_600_085);
+        assertEq(fresh.migrationRoot(), _root());
+        address token = _mtOn(fm, c, first, firstBal, realQuote);
         assertEq(IERC20(token).balanceOf(alice), bals[0]);
-        fm.migrateBalances(token, rest, restBal);
+        fm.migrateBalances(token, _delivery("LCAT", rest, restBal));
         assertEq(fresh.migrationPending(token), 0);
         assertEq(address(fresh).balance, realQuote, "the operator paid the reserve");
 
@@ -963,9 +1102,9 @@ contract MigrationTest is Test {
         vm.expectRevert(LaunchpadBase.NotOperator.selector);
         mig.setMigrationRoot(ROOT, 1);
         vm.expectRevert(LaunchpadBase.NotOperator.selector);
-        mig.migrateToken{value: realQuote}(_coin("Dog", "DOG", creator, false, virtualQuote, sold), holders, bals);
+        _mt(_coin("Dog", "DOG", creator, false, virtualQuote, sold), holders, bals, realQuote);
         vm.expectRevert(LaunchpadBase.NotOperator.selector);
-        mig.migrateBalances(token, none, noneBal);
+        _mb(token, "LCAT", none, noneBal);
         vm.expectRevert(_ownableError(dave));
         mig.announceFreeze(block.number + 5);
         vm.expectRevert(_ownableError(dave));
@@ -985,14 +1124,15 @@ contract MigrationTest is Test {
         address op = makeAddr("operator");
         vm.deal(op, 10 ether);
         mig.setMigrationOperator(op);
+        LaunchpadBase.LedgerCoin memory c = _coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold);
+        _add(c, holders, bals);
+        _commit();
         address[] memory first = new address[](1);
         uint256[] memory firstBal = new uint256[](1);
         first[0] = alice;
         firstBal[0] = bals[0];
         vm.prank(op);
-        address token = mig.migrateToken{value: realQuote}(
-            _coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold), first, firstBal
-        );
+        address token = _mt(c, first, firstBal, realQuote);
         assertEq(pad.migrationPending(token), bals[1] + bals[2]);
 
         vm.expectEmit(address(pad));
@@ -1012,52 +1152,144 @@ contract MigrationTest is Test {
         restBal[1] = bals[2];
         vm.prank(op);
         vm.expectRevert(LaunchpadBase.NotOperator.selector);
-        mig.migrateBalances(token, rest, restBal);
+        _mb(token, "LCAT", rest, restBal);
         // the owner delivers what is left; no coin arrives any more, from anyone
-        mig.migrateBalances(token, rest, restBal);
+        _mb(token, "LCAT", rest, restBal);
         assertEq(pad.migrationPending(token), 0);
         assertEq(IERC20(token).balanceOf(carol), bals[2]);
         vm.expectRevert(LaunchpadBase.MigrationNotOpen.selector);
-        mig.migrateToken{value: realQuote}(_coin("Dog", "DOG", creator, false, virtualQuote, sold), holders, bals);
+        _mt(_coin("Dog", "DOG", creator, false, virtualQuote, sold), holders, bals, realQuote);
         // naming an operator again changes nothing: the migration is closed for good
         mig.setMigrationOperator(op);
         vm.prank(op);
         vm.expectRevert(LaunchpadBase.MigrationNotOpen.selector);
-        mig.migrateToken{value: realQuote}(_coin("Dog", "DOG", creator, false, virtualQuote, sold), holders, bals);
+        _mt(_coin("Dog", "DOG", creator, false, virtualQuote, sold), holders, bals, realQuote);
     }
 
     function test_aTickerMigratesOnce() public {
         _migrate(false);
         vm.expectRevert(LaunchpadBase.TickerMigrated.selector);
-        _migrate(false);
+        _mt(_coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold), holders, bals, realQuote);
         assertTrue(pad.migratedTicker(keccak256("LCAT")) != address(0));
     }
 
     function test_migrationNeedsARootAndEndsWhenClosed() public {
         Launchpad fresh = new Launchpad(treasury);
         ILaunchpadMigration freshMig = ILaunchpadMigration(address(fresh));
+        LaunchpadBase.LedgerCoin memory c = _coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold);
+        _add(c, holders, bals);
         vm.expectRevert(LaunchpadBase.MigrationNotOpen.selector);
-        freshMig.migrateToken{value: realQuote}(
-            _coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold), holders, bals
-        );
+        _mtOn(freshMig, c, holders, bals, realQuote);
         vm.expectRevert(LaunchpadBase.BadMigration.selector);
         freshMig.setMigrationRoot(bytes32(0), 1);
-        freshMig.setMigrationRoot(ROOT, 3_600_085);
-        assertEq(fresh.migrationRoot(), ROOT);
+        freshMig.setMigrationRoot(_root(), 3_600_085);
+        assertEq(fresh.migrationRoot(), _root());
         assertEq(fresh.migrationFreezeHeight(), 3_600_085);
         vm.expectRevert(LaunchpadBase.BadMigration.selector);
         freshMig.setMigrationRoot(bytes32(uint256(2)), 1); // never changed
         vm.deal(address(this), 200 ether);
-        address token = freshMig.migrateToken{value: realQuote}(
-            _coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold), holders, bals
-        );
+        address token = _mtOn(freshMig, c, holders, bals, realQuote);
         freshMig.closeMigration();
         vm.expectRevert(LaunchpadBase.MigrationNotOpen.selector);
-        freshMig.migrateToken{value: realQuote}(_coin("Dog", "DOG", creator, false, virtualQuote, sold), holders, bals);
+        _mtOn(freshMig, _coin("Dog", "DOG", creator, false, virtualQuote, sold), holders, bals, realQuote);
         // what was already migrated keeps trading
         vm.prank(dave);
         fresh.buy{value: 0.01 ether}(token, 0);
         assertGt(IERC20(token).balanceOf(dave), 0);
+    }
+
+    // ------------------------------------------------------------ the snapshot
+
+    /// The root the pad committed to decides: a coin the snapshot does not hold, a holder it
+    /// does not hold, a balance other than the one it holds, a proof for another leaf — all
+    /// refused, whatever the operator says. Only what the tree proves is delivered.
+    function test_onlyWhatTheSnapshotProvesIsDelivered() public {
+        LaunchpadBase.LedgerCoin memory c = _coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold);
+        LaunchpadBase.LedgerCoin memory dog = _coin("Dog", "DOG", creator, false, virtualQuote, sold);
+        _add(c, holders, bals);
+        _add(dog, holders, bals);
+        _commit();
+
+        // a coin the operator invents, or one of the snapshot's with a field changed
+        vm.expectRevert(LaunchpadBase.NotInSnapshot.selector);
+        _mt(_coin("Cat", "CAT", creator, false, virtualQuote, sold), holders, bals, realQuote);
+        LaunchpadBase.LedgerCoin memory altered = _coin("Lite Cat", "LCAT", dave, false, virtualQuote, sold);
+        vm.expectRevert(LaunchpadBase.NotInSnapshot.selector);
+        _mt(altered, holders, bals, realQuote); // another creator
+        altered = _coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold);
+        altered.meta.logoURI = "ipfs://QmOther";
+        vm.expectRevert(LaunchpadBase.NotInSnapshot.selector);
+        _mt(altered, holders, bals, realQuote); // another logo
+        // the snapshot's coin with the Dog's proof
+        LaunchpadBase.Delivery memory d = _delivery("LCAT", holders, bals);
+        vm.expectRevert(LaunchpadBase.NotInSnapshot.selector);
+        mig.migrateToken{value: realQuote}(c, _proofOf(MerkleTree.coinLeaf(dog)), d);
+
+        // the coin as the snapshot holds it, with holders it does not
+        address[] memory one = new address[](1);
+        uint256[] memory oneBal = new uint256[](1);
+        one[0] = dave; // not a holder
+        oneBal[0] = bals[0];
+        vm.expectRevert(LaunchpadBase.NotInSnapshot.selector);
+        _mt(c, one, oneBal, realQuote);
+        one[0] = alice;
+        oneBal[0] = bals[0] - 1; // a holder, another balance
+        vm.expectRevert(LaunchpadBase.NotInSnapshot.selector);
+        _mt(c, one, oneBal, realQuote);
+        oneBal[0] = bals[1]; // bob's balance under alice's name
+        vm.expectRevert(LaunchpadBase.NotInSnapshot.selector);
+        _mt(c, one, oneBal, realQuote);
+        oneBal[0] = bals[0];
+        d = _delivery("LCAT", one, oneBal);
+        d.proofs[0] = _proofOf(MerkleTree.holderLeaf(keccak256("LCAT"), bob, bals[1])); // bob's proof
+        vm.expectRevert(LaunchpadBase.NotInSnapshot.selector);
+        mig.migrateToken{value: realQuote}(c, _proofOf(MerkleTree.coinLeaf(c)), d);
+        d.proofs = new bytes32[][](0); // no proofs at all
+        vm.expectRevert(LaunchpadBase.BadMigration.selector);
+        mig.migrateToken{value: realQuote}(c, _proofOf(MerkleTree.coinLeaf(c)), d);
+
+        // what the snapshot says, delivered; the rest the same way, and nothing else after
+        address token = _mt(c, one, oneBal, realQuote);
+        assertEq(IERC20(token).balanceOf(alice), bals[0]);
+        address[] memory rest = new address[](2);
+        uint256[] memory restBal = new uint256[](2);
+        rest[0] = bob;
+        rest[1] = carol;
+        restBal[0] = bals[1];
+        restBal[1] = bals[2];
+        // a holder of the Dog's is not a holder of the Cat's
+        d = _delivery("DOG", rest, restBal);
+        vm.expectRevert(LaunchpadBase.NotInSnapshot.selector);
+        mig.migrateBalances(token, d);
+        _mb(token, "LCAT", rest, restBal);
+        assertEq(pad.migrationPending(token), 0);
+        assertEq(IERC20(token).balanceOf(carol), bals[2]);
+        // a coin of this pad's own has no snapshot to deliver from
+        vm.prank(dave);
+        address own = pad.createToken{value: 0.1 ether}("Own", "OWN", 0, _meta(), address(0), false);
+        vm.expectRevert(LaunchpadBase.UnknownToken.selector);
+        _mb(own, "OWN", rest, restBal);
+    }
+
+    /// The leaves the pad hashes are the ones the tooling builds (script/MerkleTree.sol, and
+    /// script/merkle.mjs through the demo fixture): a tree of one coin and one holder, both ways.
+    function test_theLeavesMatchTheTooling() public view {
+        LaunchpadBase.LedgerCoin memory c = _coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold);
+        assertEq(mig.migrationLeafCoin(c), MerkleTree.coinLeaf(c));
+        assertEq(
+            mig.migrationLeafHolder(keccak256("LCAT"), alice, bals[0]),
+            MerkleTree.holderLeaf(keccak256("LCAT"), alice, bals[0])
+        );
+        bytes32[] memory two = new bytes32[](2);
+        two[0] = MerkleTree.coinLeaf(c);
+        two[1] = MerkleTree.holderLeaf(keccak256("LCAT"), alice, bals[0]);
+        bytes32 root = MerkleTree.root(two);
+        bytes32 sorted =
+            two[0] < two[1] ? keccak256(abi.encodePacked(two[0], two[1])) : keccak256(abi.encodePacked(two[1], two[0]));
+        assertEq(root, sorted);
+        assertEq(MerkleTree.proof(two, 0)[0], two[1]);
+        assertEq(MerkleTree.proof(two, 1)[0], two[0]);
+        assertEq(MerkleTree.root(new bytes32[](0)), bytes32(0));
     }
 
     // ------------------------------------------------------------ the way out

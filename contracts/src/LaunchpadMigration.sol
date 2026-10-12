@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Math} from "openzeppelin-contracts/contracts/utils/math/Math.sol";
+import {MerkleProof} from "openzeppelin-contracts/contracts/utils/cryptography/MerkleProof.sol";
 import {LaunchpadBase} from "./LaunchpadBase.sol";
 import {LaunchToken} from "./LaunchToken.sol";
 import {IDexMigrator, IDexMigratorUnlock} from "./interfaces/IDexMigrator.sol";
@@ -19,7 +20,26 @@ import {IDexMigrator, IDexMigratorUnlock} from "./interfaces/IDexMigrator.sol";
 contract LaunchpadMigration is LaunchpadBase {
     using SafeERC20 for IERC20;
 
+    /// The two kinds of leaf in a snapshot's tree (migrationRoot): a coin as
+    /// the ledger recorded it, and one holder's balance of a coin. Standard
+    /// leaves (OpenZeppelin): the abi-encoded values hashed twice, so that no
+    /// inner node of the tree can pose as a leaf; pairs are hashed sorted.
+    uint8 internal constant LEAF_COIN = 1;
+    uint8 internal constant LEAF_HOLDER = 2;
+
     constructor() LaunchpadBase(address(0)) {}
+
+    /// @notice The leaf of a coin in a snapshot's tree: everything migrateToken
+    ///         is given about it, so nothing of it can be changed on the way.
+    function migrationLeafCoin(LedgerCoin calldata coin) public pure returns (bytes32) {
+        return keccak256(bytes.concat(keccak256(abi.encode(LEAF_COIN, coin))));
+    }
+
+    /// @notice The leaf of one holder's balance of a coin, the coin named by
+    ///         the hash of its ticker.
+    function migrationLeafHolder(bytes32 symbolHash, address holder, uint256 amount) public pure returns (bytes32) {
+        return keccak256(bytes.concat(keccak256(abi.encode(LEAF_HOLDER, symbolHash, holder, amount))));
+    }
 
     modifier onlyOperator() {
         if (msg.sender != owner() && msg.sender != migrationOperator) revert NotOperator();
@@ -36,10 +56,11 @@ contract LaunchpadMigration is LaunchpadBase {
         emit MigrationOperatorUpdated(operator);
     }
 
-    /// @notice Open the migration from a frozen ledger: its state root and
-    ///         the block it froze at, once and for all. Every migrateToken
-    ///         call must follow this, and anyone can replay the ledger to
-    ///         this root to check what was migrated.
+    /// @notice Open the migration from a frozen ledger: the root of its
+    ///         snapshot's tree and the block it froze at, once and for all.
+    ///         Every coin and every balance migrated after this must prove
+    ///         itself a leaf of that tree, and anyone can replay the ledger
+    ///         to this root to check what the snapshot says.
     function setMigrationRoot(bytes32 root, uint256 freezeHeight) external onlyOperator {
         if (root == bytes32(0) || migrationRoot != bytes32(0)) revert BadMigration();
         migrationRoot = root;
@@ -69,8 +90,12 @@ contract LaunchpadMigration is LaunchpadBase {
     ///         that graduated on the ledger comes with its locked pool
     ///         (`poolToken` tokens against the quote): it graduates here as
     ///         soon as its holders are served and that pool goes to the DEX,
-    ///         and its fees go on there.
-    function migrateToken(LedgerCoin calldata coin, address[] calldata holders, uint256[] calldata balances)
+    ///         and its fees go on there. The coin must be a leaf of the
+    ///         snapshot's tree (`coinProof`), and so must every holder's
+    ///         balance (`first.proofs`, one per holder): the operator
+    ///         delivers what the snapshot says, to whom it says, and nothing
+    ///         else.
+    function migrateToken(LedgerCoin calldata coin, bytes32[] calldata coinProof, Delivery calldata first)
         external
         payable
         onlyOperator
@@ -78,15 +103,12 @@ contract LaunchpadMigration is LaunchpadBase {
         returns (address token)
     {
         if (freezeBlock != 0) revert CreationClosed();
-        if (coin.quoteAsset == address(0)) {
-            if (msg.value != coin.quoteAmount) revert WrongPayment();
-        } else {
-            if (msg.value != 0 || quoteVirtualReserve[coin.quoteAsset] == 0) revert WrongPayment();
-            IERC20(coin.quoteAsset).safeTransferFrom(msg.sender, address(this), coin.quoteAmount);
-        }
-        _checkLedgerCoin(coin, holders.length);
+        if (migrationRoot == bytes32(0) || migrationClosed) revert MigrationNotOpen();
+        _takeQuote(coin.quoteAsset, coin.quoteAmount);
+        _checkLedgerCoin(coin, first.holders.length);
+        _proveCoin(coin, coinProof);
         token = tokenFactory.create(coin.name, coin.symbol, TOTAL_SUPPLY);
-        _claimTicker(coin.symbol, token);
+        bytes32 sym = _claimTicker(coin.symbol, token);
         curves[token] = _ledgerCurve(coin);
         tokenMetadata[token] = coin.meta;
         if (coin.feeRecipient != address(0)) feeRecipient[token] = coin.feeRecipient;
@@ -107,15 +129,34 @@ contract LaunchpadMigration is LaunchpadBase {
         emit TokenCreated(token, coin.creator, coin.name, coin.symbol, coin.fees.holdersBps != 0);
         emit MetadataUpdated(token);
         emit TokenMigrated(token, coin.creator, coin.virtualQuote, _ledgerReserve(coin), coin.sold);
-        if (coin.sold != coin.burned) _migrateBalances(token, holders, balances);
+        if (coin.sold != coin.burned) _migrateBalances(token, sym, first);
         // a pooled coin nobody holds any more (all sold into its pool, or burned) has no delivery to wait for
         else if (coin.poolToken != 0) _graduate(token, curves[token]);
     }
 
-    /// An open migration, and one token per ledger ticker.
-    function _claimTicker(string calldata symbol, address token) internal {
-        if (migrationRoot == bytes32(0) || migrationClosed) revert MigrationNotOpen();
-        bytes32 sym = keccak256(bytes(symbol));
+    /// The quote a coin arrives with: as msg.value for a native quote, pulled from the
+    /// caller for an enabled ERC-20 and credited for what arrives, not for what was asked
+    /// (a quote that takes a cut on the way, or inflates in the hands of its holders,
+    /// would leave the curve short).
+    function _takeQuote(address asset, uint256 amount) internal {
+        if (asset == address(0)) {
+            if (msg.value != amount) revert WrongPayment();
+            return;
+        }
+        if (msg.value != 0 || quoteVirtualReserve[asset] == 0) revert WrongPayment();
+        uint256 before = IERC20(asset).balanceOf(address(this));
+        IERC20(asset).safeTransferFrom(msg.sender, address(this), amount);
+        if (IERC20(asset).balanceOf(address(this)) - before != amount) revert WrongPayment();
+    }
+
+    /// The coin is a leaf of the snapshot's tree, as given.
+    function _proveCoin(LedgerCoin calldata coin, bytes32[] calldata proof) internal view {
+        if (!MerkleProof.verifyCalldata(proof, migrationRoot, migrationLeafCoin(coin))) revert NotInSnapshot();
+    }
+
+    /// One token per ledger ticker.
+    function _claimTicker(string calldata symbol, address token) internal returns (bytes32 sym) {
+        sym = keccak256(bytes(symbol));
         if (migratedTicker[sym] != address(0)) revert TickerMigrated();
         migratedTicker[sym] = token;
     }
@@ -168,30 +209,34 @@ contract LaunchpadMigration is LaunchpadBase {
         });
     }
 
-    /// @notice Deliver more of a migrated coin's balances (owner or operator).
-    function migrateBalances(address token, address[] calldata holders, uint256[] calldata balances)
-        external
-        onlyOperator
-        nonReentrant
-    {
+    /// @notice Deliver more of a migrated coin's balances (owner or operator),
+    ///         each proven a leaf of the snapshot's tree.
+    function migrateBalances(address token, Delivery calldata batch) external onlyOperator nonReentrant {
         if (frozen()) revert Frozen();
         if (curves[token].vEth == 0) revert UnknownToken();
-        _migrateBalances(token, holders, balances);
+        bytes32 sym = keccak256(bytes(LaunchToken(token).symbol()));
+        if (migratedTicker[sym] != token) revert UnknownToken(); // a coin of this launchpad's own: nothing to deliver
+        _migrateBalances(token, sym, batch);
     }
 
-    function _migrateBalances(address token, address[] calldata holders, uint256[] calldata balances) internal {
-        if (holders.length != balances.length) revert BadMigration();
+    function _migrateBalances(address token, bytes32 sym, Delivery calldata d) internal {
+        if (d.holders.length != d.balances.length || d.proofs.length != d.holders.length) revert BadMigration();
         uint256 pending = migrationPending[token];
         if (pending == 0) revert BadMigration(); // not migrating (any more)
-        for (uint256 i = 0; i < holders.length; i++) {
-            if (migrationDelivered[token][holders[i]]) revert AlreadyDelivered(holders[i]);
-            migrationDelivered[token][holders[i]] = true;
-            if (balances[i] > pending) revert BadMigration(); // more than the ledger sold
-            pending -= balances[i];
-            IERC20(token).safeTransfer(holders[i], balances[i]);
+        for (uint256 i = 0; i < d.holders.length; i++) {
+            address holder = d.holders[i];
+            uint256 amount = d.balances[i];
+            if (migrationDelivered[token][holder]) revert AlreadyDelivered(holder);
+            if (!MerkleProof.verifyCalldata(d.proofs[i], migrationRoot, migrationLeafHolder(sym, holder, amount))) {
+                revert NotInSnapshot();
+            }
+            migrationDelivered[token][holder] = true;
+            if (amount > pending) revert BadMigration(); // more than the ledger sold
+            pending -= amount;
+            IERC20(token).safeTransfer(holder, amount);
         }
         migrationPending[token] = pending;
-        emit MigrationBalances(token, holders.length, pending);
+        emit MigrationBalances(token, d.holders.length, pending);
         if (pending == 0) {
             pendingCoins--;
             // a coin whose curve had sold out on the ledger graduates as soon as
@@ -206,9 +251,11 @@ contract LaunchpadMigration is LaunchpadBase {
     ///         its coins can be re-created elsewhere: the block must not be
     ///         past, only one freeze can be announced at a time, and not
     ///         over a migrated coin still delivering its holders. From the
-    ///         announcement on no new coin is created here, and the harvest
-    ///         of every coin's pool fees runs unbounded, so nothing is left
-    ///         unsold when the freeze lands. The owner is a timelock, so the
+    ///         announcement on no new coin is created here; the harvest of
+    ///         every coin's pool fees goes on as always, a slice a block,
+    ///         for a keeper to empty the buckets over the notice (what is
+    ///         still in them when the freeze lands is burned by migrateOut).
+    ///         The owner is a timelock, so the
     ///         announcement is public for the delay before it can be made;
     ///         and since cancelFreeze takes the same delay, a freeze can only
     ///         be called off if its block lies more than one delay past the
@@ -234,8 +281,8 @@ contract LaunchpadMigration is LaunchpadBase {
     ///         — its quote side leaves, its token side comes back here and
     ///         is burned, so the supply mirrors what holders own, and the
     ///         pool stays open to withdrawals (migratedPair). Pool fees
-    ///         still unsold (taxTreasury, taxPot: dust, after the unbounded
-    ///         harvests the announcement allows) are burned too. The
+    ///         still unsold (taxTreasury, taxPot: dust, after a keeper's
+    ///         harvests over the notice) are burned too. The
     ///         migrator must be able to give the pool back
     ///         (IDexMigratorUnlock): one that cannot makes this revert, and
     ///         the coin stays. Cashback and creator fees accrued here stay

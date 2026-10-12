@@ -8,6 +8,7 @@ import {LaunchToken} from "../src/LaunchToken.sol";
 import {IDexMigrator} from "../src/interfaces/IDexMigrator.sol";
 import {ERC20} from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 import {Ownable} from "openzeppelin-contracts/contracts/access/Ownable.sol";
+import {MockFeeOnTransfer} from "./mocks/MockFeeOnTransfer.sol";
 
 /// Records what it was handed and names no pool (address(0)): the launchpad
 /// registers nothing, so nothing after graduation is a pool trade.
@@ -898,6 +899,28 @@ contract LaunchpadTest is Test {
         usd.mint(bob, 1_000_000e6);
         vm.prank(bob);
         usd.approve(address(pad), type(uint256).max);
+    }
+
+    /// A quote that keeps a cut of every transfer is credited for what arrives, so a buy in it
+    /// is refused rather than the curve credited more than it holds: the curve's reserve stays
+    /// the pad's balance to the unit. (Governance never enables such a quote; this is the
+    /// guard for the day it errs.)
+    function test_aQuoteThatTakesACutOnTheWayIsRefused() public {
+        MockFeeOnTransfer fee = new MockFeeOnTransfer();
+        pad.setQuoteAsset(address(fee), 30e8);
+        address token = _createTaxed(address(fee), 10_000, 0);
+        fee.mint(bob, 100e8);
+        vm.startPrank(bob);
+        fee.approve(address(pad), type(uint256).max);
+        vm.expectRevert(LaunchpadBase.WrongPayment.selector);
+        pad.buyWithQuote(token, 10e8, 0);
+        vm.expectRevert(LaunchpadBase.WrongPayment.selector);
+        pad.buyWithQuoteFor(token, 10e8, 0, alice);
+        vm.stopPrank();
+        assertEq(fee.balanceOf(address(pad)), 0, "nothing pulled");
+        (,, uint256 realQuote,,,,) = pad.curves(token);
+        assertEq(realQuote, 0);
+        assertEq(fee.balanceOf(bob), 100e8, "the refused buy cost nothing");
     }
 
     function test_quoteCurveRequiresWhitelist() public {

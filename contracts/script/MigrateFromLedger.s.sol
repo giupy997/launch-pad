@@ -7,6 +7,7 @@ import {TimelockController} from "openzeppelin-contracts/contracts/governance/Ti
 import {Launchpad} from "../src/Launchpad.sol";
 import {LaunchpadBase} from "../src/LaunchpadBase.sol";
 import {ILaunchpadMigration} from "../src/interfaces/ILaunchpadMigration.sol";
+import {MerkleTree} from "./MerkleTree.sol";
 
 /// Re-creates every coin of a frozen Notus ledger — the Litecoin ledger, or
 /// an EVM pad that froze (Base v11) — on a v12 Launchpad, from the file
@@ -31,6 +32,13 @@ import {ILaunchpadMigration} from "../src/interfaces/ILaunchpadMigration.sol";
 ///                  approving the pad from the timelock first).
 /// A coin with more holders than one batch carries takes a second round of
 /// schedule + execute for the rest: its token address exists only after the first.
+///
+/// The file's `stateRoot` is the root of its tree (script/merkle.mjs): a leaf
+/// per coin, a leaf per holder's balance. The pad commits to it once and
+/// then delivers only what proves itself a leaf of it, so this script
+/// rebuilds the tree from the file (MerkleTree.sol), refuses a file whose
+/// root is not its coins', and hands the pad a proof with every coin and
+/// every holder.
 ///
 /// Safe to run again after a failure: the snapshot's root is set once, a coin
 /// whose token exists is not created twice, holders already delivered are
@@ -81,6 +89,12 @@ contract MigrateFromLedger is Script {
         bytes data;
     }
 
+    /// What a coin proves against the file's tree: itself, and each of its holders.
+    struct Proofs {
+        bytes32[] coin;
+        bytes32[][] holders;
+    }
+
     /// One timelock operation: a few calls, executed in one transaction.
     struct Op {
         address[] targets;
@@ -129,6 +143,39 @@ contract MigrateFromLedger is Script {
         coins = abi.decode(vm.parseJson(json, ".coins"), (Coin[]));
     }
 
+    /// The file's tree, as script/merkle.mjs built it for its stateRoot: the leaves of
+    /// every coin and every holder in the file's order, the root, and every leaf's proof.
+    function tree(Coin[] memory coins, address quote) public pure returns (bytes32 root, Proofs[] memory proofs) {
+        uint256 n;
+        for (uint256 i = 0; i < coins.length; i++) {
+            require(coins[i].holders.length == coins[i].balances.length, "holders/balances mismatch");
+            n += 1 + coins[i].holders.length;
+        }
+        bytes32[] memory leaves = new bytes32[](n);
+        uint256 k;
+        for (uint256 i = 0; i < coins.length; i++) {
+            leaves[k++] = MerkleTree.coinLeaf(_ledgerCoin(coins[i], quote));
+            bytes32 sym = keccak256(bytes(coins[i].symbol));
+            for (uint256 j = 0; j < coins[i].holders.length; j++) {
+                leaves[k++] = MerkleTree.holderLeaf(sym, coins[i].holders[j], coins[i].balances[j]);
+            }
+        }
+        root = MerkleTree.root(leaves);
+        proofs = new Proofs[](coins.length);
+        k = 0;
+        for (uint256 i = 0; i < coins.length; i++) {
+            proofs[i].coin = MerkleTree.proof(leaves, k++);
+            proofs[i].holders = new bytes32[][](coins[i].holders.length);
+            for (uint256 j = 0; j < coins[i].holders.length; j++) {
+                proofs[i].holders[j] = MerkleTree.proof(leaves, k++);
+            }
+        }
+    }
+
+    function treeRoot(Coin[] memory coins, address quote) public pure returns (bytes32 root) {
+        (root,) = tree(coins, quote);
+    }
+
     function rootOf(string memory json) public pure returns (bytes32 root, uint256 freeze) {
         root = vm.parseBytes32(string.concat("0x", vm.parseJsonString(json, ".stateRoot")));
         freeze = vm.parseJsonUint(json, ".freezeHeight");
@@ -146,8 +193,11 @@ contract MigrateFromLedger is Script {
 
     /// The snapshot this file came from, committed on the Launchpad before
     /// any coin: once set, every later run must be from the same snapshot.
+    /// The root must be the tree of the file's coins, or the pad would commit
+    /// to something its coins cannot prove.
     function ensureRoot(Launchpad pad, string memory json) public {
         (bytes32 root, uint256 freeze) = rootOf(json);
+        require(root == treeRoot(load(json), destQuote(json)), "the file's stateRoot is not the tree of its coins");
         if (pad.migrationRoot() == bytes32(0)) {
             ILaunchpadMigration(address(pad)).setMigrationRoot(root, freeze);
             console.log("migration root set:", vm.toString(root));
@@ -161,43 +211,41 @@ contract MigrateFromLedger is Script {
         return migrateAll(pad, coins, address(0));
     }
 
-    function migrateOne(Launchpad pad, Coin memory c) public returns (address token) {
-        return migrateOne(pad, c, address(0));
-    }
-
     function migrateAll(Launchpad pad, Coin[] memory coins, address quote) public returns (address[] memory tokens) {
+        (, Proofs[] memory proofs) = tree(coins, quote);
         tokens = new address[](coins.length);
         for (uint256 i = 0; i < coins.length; i++) {
-            tokens[i] = migrateOne(pad, coins[i], quote);
+            tokens[i] = migrateOne(pad, coins[i], quote, proofs[i]);
             console.log(coins[i].symbol, "->", tokens[i]);
         }
     }
 
     /// Create the coin if this ticker has no token yet, then deliver every
-    /// holder not delivered already, BATCH at a time.
-    function migrateOne(Launchpad pad, Coin memory c, address quote) public returns (address token) {
+    /// holder not delivered already, BATCH at a time; `p` the coin's proofs
+    /// against the file's tree (tree()).
+    function migrateOne(Launchpad pad, Coin memory c, address quote, Proofs memory p) public returns (address token) {
         require(c.holders.length == c.balances.length, "holders/balances mismatch");
         token = pad.migratedTicker(keccak256(bytes(c.symbol)));
         uint256 from = 0;
         if (token == address(0)) {
             uint256 first = c.holders.length < BATCH ? c.holders.length : BATCH;
-            (address[] memory h, uint256[] memory b) = _slice(c, 0, first);
+            LaunchpadBase.Delivery memory d = _slice(c, p, 0, first);
             uint256 value = _value(c);
             if (quote == address(0)) {
-                token = ILaunchpadMigration(address(pad)).migrateToken{value: value}(_ledgerCoin(c, quote), h, b);
+                token = ILaunchpadMigration(address(pad)).migrateToken{value: value}(_ledgerCoin(c, quote), p.coin, d);
             } else {
                 // the pad pulls the quote from the caller: approved for this coin alone
                 IERC20(quote).approve(address(pad), value);
-                token = ILaunchpadMigration(address(pad)).migrateToken(_ledgerCoin(c, quote), h, b);
+                token = ILaunchpadMigration(address(pad)).migrateToken(_ledgerCoin(c, quote), p.coin, d);
             }
             from = first;
         } else {
             console.log(c.symbol, "already migrated, delivering what is left");
         }
         while (from < c.holders.length && pad.migrationPending(token) != 0) {
-            (address[] memory h, uint256[] memory b, uint256 next) = _undelivered(pad, token, c, from);
+            (LaunchpadBase.Delivery memory d, uint256 next) = _undelivered(pad, token, c, p, from);
             from = next;
-            if (h.length != 0) ILaunchpadMigration(address(pad)).migrateBalances(token, h, b);
+            if (d.holders.length != 0) ILaunchpadMigration(address(pad)).migrateBalances(token, d);
         }
     }
 
@@ -214,6 +262,8 @@ contract MigrateFromLedger is Script {
         bool needRoot = pad.migrationRoot() == bytes32(0);
         if (!needRoot) require(pad.migrationRoot() == root, "the Launchpad holds another snapshot's root");
         address quote = destQuote(json);
+        require(root == treeRoot(coins, quote), "the file's stateRoot is not the tree of its coins");
+        (, Proofs[] memory proofs) = tree(coins, quote);
         uint256 toApprove = quote == address(0) ? 0 : _stillNeeded(pad, coins);
         bool needApprove = toApprove != 0 && IERC20(quote).allowance(pad.owner(), address(pad)) < toApprove;
 
@@ -225,11 +275,19 @@ contract MigrateFromLedger is Script {
         }
         if (needApprove) calls[n++] = Call(quote, 0, abi.encodeCall(IERC20.approve, (address(pad), toApprove)));
         for (uint256 i = 0; i < coins.length; i++) {
-            n = _coinCalls(pad, coins[i], quote, calls, n);
+            n = _coinCalls(pad, coins[i], quote, proofs[i], calls, n);
         }
 
         // in operations of CALLS_PER_OP (the root and the approval ride along with the first)
-        uint256 perOp = CALLS_PER_OP + (needRoot ? 1 : 0) + (needApprove ? 1 : 0);
+        ops = _group(calls, n, CALLS_PER_OP + (needRoot ? 1 : 0) + (needApprove ? 1 : 0), root);
+    }
+
+    /// The first `n` calls in operations: `perOp` in the first, CALLS_PER_OP in each after.
+    function _group(Call[] memory calls, uint256 n, uint256 perOp, bytes32 root)
+        internal
+        pure
+        returns (Op[] memory ops)
+    {
         uint256 count = n == 0 ? 0 : 1 + (n > perOp ? (n - perOp + CALLS_PER_OP - 1) / CALLS_PER_OP : 0);
         ops = new Op[](count);
         uint256 at = 0;
@@ -343,7 +401,7 @@ contract MigrateFromLedger is Script {
 
     /// The calls one coin still needs: its creation with the first batch of
     /// holders, or the batches of holders not delivered yet.
-    function _coinCalls(Launchpad pad, Coin memory c, address quote, Call[] memory calls, uint256 n)
+    function _coinCalls(Launchpad pad, Coin memory c, address quote, Proofs memory p, Call[] memory calls, uint256 n)
         internal
         view
         returns (uint256)
@@ -352,21 +410,22 @@ contract MigrateFromLedger is Script {
         address token = pad.migratedTicker(keccak256(bytes(c.symbol)));
         if (token == address(0)) {
             uint256 first = c.holders.length < BATCH ? c.holders.length : BATCH;
-            (address[] memory h, uint256[] memory b) = _slice(c, 0, first);
             calls[n++] = Call(
                 address(pad),
                 quote == address(0) ? _value(c) : 0,
-                abi.encodeCall(ILaunchpadMigration.migrateToken, (_ledgerCoin(c, quote), h, b))
+                abi.encodeCall(
+                    ILaunchpadMigration.migrateToken, (_ledgerCoin(c, quote), p.coin, _slice(c, p, 0, first))
+                )
             );
             return n;
         }
         if (pad.migrationPending(token) == 0) return n;
         uint256 from = 0;
         while (from < c.holders.length) {
-            (address[] memory h, uint256[] memory b, uint256 next) = _undelivered(pad, token, c, from);
+            (LaunchpadBase.Delivery memory d, uint256 next) = _undelivered(pad, token, c, p, from);
             from = next;
-            if (h.length != 0) {
-                calls[n++] = Call(address(pad), 0, abi.encodeCall(ILaunchpadMigration.migrateBalances, (token, h, b)));
+            if (d.holders.length != 0) {
+                calls[n++] = Call(address(pad), 0, abi.encodeCall(ILaunchpadMigration.migrateBalances, (token, d)));
             }
         }
         return n;
@@ -432,29 +491,26 @@ contract MigrateFromLedger is Script {
         });
     }
 
-    /// Up to BATCH holders from `from` on that the Launchpad has not delivered yet.
-    function _undelivered(Launchpad pad, address token, Coin memory c, uint256 from)
+    /// Up to BATCH holders from `from` on that the Launchpad has not delivered yet, with their proofs.
+    function _undelivered(Launchpad pad, address token, Coin memory c, Proofs memory p, uint256 from)
         internal
         view
-        returns (address[] memory h, uint256[] memory b, uint256 next)
+        returns (LaunchpadBase.Delivery memory d, uint256 next)
     {
-        address[] memory hs = new address[](BATCH);
-        uint256[] memory bs = new uint256[](BATCH);
+        uint256[] memory at = new uint256[](BATCH);
         uint256 n = 0;
         next = from;
         while (next < c.holders.length && n < BATCH) {
-            if (!pad.migrationDelivered(token, c.holders[next])) {
-                hs[n] = c.holders[next];
-                bs[n] = c.balances[next];
-                n++;
-            }
+            if (!pad.migrationDelivered(token, c.holders[next])) at[n++] = next;
             next++;
         }
-        h = new address[](n);
-        b = new uint256[](n);
+        d.holders = new address[](n);
+        d.balances = new uint256[](n);
+        d.proofs = new bytes32[][](n);
         for (uint256 i = 0; i < n; i++) {
-            h[i] = hs[i];
-            b[i] = bs[i];
+            d.holders[i] = c.holders[at[i]];
+            d.balances[i] = c.balances[at[i]];
+            d.proofs[i] = p.holders[at[i]];
         }
     }
 
@@ -479,16 +535,19 @@ contract MigrateFromLedger is Script {
         console.log("ticker -> token map written to", path);
     }
 
-    function _slice(Coin memory c, uint256 from, uint256 to)
+    /// The holders from `from` to `to`, with their proofs.
+    function _slice(Coin memory c, Proofs memory p, uint256 from, uint256 to)
         internal
         pure
-        returns (address[] memory h, uint256[] memory b)
+        returns (LaunchpadBase.Delivery memory d)
     {
-        h = new address[](to - from);
-        b = new uint256[](to - from);
+        d.holders = new address[](to - from);
+        d.balances = new uint256[](to - from);
+        d.proofs = new bytes32[][](to - from);
         for (uint256 i = from; i < to; i++) {
-            h[i - from] = c.holders[i];
-            b[i - from] = c.balances[i];
+            d.holders[i - from] = c.holders[i];
+            d.balances[i - from] = c.balances[i];
+            d.proofs[i - from] = p.holders[i];
         }
     }
 

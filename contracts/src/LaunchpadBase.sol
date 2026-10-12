@@ -145,6 +145,14 @@ abstract contract LaunchpadBase is Ownable, ReentrancyGuard {
         uint256 liquidityPot;
     }
 
+    /// A batch of a migrated coin's holders: who, how much, and each one's
+    /// proof that the snapshot's tree (migrationRoot) says so.
+    struct Delivery {
+        address[] holders;
+        uint256[] balances;
+        bytes32[][] proofs;
+    }
+
     mapping(address token => Curve) public curves;
     mapping(address token => TokenMetadata) public tokenMetadata;
     /// Coins migrated from a ledger: tokens still to be handed to their
@@ -163,10 +171,14 @@ abstract contract LaunchpadBase is Ownable, ReentrancyGuard {
     /// a coin that arrived graduated from a ledger, what its holders and its
     /// pool leave of the supply.
     mapping(address token => uint256) public lockedAtGraduation;
-    /// The ledger snapshot every migrated coin comes from: its state root,
-    /// the block it froze at and which chain, set once before the first coin
-    /// and never changed, so anyone can replay the ledger to that root and
-    /// compare. Closing ends the migration for good.
+    /// The ledger snapshot every migrated coin comes from: the root of its
+    /// tree (a leaf per coin as the ledger recorded it, a leaf per holder's
+    /// balance of it; see LaunchpadMigration) and the block it froze at, set
+    /// once before the first coin and never changed. Every coin and every
+    /// balance delivered must prove itself against this root, so the operator
+    /// can deliver what the snapshot says and nothing else, and anyone can
+    /// replay the ledger to the root and compare. Closing ends the migration
+    /// for good.
     bytes32 public migrationRoot;
     uint256 public migrationFreezeHeight;
     bool public migrationClosed;
@@ -321,6 +333,7 @@ abstract contract LaunchpadBase is Ownable, ReentrancyGuard {
     error BadPool();
     /// neither the owner nor the migration operator.
     error NotOperator();
+    error NotInSnapshot();
 
     constructor(address treasury_) Ownable(msg.sender) {
         treasury = treasury_;

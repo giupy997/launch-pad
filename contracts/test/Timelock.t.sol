@@ -21,7 +21,7 @@ contract TimelockTest is Test {
     TimelockController timelock;
     MigrateFromLedger script;
     uint256 constant DELAY = 2 days;
-    bytes32 constant ROOT = bytes32(uint256(0x28bf69752873a3620128cb7ad5a7b2996f96650d0a165416fdc1980d5651721b));
+    bytes32 constant ROOT = bytes32(uint256(0x9bb8b9e073b6cde9632ba848277ca117db3725f2e8ee48a3d46d176d6616d433));
 
     function setUp() public {
         pad = new Launchpad(makeAddr("treasury"));
@@ -183,7 +183,7 @@ contract TimelockTest is Test {
         assertEq(script.executeFromFile(timelock, pad, json, coins), 1, "the same plan, now ready, runs");
         assertEq(pad.tokenCount(), 3);
         assertEq(
-            pad.migrationRoot(), bytes32(uint256(0x28bf69752873a3620128cb7ad5a7b2996f96650d0a165416fdc1980d5651721b))
+            pad.migrationRoot(), bytes32(uint256(0x9bb8b9e073b6cde9632ba848277ca117db3725f2e8ee48a3d46d176d6616d433))
         );
         assertEq(address(pad).balance, total, "every reserve arrived through the timelock");
         assertTrue(script.allMigrated(pad, coins));
@@ -224,19 +224,29 @@ contract TimelockTest is Test {
         vm.deal(address(script), coins[0].realQuote);
     }
 
-    string constant CROWD_JSON =
-        '{"stateRoot":"1111111111111111111111111111111111111111111111111111111111111111","freezeHeight":100,"network":"test","coins":[]}';
+    /// The crowd's file, as far as the plan reads it: the root of its tree (the script
+    /// refuses a file whose root is not its coins'), the freeze height, the network.
+    function _crowdJson(MigrateFromLedger.Coin[] memory coins) internal view returns (string memory) {
+        bytes32 root = script.treeRoot(coins, address(0));
+        string memory hex_ = vm.toString(root);
+        bytes memory b = bytes(hex_);
+        bytes memory noPrefix = new bytes(b.length - 2);
+        for (uint256 i = 2; i < b.length; i++) {
+            noPrefix[i - 2] = b[i];
+        }
+        return string.concat('{"stateRoot":"', string(noPrefix), '","freezeHeight":100,"network":"test","coins":[]}');
+    }
 
     /// Schedule, wait out the delay, execute; the plan's shape before it ran.
     function _round(MigrateFromLedger.Coin[] memory coins) internal returns (uint256 calls, bytes4 firstSelector) {
-        (uint256 opCount, uint256[] memory callsPerOp, bytes4[] memory selectors) =
-            script.planSummary(pad, CROWD_JSON, coins);
+        string memory json = _crowdJson(coins);
+        (uint256 opCount, uint256[] memory callsPerOp, bytes4[] memory selectors) = script.planSummary(pad, json, coins);
         assertEq(opCount, 1);
         calls = callsPerOp[0];
         firstSelector = selectors[0];
-        assertEq(script.scheduleFromFile(timelock, pad, CROWD_JSON, coins), 1);
+        assertEq(script.scheduleFromFile(timelock, pad, json, coins), 1);
         vm.warp(block.timestamp + DELAY);
-        assertEq(script.executeFromFile(timelock, pad, CROWD_JSON, coins), 1);
+        assertEq(script.executeFromFile(timelock, pad, json, coins), 1);
     }
 
     function test_manyHoldersTakeASecondRound() public {

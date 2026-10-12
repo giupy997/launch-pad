@@ -149,6 +149,12 @@ const CALLS = parseAbi([
   "function registerTaxedPool(address token, address pool)",
   "function setMigrationOperator(address operator)",
   "function setMigrationRoot(bytes32 root, uint256 freezeHeight)",
+  // a migration in, when the owner runs it through the timelock: the v12 module on Base, and the
+  // one after it (every coin and every holder proven against the root: SECURITY.md, H-01)
+  "function migrateToken((string name, string symbol, (string logoURI, string website, string twitter, string telegram, string livestream, string description) meta, address creator, address feeRecipient, (uint16 buyTaxBps, uint16 sellTaxBps, uint16 creatorBps, uint16 holdersBps, uint16 burnBps, uint16 liquidityBps, uint16 platformBps) fees, address quoteAsset, uint256 quoteAmount, uint256 virtualQuote, uint256 sold, uint256 burned, uint256 poolToken, uint256 burnPot, uint256 liquidityPot) coin, address[] holders, uint256[] balances)",
+  "function migrateToken((string name, string symbol, (string logoURI, string website, string twitter, string telegram, string livestream, string description) meta, address creator, address feeRecipient, (uint16 buyTaxBps, uint16 sellTaxBps, uint16 creatorBps, uint16 holdersBps, uint16 burnBps, uint16 liquidityBps, uint16 platformBps) fees, address quoteAsset, uint256 quoteAmount, uint256 virtualQuote, uint256 sold, uint256 burned, uint256 poolToken, uint256 burnPot, uint256 liquidityPot) coin, bytes32[] coinProof, (address[] holders, uint256[] balances, bytes32[][] proofs) first)",
+  "function migrateBalances(address token, address[] holders, uint256[] balances)",
+  "function migrateBalances(address token, (address[] holders, uint256[] balances, bytes32[][] proofs) batch)",
   "function closeMigration()",
   "function announceFreeze(uint256 atBlock)",
   "function cancelFreeze()",

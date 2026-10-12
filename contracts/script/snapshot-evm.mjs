@@ -34,7 +34,10 @@
 // on another chain nothing may live at their address (a move to a new pad on
 // the same chain passes the flag). Run it unfrozen before announcing the
 // freeze, so the day holds no surprise. Needs web/'s node_modules (viem);
-// the ABIs it needs are written here, so it reads a v11 pad and a v12 pad
+// The file's `stateRoot` is the root of its Merkle tree (a leaf per coin, a
+// leaf per holder: merkle.mjs), which the receiving pad commits to and proves
+// every delivery against; anyone can run this on the frozen source and
+// compare the root. The ABIs it needs are written here, so it reads a v11 pad and a v12 pad
 // alike (the fee configuration has six fields on one, seven on the other;
 // a v12 pad's unsold pool fees — its tax buckets — are counted as burned,
 // since migrateOut burns them).
@@ -56,6 +59,7 @@ import {
   formatUnits,
   zeroAddress,
 } from "../../web/node_modules/viem/_esm/index.js";
+import { migrationTree } from "./merkle.mjs";
 
 // Every crash goes through one printer: viem quotes the request URL in its
 // messages, and a keyed node's URL carries its key, so every configured URL
@@ -497,7 +501,10 @@ if (contractHolders.length) {
 const big = (_, v) => (typeof v === "bigint" ? `__big_${v}` : v);
 const numbers = (s) => s.replace(/"__big_(\d+)"/g, "$1");
 const canonical = numbers(JSON.stringify(coins, big));
-const stateRoot = keccak256(toHex(canonical)).slice(2);
+// the root the receiving pad commits to: the tree of every coin and every holder (merkle.mjs),
+// which MigrateFromLedger.s.sol rebuilds from this file and proves each delivery against
+const stateRoot = migrationTree(coins, destQuote).root.slice(2);
+const coinsHash = keccak256(toHex(canonical)).slice(2); // the coins as written, hashed whole: a fingerprint of the file
 const out = {
   network,
   chainId,
@@ -510,6 +517,8 @@ const out = {
   height: block,
   freezeHeight: block,
   stateRoot,
+  rootScheme: "merkle-1", // a leaf per coin and per holder, OpenZeppelin's standard leaves, pairs hashed sorted: merkle.mjs
+  coinsHash,
   scale: Number(scale),
   partial: false,
   generatedAt: new Date().toISOString(),

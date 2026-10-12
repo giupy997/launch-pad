@@ -12,6 +12,7 @@ import {UniV2Migrator} from "../src/UniV2Migrator.sol";
 import {MockWETH9, MockV2Factory, MockV2Router, MockV2Pair, IUniswapV2Callee} from "./mocks/UniV2Mock.sol";
 import {MockCbLTC} from "./mocks/MockCbLTC.sol";
 import {ILaunchpadMigration} from "../src/interfaces/ILaunchpadMigration.sol";
+import {MerkleTree} from "../script/MerkleTree.sol";
 
 /// A flash-swap borrower: takes coins out of the pair with `data` set and, in
 /// the callback, either has the migrator harvest, sells the coins back into
@@ -529,31 +530,41 @@ contract FreezeTest is Test {
 
     function test_inboundMigrationStopsWithTheFreeze() public {
         // a coin arriving from a ledger, half delivered: no freeze is announced over it
-        mig.setMigrationRoot(bytes32(uint256(1)), 1);
         uint256 sold = 100e18;
         uint256 quoteIn = Math.mulDiv(1.25 ether, sold, pad.VIRTUAL_TOKEN() - sold);
         LaunchpadBase.LedgerCoin memory coin = _ledgerCoin("Ledger Coin", "LEDG", sold);
-        address[] memory holders = new address[](1);
-        uint256[] memory balances = new uint256[](1);
-        holders[0] = bob;
-        balances[0] = sold / 2;
+        // the snapshot's tree: the coin, bob's half, carol's half
+        bytes32[] memory leaves = new bytes32[](3);
+        leaves[0] = MerkleTree.coinLeaf(coin);
+        leaves[1] = MerkleTree.holderLeaf(keccak256("LEDG"), bob, sold / 2);
+        leaves[2] = MerkleTree.holderLeaf(keccak256("LEDG"), carol, sold / 2);
+        mig.setMigrationRoot(MerkleTree.root(leaves), 1);
+        LaunchpadBase.Delivery memory d;
+        d.holders = new address[](1);
+        d.balances = new uint256[](1);
+        d.proofs = new bytes32[][](1);
+        d.holders[0] = bob;
+        d.balances[0] = sold / 2;
+        d.proofs[0] = MerkleTree.proof(leaves, 1);
         vm.deal(address(this), quoteIn);
-        address token = mig.migrateToken{value: quoteIn}(coin, holders, balances);
+        address token = mig.migrateToken{value: quoteIn}(coin, MerkleTree.proof(leaves, 0), d);
         assertEq(pad.migrationPending(token), sold / 2);
         assertEq(pad.pendingCoins(), 1);
         vm.expectRevert(LaunchpadBase.MigrationPending.selector);
         mig.announceFreeze(block.number + 5);
         // delivered whole, the freeze can come; announced, no coin arrives; landed, none is delivered
-        holders[0] = carol;
-        mig.migrateBalances(token, holders, balances);
+        d.holders[0] = carol;
+        d.proofs[0] = MerkleTree.proof(leaves, 2);
+        mig.migrateBalances(token, d);
         assertEq(pad.pendingCoins(), 0);
         mig.announceFreeze(block.number + 5);
         LaunchpadBase.LedgerCoin memory another = _ledgerCoin("Another", "ANOT", 0);
+        LaunchpadBase.Delivery memory none;
         vm.expectRevert(LaunchpadBase.CreationClosed.selector);
-        mig.migrateToken(another, new address[](0), new uint256[](0));
+        mig.migrateToken(another, new bytes32[](0), none);
         vm.roll(block.number + 5);
         vm.expectRevert(LaunchpadBase.Frozen.selector);
-        mig.migrateBalances(token, holders, balances);
+        mig.migrateBalances(token, d);
     }
 
     function test_claimCashbackWhileFrozen() public {
@@ -828,11 +839,11 @@ contract FreezeTest is Test {
 
     // ------------------------------------------- the harvest around the freeze
 
-    /// §5/§6: a freeze announced puts the harvest in rush mode — no cap, no cooldown — so the buckets
-    /// can be emptied before it lands; landed, the pad hands no coin out (takeTax reverts Frozen), no
-    /// trade books a tax (transferRate refuses it before onTax could run), and the claims the harvests
-    /// fed are paid as before.
-    function test_rushHarvestEmptiesTheBucketsAndTheFreezeStopsIt() public {
+    /// §5/§6: a freeze announced changes nothing for the harvest — a slice a block, as on any
+    /// day, the keeper's loop emptying the buckets over the notice; landed, the pad hands no coin
+    /// out (takeTax reverts Frozen), no trade books a tax (transferRate refuses it before onTax
+    /// could run), and the claims the harvests fed are paid as before.
+    function test_theHarvestStaysASliceABlockThroughTheNoticeAndTheFreezeStopsIt() public {
         _fillBuckets();
         uint256 total = _buckets();
         uint256 cap = migrator.harvestCap(gradCoin);
@@ -846,40 +857,59 @@ contract FreezeTest is Test {
         vm.expectRevert(UniV2Migrator.HarvestCooldown.selector);
         migrator.harvest(gradCoin);
 
-        // announced: the whole of both buckets, in the same block
-        mig.announceFreeze(block.number + 5);
+        // announced: a slice a block still, the same block's cooldown too
+        mig.announceFreeze(block.number + 40);
         total = _buckets();
         assertGt(total, migrator.harvestCap(gradCoin), "still more than a slice");
         uint256 creatorBefore = pad.creatorFees(alice, address(quote));
         uint256 daveBefore = pad.cashbackOf(gradCoin, dave);
         vm.prank(dave);
+        vm.expectRevert(UniV2Migrator.HarvestCooldown.selector);
+        migrator.harvest(gradCoin);
+        vm.roll(block.number + 1);
+        cap = migrator.harvestCap(gradCoin);
+        vm.prank(dave);
         (tokensIn,,) = migrator.harvest(gradCoin);
-        assertEq(tokensIn, total, "the whole of both buckets, cap or no cap");
-        assertEq(_buckets(), 0, "emptied");
-        assertGt(pad.creatorFees(alice, address(quote)), creatorBefore, "the creator's share of the harvest, claimable");
+        assertEq(tokensIn, cap, "a slice, the notice notwithstanding");
+        assertEq(_buckets(), total - cap, "the rest waits for the next block");
+        // the keeper, a slice a block, until the buckets are empty
+        uint256 blocks;
+        while (_buckets() != 0) {
+            vm.roll(block.number + 1);
+            vm.prank(dave);
+            migrator.harvest(gradCoin);
+            blocks++;
+        }
+        assertGt(blocks, 1, "it took several blocks");
+        assertLt(block.number, pad.freezeBlock(), "well inside the notice");
+        assertGt(
+            pad.creatorFees(alice, address(quote)), creatorBefore, "the creator's share of the harvests, claimable"
+        );
         assertGt(pad.cashbackOf(gradCoin, dave), daveBefore, "the holders' share: dave's");
 
-        // trading goes on until the block, taxed, and so do the harvests: again in the same block
+        // trading goes on until the block, taxed, and so do the harvests, a slice a block
         (, uint256 tax) = _poolBuy(carol, 5e8);
         assertGt(tax, 0);
         assertEq(_buckets(), tax);
+        vm.roll(block.number + 1);
+        assertLt(tax, migrator.harvestCap(gradCoin), "one buy's tax: less than a slice");
         vm.prank(dave);
         (tokensIn,,) = migrator.harvest(gradCoin);
-        assertEq(tokensIn, tax, "the last buy's tax, whole, in the same block");
+        assertEq(tokensIn, tax, "the last buy's tax, whole");
         assertEq(_buckets(), 0);
 
         // the last trades before the freeze leave coins in the buckets
         _poolSell(carol, IERC20(gradCoin).balanceOf(carol) / 2);
         uint256 left = _buckets();
         assertGt(left, 0);
-        vm.roll(block.number + 5);
+        vm.roll(pad.freezeBlock());
         assertTrue(pad.frozen());
 
         // the pad hands nothing out, not even to its migrator...
         vm.prank(address(migrator));
         vm.expectRevert(LaunchpadBase.Frozen.selector);
         pad.takeTax(gradCoin, 0, 0, 0);
-        // ...so a harvest, rush or not, fails there
+        // ...so a harvest fails there
         vm.prank(dave);
         vm.expectRevert(LaunchpadBase.Frozen.selector);
         migrator.harvest(gradCoin);
@@ -896,7 +926,7 @@ contract FreezeTest is Test {
 
         // the claims the harvests fed are paid as before
         uint256 owedCarol = pad.cashbackOf(gradCoin, carol);
-        assertGt(owedCarol, 0, "carol held the coin through the second rush harvest");
+        assertGt(owedCarol, 0, "carol held the coin through the last harvests");
         uint256 carolQuote = quote.balanceOf(carol);
         vm.prank(carol);
         pad.claimCashback(gradCoin);

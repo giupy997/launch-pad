@@ -159,7 +159,12 @@ contract Launchpad is LaunchpadBase {
         Curve storage c = curves[token];
         if (c.vEth == 0) revert UnknownToken();
         if (c.quoteAsset == address(0)) revert WrongPayment();
-        IERC20(c.quoteAsset).safeTransferFrom(msg.sender, address(this), amountIn);
+        // credited for what arrives, not for what was asked: a quote that takes a cut on the
+        // way, or inflates in the hands of its holders, would leave the curve short
+        IERC20 quote = IERC20(c.quoteAsset);
+        uint256 before = quote.balanceOf(address(this));
+        quote.safeTransferFrom(msg.sender, address(this), amountIn);
+        if (quote.balanceOf(address(this)) - before != amountIn) revert WrongPayment();
         _buy(token, recipient, amountIn, minTokensOut);
     }
 

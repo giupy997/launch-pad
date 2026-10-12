@@ -11,6 +11,7 @@ import {UniV2Migrator} from "../src/UniV2Migrator.sol";
 import {MockWETH9, MockV2Factory, MockV2Router, MockV2Pair} from "./mocks/UniV2Mock.sol";
 import {MockCbLTC} from "./mocks/MockCbLTC.sol";
 import {ILaunchpadMigration} from "../src/interfaces/ILaunchpadMigration.sol";
+import {MerkleTree} from "../script/MerkleTree.sol";
 
 /// The fees on a coin: the launchpad's 0.5% a side, whole to the treasury,
 /// and the coin's own tax on buys and sells — the only source of its four
@@ -462,7 +463,6 @@ contract FeesTest is Test {
 
     function test_aLedgerCoinArrivesWithItsFeesBurnAndPots() public {
         // the receiving side: a coin as a snapshot recorded it — taxed, a twentieth of it burned, pots unspent
-        mig.setMigrationRoot(bytes32(uint256(1)), 1);
         uint256 sold = 100_000_000e18;
         uint256 burnedThere = 5_000_000e18;
         uint256 reserve = Math.mulDiv(1.25 ether, sold, pad.VIRTUAL_TOKEN() - sold);
@@ -484,16 +484,25 @@ contract FeesTest is Test {
             burnPot: 0.3 ether,
             liquidityPot: 0.2 ether
         });
-        address[] memory holders = new address[](1);
-        uint256[] memory balances = new uint256[](1);
-        holders[0] = bob;
-        balances[0] = sold - burnedThere;
+        // the snapshot's tree: the coin as it arrives, and bob
+        bytes32[] memory leaves = new bytes32[](2);
+        leaves[0] = MerkleTree.coinLeaf(coin);
+        leaves[1] = MerkleTree.holderLeaf(keccak256("LEDG"), bob, sold - burnedThere);
+        mig.setMigrationRoot(MerkleTree.root(leaves), 1);
+        LaunchpadBase.Delivery memory d;
+        d.holders = new address[](1);
+        d.balances = new uint256[](1);
+        d.proofs = new bytes32[][](1);
+        d.holders[0] = bob;
+        d.balances[0] = sold - burnedThere;
+        d.proofs[0] = MerkleTree.proof(leaves, 1);
+        bytes32[] memory coinProof = MerkleTree.proof(leaves, 0);
         vm.deal(address(this), reserve + 0.5 ether);
         coin.quoteAmount = 0.4 ether;
         vm.expectRevert(LaunchpadBase.BadMigration.selector);
-        mig.migrateToken{value: 0.4 ether}(coin, holders, balances); // less than its pots
+        mig.migrateToken{value: 0.4 ether}(coin, coinProof, d); // less than its pots
         coin.quoteAmount = reserve + 0.5 ether;
-        address token = mig.migrateToken{value: reserve + 0.5 ether}(coin, holders, balances);
+        address token = mig.migrateToken{value: reserve + 0.5 ether}(coin, coinProof, d);
 
         assertEq(pad.migrationPending(token), 0, "delivered whole");
         assertEq(IERC20(token).totalSupply(), pad.TOTAL_SUPPLY() - burnedThere, "the burn happened here too");
@@ -522,7 +531,6 @@ contract FeesTest is Test {
 
     function test_aPooledLedgerCoinNobodyHoldsGraduatesAtBirth() public {
         // everyone sold into the pool there, or the coins were burned: nothing to deliver, so the pool is seeded at once
-        mig.setMigrationRoot(bytes32(uint256(1)), 1);
         uint256 burnedThere = 10_000_000e18;
         LaunchpadBase.LedgerCoin memory coin = LaunchpadBase.LedgerCoin({
             name: "Empty Coin",
@@ -540,8 +548,12 @@ contract FeesTest is Test {
             burnPot: 0.1 ether,
             liquidityPot: 0
         });
+        bytes32[] memory leaves = new bytes32[](1);
+        leaves[0] = MerkleTree.coinLeaf(coin);
+        mig.setMigrationRoot(MerkleTree.root(leaves), 1); // a tree of one leaf: the root is the leaf, the proof empty
+        LaunchpadBase.Delivery memory none;
         vm.deal(address(this), 5.1 ether);
-        address token = mig.migrateToken{value: 5.1 ether}(coin, new address[](0), new uint256[](0));
+        address token = mig.migrateToken{value: 5.1 ether}(coin, new bytes32[](0), none);
         assertTrue(_curve(token).graduated, "graduated at birth");
         assertEq(pad.pendingCoins(), 0);
         assertGt(migrator.liquidity(token), 0, "its pool is seeded");
