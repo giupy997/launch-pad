@@ -18,7 +18,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
     page("/create", "weekly", 0.7),
     page("/points", "daily", 0.6),
     page("/bridge", "weekly", 0.5),
-    page("/swap", "weekly", 0.5),
     page("/profile", "weekly", 0.3),
   ];
 }
