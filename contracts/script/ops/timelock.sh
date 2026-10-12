@@ -12,10 +12,11 @@
 #   bash script/ops/timelock.sh execute ID      # an operation of this script, once ready (no role needed)
 #   bash script/ops/timelock.sh status ID
 #   bash script/ops/timelock.sh cancel ID       # the proposer's key, before it executes
-#   bash script/ops/timelock.sh safe-calldata set-treasury|revoke
+#   bash script/ops/timelock.sh safe-calldata set-treasury|set-migrator|revoke
 #                                               # the same operations prepared for a Safe that is proposer: the
 #                                               # calldata to send to the timelock from the Safe's Transaction
 #                                               # Builder; the execution stays a plain command from here
+#                                               # (set-migrator: a migrator deployed with script/ops/migrator.sh)
 #
 # Addresses are asked at the prompt and echoed back checksummed for a yes
 # before anything is sent; every scheduled operation is written to
@@ -42,6 +43,7 @@ SIG_EXECUTE="execute(address,uint256,bytes,bytes32,bytes32)"
 SIG_EXECUTE_BATCH="executeBatch(address[],uint256[],bytes[],bytes32,bytes32)"
 
 call() { cast call "$TIMELOCK" "$@" --rpc-url "$RPC"; }
+lower() { echo "$1" | tr 'A-F' 'a-f'; }
 delay() { call "getMinDelay()(uint256)" | awk '{print $1}'; }
 when() { date -u -d "@$1" "+%Y-%m-%d %H:%M UTC" 2>/dev/null || date -u -r "$1" "+%Y-%m-%d %H:%M UTC"; }
 salt() { cast keccak "notus-ops $1 $(date -u +%Y-%m-%dT%H:%M:%SZ) $RANDOM"; }
@@ -170,9 +172,22 @@ case "${1:-}" in
     echo "   cancelled: $([ "$(call "getTimestamp(bytes32)(uint256)" "$ID" | awk '{print $1}')" = 0 ] && echo yes || echo no)"
     ;;
   safe-calldata)
-    KIND=${2:?set-treasury|revoke}
+    KIND=${2:?set-treasury|set-migrator|revoke}
     d=$(delay)
     case "$KIND" in
+      set-migrator)
+        echo "The pad $PAD graduates every coin through a new migrator from the execution on (a coin keeps the"
+        echo "migrator it graduated through: switch before any coin graduates). One deployed with script/ops/migrator.sh."
+        ask "new migrator"
+        MPAD=$(cast call "$ADDR" "launchpad()(address)" --rpc-url "$RPC" 2>/dev/null || true)
+        [ "$(lower "$MPAD")" = "$(lower "$PAD")" ] || { echo "   $ADDR is not a migrator of this pad (its launchpad: ${MPAD:-none})"; exit 1; }
+        OLD=$(cast call "$PAD" "migrator()(address)" --rpc-url "$RPC")
+        echo "   migrator now $OLD"
+        S=$(salt "safe set-migrator"); DATA=$(cast calldata "setMigrator(address)" "$ADDR")
+        ID=$(call "hashOperation(address,uint256,bytes,bytes32,bytes32)(bytes32)" "$PAD" 0 "$DATA" "$ZERO32" "$S")
+        save "setMigrator $ADDR (from the Safe)" "$ID" "$PAD" "0" "$DATA" "$ZERO32" "$S" 0
+        CALL=$(cast calldata "$SIG_SCHEDULE" "$PAD" 0 "$DATA" "$ZERO32" "$S" "$d")
+        ;;
       set-treasury)
         ask "new treasury"
         S=$(salt "safe set-treasury"); DATA=$(cast calldata "setTreasury(address)" "$ADDR")
@@ -188,7 +203,7 @@ case "${1:-}" in
         save "revoke roles of $PROPOSER (from the Safe)" "$ID" "$TIMELOCK,$TIMELOCK" "0,0" "$D1,$D2" "$ZERO32" "$S" 1
         CALL=$(cast calldata "$SIG_SCHEDULE_BATCH" "[$TIMELOCK,$TIMELOCK]" "[0,0]" "[$D1,$D2]" "$ZERO32" "$S" "$d")
         ;;
-      *) echo "safe-calldata set-treasury|revoke"; exit 1;;
+      *) echo "safe-calldata set-treasury|set-migrator|revoke"; exit 1;;
     esac
     echo "== in the Safe: New transaction → Transaction Builder → custom data"
     echo "   to:    $TIMELOCK"

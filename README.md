@@ -282,7 +282,10 @@ the call it makes), every role change, the pads' owner-only events, a deploy
 of the site and the pad's address gone from it; and
 `contracts/script/ops/harvest.sh`, the keeper that harvests every graduated
 coin's pool fees a slice a block until the buckets are empty (`--watch` for
-the notice before a freeze); `contracts/script/ops/timelock.sh`, the owner's timelock operations (a Safe
+the notice before a freeze); `contracts/script/ops/migrator.sh`, a new
+`UniV2Migrator` for the pad: deployed, its Standard JSON input for Basescan
+written, verified, read back (the pad takes it through the timelock, from
+the Safe: `timelock.sh safe-calldata set-migrator`); `contracts/script/ops/timelock.sh`, the owner's timelock operations (a Safe
 made proposer, the deployer's key revoked, a new treasury), each scheduled
 now and executable by anyone after the delay.
 
