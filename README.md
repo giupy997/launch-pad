@@ -49,7 +49,10 @@ longer served by the site, built or run.
     surface) and `LaunchpadMigration.sol` (the migration functions, run at
     the pad's own address by delegatecall from its fallback; tooling calls
     them through `interfaces/ILaunchpadMigration.sol`); `migrationOperator`
-    may run a migration into the pad without the timelock's delay. v11's
+    may run a migration into the pad without the timelock's delay, delivering
+    only what the snapshot's Merkle root (committed through the timelock)
+    proves: a leaf per coin, a leaf per holder's balance
+    (`script/MerkleTree.sol`, `script/merkle.mjs`). v11's
     pre-markets, RWA quote lists and `setFeeSplit` are gone (the old
     adapters and tests are parked in `contracts/legacy/`)
   - `src/LaunchToken.sol` — ERC-20 created by the launchpad; transfers locked
@@ -260,10 +263,12 @@ it is ready. Base v12's timelock (`0xe28f…6f76`, Deployments) was deployed
 inside `contracts/script/DeployBase.s.sol`, in the same run as the pad, with
 a 24-hour delay, the deployer (`0x707f…9A02`) as proposer and the open
 executor role; it owns the pad from its first block.
-`contracts/script/DeployTimelock.s.sol` deploys one on its own and hands it a
-pad (`LAUNCHPAD`); its 48-hour default is for the LitVM mainnet pad, which
-the deployer owns for the migration day and the timelock takes right after
-(`MIGRATION.md`). The migration script speaks the timelock's language
+`contracts/script/DeployLitVM.s.sol` does the same for a LitVM pad (a 48-hour
+delay by default, `PROPOSER` the Safe), so the mainnet pad is the timelock's
+from its first block; the migration day needs no owner call, the operator
+delivering only what the committed snapshot proves (`MIGRATION.md`).
+`contracts/script/DeployTimelock.s.sol` deploys a timelock on its own and
+hands it an existing pad (`LAUNCHPAD`). The migration script speaks the timelock's language
 (`MODE=schedule`, then `MODE=execute`). On Liteforge the pad the site uses
 (`0x39D1…ef7F`, a v11 rehearsal pad) is owned by the deployer; the timelock
 there (`0xFaFc…0C87`, 10 minutes) owns an older, parked pad (v7.7). A pad no
@@ -275,7 +280,9 @@ the watch, a read-only process on the VPS that reports on Telegram every
 operation scheduled, executed or cancelled on the Base timelocks (decoded to
 the call it makes), every role change, the pads' owner-only events, a deploy
 of the site and the pad's address gone from it; and
-`contracts/script/ops/timelock.sh`, the owner's timelock operations (a Safe
+`contracts/script/ops/harvest.sh`, the keeper that harvests every graduated
+coin's pool fees a slice a block until the buckets are empty (`--watch` for
+the notice before a freeze); `contracts/script/ops/timelock.sh`, the owner's timelock operations (a Safe
 made proposer, the deployer's key revoked, a new treasury), each scheduled
 now and executable by anyone after the delay.
 

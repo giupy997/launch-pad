@@ -20,7 +20,10 @@ What it costs users: about a day of notice during which trading goes on (no
 new coins), then a few hours of stillness while the coins move. What it costs
 the operator: the custody of the reserves for those hours, in the open (every
 step is a timelock operation, public for the delay before it lands, or a
-transaction anyone reads).
+transaction anyone reads), and nothing more: the receiving pad commits to the
+snapshot's root (a Merkle tree, a leaf per coin and per holder) a delay ahead,
+and from then on delivers only what proves itself a leaf of it, to whom it
+names — the operator cannot change a holder, a balance or a coin on the way.
 
 ## What moves, and how
 
@@ -119,10 +122,13 @@ the exact amounts: the few-satoshi revert of the Base v12 migrator (step 2)
 is not in it.
 
 Verify it (Blockscout, `script/standard-input.mjs` if the CLI stalls) and put
-its address in the env file. It is owned by the deployer for the migration
-day, so the coins are created the hour the snapshot exists; the timelock takes
-it over right after (`DeployTimelock.s.sol` with `LAUNCHPAD=$LITVM_PAD`, its
-48-hour default).
+its address in the env file. The script deploys its TimelockController in the
+same run and hands the pad to it before the broadcast ends (`TIMELOCK_DELAY`,
+48 hours by default; `PROPOSER`, the Safe), so no block passes with the pad
+under a key alone. The migration day needs no owner call: `MIGRATION_OPERATOR`
+(the deployer's key on the VPS) names who runs the coins in, and the operator
+can deliver only what the committed snapshot proves (step 6). A rehearsal pad
+on Liteforge takes `DEPLOYER_OWNED=true` instead and stays the deployer's.
 
 ## 2. Before scheduling anything: the checks, the harvest
 
@@ -166,15 +172,22 @@ A graduated coin's pool trades leave their fees in coins at the pad, in two
 buckets: `taxTreasury` (the launchpad's 0.5%, the treasury's) and `taxPot`
 (the coin's tax: its creator's, holders', burn and liquidity shares). Only a
 harvest sells them and pays them out; `migrateOut` burns what is still there,
-so whatever waits in a bucket at the freeze is destroyed, not paid. And from
-the announcement's execution on, the harvest runs in a rush: no cooldown, no
-cap, one call sells both buckets whole at the pool's price with no minimum,
-so large buckets can be sandwiched (a sell, the harvest, the buy back, in one
-transaction). So the buckets are emptied now, in normal mode: one slice a
-block, at most what sells for half a percent of the pool's quote side, which
-a trade wrapped around it cannot profit from. Anyone may call it (the site
-has the button; the caller is tipped a twentieth of the treasury's part).
-Every graduated coin, until its harvest reverts:
+so whatever waits in a bucket at the freeze is destroyed, not paid. A harvest
+is a slice a block per coin — at most what sells for half a percent of the
+pool's quote side, which a trade wrapped around it cannot profit from — on
+any day, a freeze announced included (the Base v12 migrator `0x6f33…40B3`
+sells the buckets whole once a freeze is announced: on that pad, empty them
+before the announcement and keep them small through the notice, step 3).
+Anyone may call it (the site has the button; the caller is tipped a
+twentieth of the treasury's part). The keeper does it for every graduated
+coin until every bucket is empty:
+
+```bash
+cd ~/launch-pad/contracts && bash script/ops/harvest.sh --all
+```
+
+(`--dry` lists what waits; `--watch` keeps going, a pass every few seconds,
+until Ctrl-C: the loop for the notice. By hand, the same thing:)
 
 ```bash
 source ~/notus-litvm.env; cd ~/launch-pad/contracts && source .env
@@ -319,18 +332,20 @@ Two timelock rounds of 24 hours, with the coin list closing between them:
    dry run found (step 2) and tell their providers to withdraw before the
    block.
 
-3. **Through the notice window, keep the buckets small.** The harvest now
-   runs in a rush, both buckets sold whole in one call, so buckets left to
-   grow are a sandwich waiting. Run step 2's harvest loop every hour or so
-   and after any large trade (anyone may, the site's button too): each
-   harvest now empties a coin's buckets at once. Buckets that together
-   (`taxTreasury` + `taxPot`) are no larger than one capped slice
-   (`harvestCap`) are no more exposed than a normal harvest; in the check,
-   the coins the next harvest takes are that sum, the figure to keep under
-   `one capped slice`. Just before the freeze block, the loop once more and
-   the check: `taxTreasury` and `taxPot` at dust on every coin (what is
-   left, `migrateOut` burns and the snapshot counts as burned); and a last
-   dry run (step 2) to see whether the other pools have emptied.
+3. **Through the notice window, keep the buckets empty.** Leave the keeper
+   running on the VPS (`bash script/ops/harvest.sh --watch`, from a tmux
+   session): a slice a block per coin, as on any day, so no bucket grows to
+   more than what the last block's trades left. On the Base v12 migrator
+   (`0x6f33…40B3`, the one its coins graduated through) a harvest under an
+   announced freeze sells both buckets whole in one call, so there the
+   keeper matters most: buckets that together (`taxTreasury` + `taxPot`)
+   are no larger than one capped slice (`harvestCap`) are no more exposed
+   than a normal harvest; in the check, the coins the next harvest takes
+   are that sum, the figure to keep under `one capped slice`. Just before
+   the freeze block, a last pass and the check: `taxTreasury` and `taxPot`
+   at dust on every coin (what is left, `migrateOut` burns and the snapshot
+   counts as burned); and a last dry run (step 2) to see whether the other
+   pools have emptied.
 
 ## 4. The freeze lands: snapshot, migrateOut
 
@@ -384,12 +399,17 @@ source ~/notus-litvm.env; cd ~/launch-pad/contracts && source .env
 LAUNCHPAD="$LITVM_PAD" MIGRATION_FILE=../litecoin/migration/base-$FREEZE.json forge script script/MigrateFromLedger.s.sol --rpc-url litvm --account notus --broadcast
 ```
 
-Direct mode, since the pad is the deployer's for the day: the root is set,
-every coin created, every holder delivered (150 a transaction), the graduated
-ones seed their pools; `base-$FREEZE.json.migrated.json` is written when all
-is done. Then the timelock takes the pad, and `closeMigration()` through it.
-Coins the snapshot parked in the vault: hand them back to whom they belong
-from there, by hand.
+Direct mode, since the deployer is the pad's migration operator: the root is
+set (the file's `stateRoot`, the Merkle tree of its coins and holders — the
+script rebuilds the tree from the file and refuses one whose root is not its
+coins'), every coin created with its proof, every holder delivered with theirs
+(150 a transaction), the graduated ones seed their pools;
+`base-$FREEZE.json.migrated.json` is written when all is done. The pad checks
+every proof against the root it committed to, so the operator's key can
+deliver what the snapshot says and nothing else; anyone can run
+`snapshot-evm.mjs` on the frozen Base pad and compare the root. Then
+`closeMigration()` through the timelock. Coins the snapshot parked in the
+vault: hand them back to whom they belong from there, by hand.
 
 ## 7. Publish
 
