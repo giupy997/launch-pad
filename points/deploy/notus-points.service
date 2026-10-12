@@ -3,7 +3,7 @@
 # a wallet's points and invite acceptances on 127.0.0.1:8789, behind Caddy
 # (see points/deploy/Caddyfile, the /points/* block).
 #
-#   cd ~/launch-pad && git pull && (cd web && npm install --no-audit --no-fund)   # viem, from the site's node_modules
+#   cd ~/launch-pad && git pull && (cd web && npm ci --ignore-scripts)   # viem, from the site's node_modules; the lock as it is
 #   sudo cp points/deploy/notus-points.service /etc/systemd/system/
 #   sudo systemctl daemon-reload && sudo systemctl enable --now notus-points
 #   journalctl -u notus-points -f

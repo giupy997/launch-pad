@@ -50,7 +50,7 @@ node --test --experimental-strip-types web/lib/points/*.test.ts
 ## On the VPS
 
 ```bash
-cd ~/launch-pad && git pull && (cd web && npm install --no-audit --no-fund)
+cd ~/launch-pad && git pull && (cd web && npm ci --ignore-scripts)   # the lock as it is, no lifecycle script
 sudo cp points/deploy/notus-points.service /etc/systemd/system/
 sudo systemctl daemon-reload && sudo systemctl enable --now notus-points
 journalctl -u notus-points -f                                 # the backfill of Season 0, then a pass every 10s

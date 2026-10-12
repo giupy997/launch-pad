@@ -126,7 +126,7 @@ where they are, from the repository's root, once `parked/web/node_modules`
 links to the site's packages (ignored by git, like every `node_modules`):
 
 ```bash
-(cd web && npm install --no-audit --no-fund)
+(cd web && npm ci --ignore-scripts)
 ln -s ../../web/node_modules parked/web/node_modules
 node --test --experimental-strip-types parked/litecoin/*.test.ts parked/web/lib/zcash/*.test.ts \
   parked/web/lib/litecoin/{chain,esplora,ledger,message,tx}.test.ts

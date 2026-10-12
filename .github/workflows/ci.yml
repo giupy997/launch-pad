@@ -1,0 +1,61 @@
+# The checks a contributor runs before a push, run on every push and pull
+# request: the contracts (formatting, the unit tests; the fork tests need a
+# node and stay local) and the site (an immutable install with no lifecycle
+# script, the registry's signatures, the production dependencies' advisories,
+# types, lint, the unit tests, the production build). Every action is pinned
+# to a commit, the token can only read.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts:
+    name: contracts (forge fmt, forge test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
+        with:
+          version: v1.8.3
+      - run: forge --version
+      - run: forge fmt --check
+      - run: forge test --no-match-path "test/*.fork.t.sol"
+
+  web:
+    name: web (install, audit, types, lint, tests, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: web/.nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: npm audit signatures
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npx tsc --noEmit
+      - run: npx eslint . --max-warnings 0
+      - run: node --test --experimental-strip-types lib/points/*.test.ts lib/trades/*.test.ts lib/sanitize.test.ts lib/imageType.test.ts
+      - run: npm run build

@@ -331,7 +331,8 @@ Per-chain launchpad addresses live in `web/lib/config.ts` (`LAUNCHPAD_ADDRESS`);
 chains without a deployment show a notice and disable trading. Robinhood
 Chain (Arbitrum Orbit, chain ID 4663, RPC `https://rpc.mainnet.chain.robinhood.com`,
 explorer `https://robinhoodchain.blockscout.com`) is a mainnet: using it
-costs real ETH, and the contracts are unaudited — trade accordingly.
+costs real ETH, and the contracts have had no formal audit (two independent
+security reviews and their findings' status: [`SECURITY.md`](SECURITY.md)) — trade accordingly.
 
 ## Network: GIWA Sepolia (testnet)
 
@@ -355,7 +356,7 @@ node script/pool-probe.mjs --rpc <nodes> --launchpad <pad> --from-block <deploy 
 ```
 
 ```bash
-cd web && npm install && npm run dev   # frontend at http://localhost:3000
+cd web && npm ci --ignore-scripts && npm run dev   # frontend at http://localhost:3000 (web/.npmrc: exact versions, no lifecycle script)
 ```
 
 Signing: the deployer key lives in a Foundry keystore encrypted with a password

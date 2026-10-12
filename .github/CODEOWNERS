@@ -1,0 +1,15 @@
+# Every path is reviewed by the owner: with branch protection on main
+# ("require review from code owners"), nothing lands without that review.
+# The paths below are listed on their own so the rule is visible where it
+# matters most: the contracts, the deploy and operations scripts, the
+# site's dependencies and build, the workflows.
+*                                   @giupy997
+/contracts/                         @giupy997
+/ops/                               @giupy997
+/points/deploy/                     @giupy997
+/web/package.json                   @giupy997
+/web/package-lock.json              @giupy997
+/web/.npmrc                         @giupy997
+/web/next.config.mjs                @giupy997
+/netlify.toml                       @giupy997
+/.github/                           @giupy997
