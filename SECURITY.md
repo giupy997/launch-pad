@@ -6,7 +6,7 @@ Please report privately, never in a public issue:
 
 - GitHub's private vulnerability reporting on this repository (Security →
   Report a vulnerability), or
-- email to the maintainer: giupy997@gmail.com.
+- email: notuspad@gmail.com (the project's address, the one in security.txt).
 
 Say what is affected (a contract address, a page of the site, a service), how
 to reproduce it, and what you believe the impact is. You will get an answer
