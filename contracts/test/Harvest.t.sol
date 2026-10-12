@@ -16,8 +16,8 @@ import {MockCbLTC} from "./mocks/MockCbLTC.sol";
 /// may have the coin's migrator sell a slice of them on the pool and bring
 /// the quote back for the same four shares the curve pays — the burn share
 /// burned instead of sold, the liquidity share added to the locked pool —
-/// a slice a block, half a percent of the pool at most, except in the rush
-/// before a freeze. Every figure here is the arithmetic of §5 of the design,
+/// a slice a block, half a percent of the pool at most, on any day: a freeze
+/// announced changes nothing. Every figure here is the arithmetic of §5 of the design,
 /// replayed from the launchpad's and the pool's state before the call.
 contract HarvestTest is Test {
     Launchpad pad;
@@ -44,7 +44,7 @@ contract HarvestTest is Test {
     struct Exp {
         uint256 tT; //        taxTreasury before
         uint256 tP; //        taxPot before
-        uint256 slice; //     min(total, cap), or the whole in a rush
+        uint256 slice; //     min(total, cap)
         uint256 sT; //        of it, the launchpad's (pro rata)
         uint256 sP; //        and the coin's
         uint256 burnT;
@@ -211,15 +211,13 @@ contract HarvestTest is Test {
     }
 
     /// §5, step by step, from the state before the call.
-    function _expected(address token, bool rush) internal view returns (Exp memory e) {
+    function _expected(address token) internal view returns (Exp memory e) {
         e.tT = pad.taxTreasury(token);
         e.tP = pad.taxPot(token);
         uint256 total = e.tT + e.tP;
         e.slice = total;
-        if (!rush) {
-            uint256 cap = migrator.harvestCap(token);
-            if (e.slice > cap) e.slice = cap;
-        }
+        uint256 cap = migrator.harvestCap(token);
+        if (e.slice > cap) e.slice = cap;
         e.sT = (e.slice * e.tT) / total;
         e.sP = e.slice - e.sT;
         LaunchpadBase.FeeConfig memory f = _fees(token);
@@ -370,7 +368,7 @@ contract HarvestTest is Test {
         assertGt(pad.taxTreasury(token), 0, "the launchpad's bucket filled");
         assertGt(pad.taxPot(token), 0, "the coin's too");
 
-        Exp memory e = _expected(token, false);
+        Exp memory e = _expected(token);
         assertEq(e.slice, e.tT + e.tP, "the buckets fit under the cap: taken whole");
         assertTrue(e.doDeepen, "the liquidity share is big enough to mint on both sides");
         assertGt(e.burnT, 0);
@@ -400,7 +398,7 @@ contract HarvestTest is Test {
         _graduate(token);
         _fund(carol, token, 3e8);
         (uint256 gross,) = _poolBuy(carol, token, 3e8);
-        Exp memory e = _expected(token, false);
+        Exp memory e = _expected(token);
         // the buckets hold what the buy taxed, the launchpad's part by its rate: 50 of 350
         uint256 taxed = (gross * 350) / 10_000;
         assertEq(e.tT, (taxed * 50) / 350, "the launchpad's bucket");
@@ -468,7 +466,7 @@ contract HarvestTest is Test {
         uint256 taxed = (gross * 150) / 10_000;
         assertEq(pad.taxTreasury(token), (taxed * 50) / 150, "a third the launchpad's");
         assertEq(pad.taxPot(token), taxed - (taxed * 50) / 150, "two thirds the coin's");
-        Exp memory e = _expected(token, false);
+        Exp memory e = _expected(token);
         assertEq(e.slice, taxed, "the whole tax fits under the cap");
         assertEq(e.creatorT, (e.sP * 5000) / 10_000);
         m = _mark(token);
@@ -499,7 +497,7 @@ contract HarvestTest is Test {
         _graduate(token);
         _fund(carol, token, 500);
         _poolBuy(carol, token, 500); // a ten-millionth of a cbLTC: a few coins, the liquidity share a hundredth of one
-        Exp memory e = _expected(token, false);
+        Exp memory e = _expected(token);
         assertFalse(e.doDeepen, "the sold half of the share would not mint a unit of LP");
         assertEq(e.deepenT, 0, "so nothing is kept");
         assertEq(e.sellT, e.slice - e.burnT, "everything but the burn share is sold");
@@ -542,7 +540,7 @@ contract HarvestTest is Test {
             uint256 id = vm.snapshotState();
             _fund(carol, token, quoteIn);
             _poolBuy(carol, token, quoteIn);
-            Exp memory e = _expected(token, false);
+            Exp memory e = _expected(token);
             if (_estimateDeepens(token, e) && !e.doDeepen) estimateWrong++;
             Snap memory s = _snap(token, dave);
             _harvest(token, e, dave);
@@ -581,7 +579,7 @@ contract HarvestTest is Test {
         vm.expectRevert(UniV2Migrator.HarvestCooldown.selector);
         migrator.harvest(token);
         vm.roll(block.number + 1);
-        Exp memory e = _expected(token, false);
+        Exp memory e = _expected(token);
         Snap memory s = _snap(token, carol);
         _harvest(token, e, carol); // the next block, the next slice, whoever calls
         _check(token, e, s, carol);
@@ -597,7 +595,7 @@ contract HarvestTest is Test {
         uint256 out = rQuote / 200;
         uint256 cap = (rToken * out * 1000) / ((rQuote - out) * 997) + 1;
         assertEq(migrator.harvestCap(token), cap, "Uniswap's getAmountIn for half a percent of the quote side");
-        Exp memory e = _expected(token, false);
+        Exp memory e = _expected(token);
         assertEq(e.slice, cap, "the slice is the cap");
         assertLt(cap, e.tT + e.tP);
         Snap memory s = _snap(token, dave);
@@ -632,37 +630,55 @@ contract HarvestTest is Test {
         assertLe(rQuote - rQuoteAfter, rQuote / 200 + 1, "native: never more than half a percent");
     }
 
-    // ----------------------------------------------------------------- rush
+    // ------------------------------------------------------------- the notice
 
-    /// A freeze announced: the harvest ignores the cap and the cooldown, so the buckets can be
-    /// emptied before it lands; once it lands, the launchpad refuses to hand coins out.
-    function test_rushModeEmptiesTheBucketsBeforeAFreeze() public {
+    /// A freeze announced changes nothing for the harvest: a slice a block, as on any day, so no
+    /// call ever sells a bucket whole for a trade wrapped around it to profit from; the notice (a
+    /// day at least) is time enough for a keeper to empty the buckets a slice a block. Once the
+    /// freeze lands, the launchpad refuses to hand coins out.
+    function test_aFreezeAnnouncedLeavesTheHarvestASliceABlock() public {
         address token = _create(address(cb), custom);
         _graduate(token);
         _fillBuckets(token);
         uint256 total = pad.taxTreasury(token) + pad.taxPot(token);
-        assertGt(total, migrator.harvestCap(token));
-        uint256 cooldownBefore = migrator.nextHarvestBlock(token);
+        uint256 cap = migrator.harvestCap(token);
+        assertGt(total, cap);
 
-        mig.announceFreeze(block.number + 5);
-        assertEq(pad.freezeBlock(), block.number + 5);
+        mig.announceFreeze(block.number + 40);
+        assertEq(pad.freezeBlock(), block.number + 40);
         assertFalse(pad.frozen(), "announced, not landed: trading goes on");
-        Exp memory e = _expected(token, true);
-        assertEq(e.slice, total, "the whole of both buckets, cap or no cap");
+        Exp memory e = _expected(token);
+        assertEq(e.slice, cap, "a slice, not the whole: the cap holds through the notice");
         Snap memory s = _snap(token, dave);
         _harvest(token, e, dave);
         _check(token, e, s, dave);
-        assertEq(pad.taxTreasury(token) + pad.taxPot(token), 0, "emptied");
-        assertEq(migrator.nextHarvestBlock(token), cooldownBefore, "no cooldown set in a rush");
+        assertGt(pad.taxTreasury(token) + pad.taxPot(token), 0, "the rest waits");
+        vm.prank(dave);
+        vm.expectRevert(UniV2Migrator.HarvestCooldown.selector);
+        migrator.harvest(token); // the same block: the cooldown holds too
+
+        // the keeper, a slice a block, until the buckets are empty
+        uint256 blocks;
+        while (pad.taxTreasury(token) + pad.taxPot(token) != 0) {
+            vm.roll(block.number + 1);
+            e = _expected(token);
+            s = _snap(token, dave);
+            _harvest(token, e, dave);
+            _check(token, e, s, dave);
+            blocks++;
+        }
+        assertGt(blocks, 1, "it took several blocks");
+        assertLt(block.number, pad.freezeBlock(), "and the notice was long enough");
+        vm.roll(block.number + 1);
         vm.prank(dave);
         vm.expectRevert(UniV2Migrator.NothingToSell.selector);
-        migrator.harvest(token); // nothing left, not a cooldown
+        migrator.harvest(token);
 
-        // trades go on until the freeze, and so do harvests: same block, no slice limit
+        // trades go on until the freeze, and so do harvests, a slice a block
         _fund(carol, token, 20e8);
         _poolBuy(carol, token, 20e8);
-        e = _expected(token, true);
-        assertEq(e.slice, pad.taxTreasury(token) + pad.taxPot(token));
+        e = _expected(token);
+        assertLe(e.slice, migrator.harvestCap(token));
         s = _snap(token, carol);
         _harvest(token, e, carol);
         _check(token, e, s, carol);
@@ -671,7 +687,7 @@ contract HarvestTest is Test {
         _poolSell(carol, token, IERC20(token).balanceOf(carol) / 2);
         assertGt(pad.taxTreasury(token) + pad.taxPot(token), 0);
         address pair = migrator.pairOf(token);
-        vm.roll(block.number + 5);
+        vm.roll(pad.freezeBlock());
         assertTrue(pad.frozen());
         vm.prank(carol);
         vm.expectRevert(LaunchpadBase.Frozen.selector);
@@ -679,6 +695,37 @@ contract HarvestTest is Test {
         vm.prank(dave);
         vm.expectRevert(LaunchpadBase.Frozen.selector);
         migrator.harvest(token);
+    }
+
+    /// The sandwich the notice used to invite — sell, a harvest that sold the buckets whole,
+    /// buy back cheaper — finds a slice at most, under a freeze announced as on any day: fewer
+    /// coins than before, the taxes and the fee of both legs costing more than the half percent
+    /// the harvest moved the price. Nor does calling the harvest again in the same block help.
+    function test_aSellAndBuyAroundAHarvestUnderANoticeLoses() public {
+        address token = _create(address(cb), onePercent);
+        _graduate(token);
+        _fund(eve, token, 1e8);
+        _poolBuy(eve, token, 1e8);
+        uint256 coins = IERC20(token).balanceOf(eve);
+        vm.roll(block.number + 1);
+        _fillBuckets(token);
+        assertGt(
+            pad.taxTreasury(token) + pad.taxPot(token), 2 * migrator.harvestCap(token), "buckets worth many slices"
+        );
+        mig.announceFreeze(block.number + 20);
+        assertEq(cb.balanceOf(eve), 0);
+        _poolSell(eve, token, coins);
+        uint256 cap = migrator.harvestCap(token); // as the pool stands after her sale
+        vm.prank(eve);
+        (uint256 tokensIn,,) = migrator.harvest(token);
+        assertEq(tokensIn, cap, "a slice, the freeze notwithstanding");
+        vm.prank(eve);
+        vm.expectRevert(UniV2Migrator.HarvestCooldown.selector);
+        migrator.harvest(token);
+        _poolBuy(eve, token, cb.balanceOf(eve)); // everything back in, the tip too
+        assertEq(cb.balanceOf(eve), 0);
+        assertLt(IERC20(token).balanceOf(eve), coins, "fewer coins than she started with");
+        assertGt(IERC20(token).balanceOf(eve), (coins * 90) / 100);
     }
 
     // --------------------------------------------------------------- no tax
@@ -699,7 +746,7 @@ contract HarvestTest is Test {
         _poolSell(carol, token, IERC20(token).balanceOf(carol) / 2);
         assertEq(pad.taxPot(token), 0);
 
-        Exp memory e = _expected(token, false);
+        Exp memory e = _expected(token);
         assertEq(e.sP + e.burnT + e.liqT + e.creatorT + e.holdersT, 0, "no share of the coin's");
         assertEq(e.sellT, e.slice, "everything is sold");
         assertEq(e.qT + e.tip, e.quoteOut, "everything is the treasury's");

@@ -305,19 +305,19 @@ contract UniV2Migrator is IDexMigrator, IDexMigratorUnlock, IDexMigratorBuyback,
     }
 
     /// @inheritdoc IDexMigratorHarvest
-    /// @dev Anyone, once a block per coin, a slice at most (harvestCap) —
-    ///      unbounded once the launchpad has announced a freeze, so every
-    ///      bucket can be emptied before it lands. The slice is taken pro
+    /// @dev Anyone, once a block per coin, a slice at most (harvestCap):
+    ///      a sale that moves the pool half a percent, which a trade
+    ///      wrapped around it cannot profit from, on any day — a freeze
+    ///      announced changes nothing here, the notice before it (a day at
+    ///      least) being time enough for a keeper to empty any bucket a
+    ///      slice a block (script/ops/harvest.sh). The slice is taken pro
     ///      rata from the launchpad's bucket and the coin's; the coin's part
     ///      is split by its FeeConfig in coins: the burn share is burned by
     ///      the launchpad, the liquidity share half kept and half sold so
     ///      both sides join the locked position, the rest sold; the quote
     ///      goes to each share pro rata to the coins it sold, rounding dust
     ///      to the treasury, a twentieth of the treasury's part to the
-    ///      caller. The launchpad books the quote (poolFee). In a rush (a
-    ///      freeze announced) the whole bucket is sold in one call at the
-    ///      pool's price with no minimum, which is why the migration runbook
-    ///      empties the buckets in normal mode before announcing a freeze.
+    ///      caller. The launchpad books the quote (poolFee).
     function harvest(address token)
         external
         nonReentrant
@@ -327,19 +327,14 @@ contract UniV2Migrator is IDexMigrator, IDexMigratorUnlock, IDexMigratorBuyback,
         h.quote = pairAsset[token];
         if (h.quote == address(0) || liquidity[token] == 0) revert NothingToSell();
         ILaunchpadFees pad = ILaunchpadFees(launchpad);
-        bool rush = pad.freezeBlock() != 0;
-        if (!rush) {
-            if (block.number < nextHarvestBlock[token]) revert HarvestCooldown();
-            nextHarvestBlock[token] = block.number + 1;
-        }
+        if (block.number < nextHarvestBlock[token]) revert HarvestCooldown();
+        nextHarvestBlock[token] = block.number + 1;
         uint256 bucketT = pad.taxTreasury(token);
         uint256 total = bucketT + pad.taxPot(token);
         if (total == 0) revert NothingToSell();
         h.slice = total;
-        if (!rush) {
-            uint256 cap = harvestCap(token);
-            if (h.slice > cap) h.slice = cap;
-        }
+        uint256 cap = harvestCap(token);
+        if (h.slice > cap) h.slice = cap;
         if (h.slice == 0) revert NothingToSell();
         h.treasury = (h.slice * bucketT) / total;
         {

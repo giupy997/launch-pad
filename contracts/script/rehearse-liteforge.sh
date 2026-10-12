@@ -89,7 +89,7 @@ if [ -z "${TARGET:-}" ]; then
   ROUTER=$(cast call $OLD_MIGRATOR "router()(address)" --rpc-url "$DST_RPC")
   echo "   DEX router (Lester Labs' Uniswap v2): $ROUTER"
   # a deploy that fails ends the script here, with its last lines shown (an assignment alone would end it silently)
-  OUT=$(UNIV2_ROUTER=$ROUTER TREASURY=$DEPLOYER forge script script/DeployLitVM.s.sol --rpc-url "$DST_RPC" "${SIGNER[@]}" --broadcast 2>&1) \
+  OUT=$(DEPLOYER_OWNED=true UNIV2_ROUTER=$ROUTER TREASURY=$DEPLOYER forge script script/DeployLitVM.s.sol --rpc-url "$DST_RPC" "${SIGNER[@]}" --broadcast 2>&1) \
     || { echo "the deploy failed:"; echo "$OUT" | tail -20; exit 1; }
   echo "$OUT" | grep -E "Launchpad:|UniV2Migrator:|Deploy block:|Error|revert|Reason" || true
   TARGET=$(echo "$OUT" | awk '/Launchpad:/ {print $2}' | tail -1)

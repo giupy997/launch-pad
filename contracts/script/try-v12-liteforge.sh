@@ -57,7 +57,7 @@ echo "== 1. the v12 pad on Liteforge (native zkLTC, $NATIVE_VIRTUAL wei of virtu
 if [ -z "${PAD:-}" ]; then
   ROUTER=$(cast call $OLD_MIGRATOR "router()(address)" --rpc-url "$DST_RPC")
   echo "   DEX router (Lester Labs' Uniswap v2): $ROUTER"
-  OUT=$(UNIV2_ROUTER=$ROUTER NATIVE_VIRTUAL=$NATIVE_VIRTUAL TREASURY=$DEPLOYER forge script script/DeployLitVM.s.sol --rpc-url "$DST_RPC" "${SIGNER[@]}" --broadcast 2>&1) \
+  OUT=$(DEPLOYER_OWNED=true UNIV2_ROUTER=$ROUTER NATIVE_VIRTUAL=$NATIVE_VIRTUAL TREASURY=$DEPLOYER forge script script/DeployLitVM.s.sol --rpc-url "$DST_RPC" "${SIGNER[@]}" --broadcast 2>&1) \
     || { echo "the deploy failed:"; echo "$OUT" | tail -20; exit 1; }
   echo "$OUT" | grep -E "Launchpad:|LaunchpadMigration:|UniV2Migrator:|Fee \(bps\)|Deploy block:|Error|revert|Reason" || true
   PAD=$(echo "$OUT" | awk '/^  Launchpad:/ {print $2}' | tail -1)
