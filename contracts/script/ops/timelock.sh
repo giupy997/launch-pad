@@ -150,12 +150,15 @@ case "${1:-}" in
       exit 1
     fi
     echo "== executing $(field "$ID" kind)"
+    # the outcome from the transaction's own receipt: a read right after a send can reach a
+    # node still a block behind and answer "not done" for an operation that just was
     if [ "$(field "$ID" batch)" = 1 ]; then
-      cast send "$TIMELOCK" "$SIG_EXECUTE_BATCH" "[$(field "$ID" targets)]" "[$(field "$ID" values)]" "[$(field "$ID" payloads)]" "$(field "$ID" predecessor)" "$(field "$ID" salt)" "${SIGNER[@]}" --rpc-url "$RPC" >/dev/null
+      RECEIPT=$(cast send "$TIMELOCK" "$SIG_EXECUTE_BATCH" "[$(field "$ID" targets)]" "[$(field "$ID" values)]" "[$(field "$ID" payloads)]" "$(field "$ID" predecessor)" "$(field "$ID" salt)" "${SIGNER[@]}" --rpc-url "$RPC" --json)
     else
-      cast send "$TIMELOCK" "$SIG_EXECUTE" "$(field "$ID" targets)" 0 "$(field "$ID" payloads)" "$(field "$ID" predecessor)" "$(field "$ID" salt)" "${SIGNER[@]}" --rpc-url "$RPC" >/dev/null
+      RECEIPT=$(cast send "$TIMELOCK" "$SIG_EXECUTE" "$(field "$ID" targets)" 0 "$(field "$ID" payloads)" "$(field "$ID" predecessor)" "$(field "$ID" salt)" "${SIGNER[@]}" --rpc-url "$RPC" --json)
     fi
-    echo "   executed: $(call "isOperationDone(bytes32)(bool)" "$ID")"
+    STATUS=$(echo "$RECEIPT" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const l=s.trim().split("\n").filter(x=>x.startsWith("{")).pop();const r=JSON.parse(l);console.log((r.status==="0x1"||r.status===1?"executed":"REVERTED")+" in block "+parseInt(r.blockNumber)+", tx "+r.transactionHash)})')
+    echo "   $STATUS"
     ;;
   status)
     ID=${2:?id}
