@@ -16,7 +16,9 @@
 # node from BASE_RPC or SRC_RPC in .env (else foundry's `base`), the signer
 # from the keystore ACCOUNT (default `notus`; PRIVATE_KEY for a test key).
 # A coin whose harvest reverts (its cooldown, a slice too small for the
-# pool to mint against) is skipped this pass and tried again on the next.
+# pool to mint against) is skipped this pass and tried again on the next. A
+# read the node does not answer is said so, never taken for an empty bucket:
+# the pass is incomplete and runs again.
 set -uo pipefail
 cd "$(dirname "$0")/../.."
 export PATH="$HOME/.foundry/bin:$PATH"
@@ -31,45 +33,61 @@ MODE=${1:-once}
 EVERY=${HARVEST_EVERY:-4}
 ZERO=0x0000000000000000000000000000000000000000
 
-call() { cast call "$1" "$2" "${@:3}" --rpc-url "$RPC" 2>/dev/null | awk '{print $1}'; }
+# a read of the pad: its first word, or a failure (exit 1) when the node did not answer
+call() {
+  local out
+  out=$(cast call "$1" "$2" "${@:3}" --rpc-url "$RPC" 2>/dev/null) || return 1
+  echo "$out" | awk '{print $1}'
+}
+# the outcome of a send from its receipt: harvested, reverted, or not sent (signer, gas, node)
+outcome() { node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const i=s.indexOf("{");if(i<0){console.log("not sent");return}const r=JSON.parse(s.slice(i,s.lastIndexOf("}")+1));console.log(r.status==="0x1"||r.status===1||r.status==="success"?"harvested":"reverted")})'; }
 
 # one pass over every coin: prints what waits, harvests a slice where something does;
-# returns 0 when every bucket is empty, 1 when something still waits
+# returns 0 when every bucket is empty, 1 when something still waits, 2 when a read failed
 pass() {
-  local n i token via buckets left=0
-  n=$(call "$PAD" 'tokenCount()(uint256)')
+  local n i token via a b buckets left=0
+  n=$(call "$PAD" 'tokenCount()(uint256)') || { echo "   the node did not answer (tokenCount): pass incomplete"; return 2; }
   for ((i = 0; i < n; i++)); do
-    token=$(call "$PAD" 'allTokens(uint256)(address)' "$i")
-    via=$(call "$PAD" 'graduatedVia(address)(address)' "$token")
+    token=$(call "$PAD" 'allTokens(uint256)(address)' "$i") || { echo "   the node did not answer (allTokens $i): pass incomplete"; return 2; }
+    via=$(call "$PAD" 'graduatedVia(address)(address)' "$token") || { echo "   the node did not answer (graduatedVia $token): pass incomplete"; return 2; }
     [ "$via" != "$ZERO" ] || continue # on its curve: no pool, no buckets
-    buckets=$(( $(call "$PAD" 'taxTreasury(address)(uint256)' "$token") + $(call "$PAD" 'taxPot(address)(uint256)' "$token") ))
+    a=$(call "$PAD" 'taxTreasury(address)(uint256)' "$token") || { echo "   the node did not answer (taxTreasury $token): pass incomplete"; return 2; }
+    b=$(call "$PAD" 'taxPot(address)(uint256)' "$token") || { echo "   the node did not answer (taxPot $token): pass incomplete"; return 2; }
+    buckets=$(node -e 'console.log((BigInt(process.argv[1]) + BigInt(process.argv[2])).toString())' "$a" "$b") # wei: past bash's 64 bits
     [ "$buckets" != 0 ] || continue
     left=1
     if [ "$MODE" = "--dry" ]; then
       echo "   $token: $buckets coins wait in its buckets (migrator $via)"
       continue
     fi
-    if cast send "$via" "harvest(address)" "$token" "${SIGNER[@]}" --rpc-url "$RPC" >/dev/null 2>&1; then
-      echo "   $token: a slice harvested ($buckets coins waited)"
-    else
-      echo "   $token: harvest reverted this pass (cooldown, or a slice too small): $buckets coins wait"
-    fi
+    case "$(cast send "$via" "harvest(address)" "$token" "${SIGNER[@]}" --rpc-url "$RPC" --json 2>/dev/null | outcome)" in
+      harvested) echo "   $token: a slice harvested ($buckets coins waited)";;
+      reverted) echo "   $token: harvest reverted this pass (cooldown, or a slice too small): $buckets coins wait";;
+      *) echo "   $token: the harvest was NOT sent (the signer, gas, or the node): $buckets coins wait";;
+    esac
   done
   return $left
 }
 
-echo "== harvest on $PAD through $(node -e 'console.log(new URL(process.argv[1]).host)' "$RPC" 2>/dev/null || echo "$RPC") · block $(cast block-number --rpc-url "$RPC")"
+echo "== harvest on $PAD through $(node -e 'console.log(new URL(process.argv[1]).host)' "$RPC" 2>/dev/null || echo "$RPC") · block $(cast block-number --rpc-url "$RPC" 2>/dev/null || echo "? (the node did not answer)")"
 case "$MODE" in
   once | --dry)
-    if pass; then echo "   every bucket is empty"; fi
+    pass; rc=$?
+    case $rc in 0) echo "   every bucket is empty";; 2) exit 2;; esac
     ;;
   --all)
-    until pass; do sleep "$EVERY"; done
+    while :; do
+      pass; rc=$?
+      [ $rc = 0 ] && break
+      [ $rc = 2 ] && echo "   again in $EVERY s"
+      sleep "$EVERY"
+    done
     echo "   every bucket is empty"
     ;;
   --watch)
     while true; do
-      if pass; then echo "   every bucket is empty ($(date -u +%H:%M:%S) UTC)"; fi
+      pass; rc=$?
+      case $rc in 0) echo "   every bucket is empty ($(date -u +%H:%M:%S) UTC)";; 2) echo "   again in $EVERY s";; esac
       sleep "$EVERY"
     done
     ;;

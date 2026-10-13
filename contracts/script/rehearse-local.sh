@@ -57,7 +57,7 @@ echo "== 5. migrateOut: the quote leaves for the bridging account"
 forge script script/rehearsal/RehearseMigrateOut.s.sol --rpc-url $RPC --broadcast 2>&1 | show
 
 echo "== 6. the migration itself (MigrateFromLedger, direct)"
-LAUNCHPAD=$TARGET MIGRATION_FILE=$MIG/anvil-rehearsal.json forge script script/MigrateFromLedger.s.sol --rpc-url $RPC --private-key "$KEY" --broadcast 2>&1 | show
+ALLOW_DRY_RUN=true LAUNCHPAD=$TARGET MIGRATION_FILE=$MIG/anvil-rehearsal.json forge script script/MigrateFromLedger.s.sol --rpc-url $RPC --private-key "$KEY" --broadcast 2>&1 | show
 
 echo "== 7. the check: every holder, every price"
 OUT=$(MIGRATION_FILE=$MIG/anvil-rehearsal.json forge script script/rehearsal/RehearseCheck.s.sol --rpc-url $RPC 2>&1) || { echo "$OUT" | tail -30; exit 1; }

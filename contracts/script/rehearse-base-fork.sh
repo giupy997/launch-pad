@@ -107,7 +107,7 @@ if [ "$HAVE" -lt "$NEED" ]; then
 fi
 
 echo "== 5. the migration into v12 (MigrateFromLedger, direct: the operator signs, funds in cbLTC)"
-OUT=$(LAUNCHPAD=$V12_PAD MIGRATION_FILE=$FILE forge script script/MigrateFromLedger.s.sol --rpc-url $RPC --private-key $OPERATOR_KEY --broadcast 2>&1) \
+OUT=$(ALLOW_DRY_RUN=true LAUNCHPAD=$V12_PAD MIGRATION_FILE=$FILE forge script script/MigrateFromLedger.s.sol --rpc-url $RPC --private-key $OPERATOR_KEY --broadcast 2>&1) \
   || { echo "the migration failed:"; echo "$OUT" | tail -30; exit 1; }
 echo "$OUT" | grep -E "^  [A-Za-z]|->|written|root|quote:|Error|revert|Reason" || true
 

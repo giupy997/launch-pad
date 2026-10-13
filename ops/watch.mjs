@@ -96,7 +96,9 @@ const SITE_EVERY_MS = Number(env("NOTUS_WATCH_SITE_EVERY", "600")) * 1000;
 const CHUNK = BigInt(env("NOTUS_WATCH_CHUNK", "1500"));
 const FIRST_BLOCK = BigInt(env("NOTUS_WATCH_FROM", "52180589")); // the v11 timelock's deploy block
 const HEARTBEAT_HOUR = Number(env("NOTUS_WATCH_HEARTBEAT_HOUR", "8"));
-const LAG = 3n; // blocks left to settle before they are read
+const LAG = 30n; // blocks left to settle before they are read (a minute: a public node behind the first by a few blocks still has them)
+const TG_MAX = 3_900; // Telegram takes 4,096 characters a message; a longer one is refused and would wedge the queue
+const FAILS_TO_TELL = 5; // chain passes failed in a row (minutes) before the owner hears of it
 const EXPLORER = env("NOTUS_WATCH_EXPLORER", "https://basescan.org");
 const TG_TOKEN = process.env.TG_BOT_TOKEN ?? "";
 const TG_CHAT = process.env.TG_CHAT_ID ?? "";
@@ -224,8 +226,11 @@ function describeCall(target, data, value) {
 
 // ---------------------------------------------------------------- telegram
 
-const outbox = [];
+const outbox = []; // mirrored into the state file, so a restart sends what was not yet sent
+/** A string from outside (the site's answer, a contract's argument) cut to a line of `n` characters. */
+const clip = (x, n = 200) => String(x).replace(/\s+/g, " ").slice(0, n);
 async function send(text) {
+  if (text.length > TG_MAX) text = `${text.slice(0, TG_MAX - 12)}\n…(troncato)`;
   log("message:", text.replace(/\n/g, " | "));
   if (DRY) return;
   outbox.push(text);
@@ -255,6 +260,13 @@ async function flush() {
         await new Promise((res) => setTimeout(res, wait * 1000));
         continue;
       }
+      if (r.status >= 400 && r.status < 500) {
+        // refused for what it is (too long, a bad chat): sending it again would refuse again, and
+        // every message behind it would wait for ever
+        log(`telegram: refused (http ${r.status}: ${body?.description ?? "?"}); dropped: ${text.slice(0, 120).replace(/\n/g, " | ")}`);
+        outbox.shift();
+        continue;
+      }
       log(`telegram: not sent (http ${r.status}: ${body?.description ?? "?"}); kept for the next pass`);
       break;
     }
@@ -268,29 +280,41 @@ async function flush() {
 function loadState() {
   try {
     const s = JSON.parse(fs.readFileSync(STATE_FILE, "utf8"));
-    return { pending: {}, siteFails: 0, padMissing: 0, ...s };
+    return { pending: {}, siteFails: 0, padMissing: 0, chainFails: 0, lastPassAt: null, outbox: [], ...s };
   } catch {
-    return { lastBlock: null, pending: {}, siteFails: 0, padMissing: 0, fingerprint: null, lastHeartbeat: null };
+    return { lastBlock: null, pending: {}, siteFails: 0, padMissing: 0, chainFails: 0, lastPassAt: null, fingerprint: null, lastHeartbeat: null, outbox: [] };
   }
 }
 function saveState(s) {
   fs.mkdirSync(path.dirname(STATE_FILE), { recursive: true });
   const tmp = `${STATE_FILE}.tmp`;
+  s.outbox = outbox.slice();
   fs.writeFileSync(tmp, JSON.stringify(s, null, 1));
   fs.renameSync(tmp, STATE_FILE);
 }
 
 // ---------------------------------------------------------------- the chain pass
 
+let chunk = CHUNK; // blocks per getLogs: halved when the nodes refuse the range (after a long downtime the first one is wide)
 /** Logs of the timelocks and the pads from `from` to `to`, in order. */
 async function readLogs(from, to) {
   const out = [];
-  for (let a = from; a <= to; a += CHUNK) {
-    const b = a + CHUNK - 1n < to ? a + CHUNK - 1n : to;
-    const [tl, pads] = await Promise.all([
-      client.getLogs({ address: TIMELOCKS.map((t) => t.address), events: TIMELOCK_EVENTS, fromBlock: a, toBlock: b }),
-      client.getLogs({ address: PADS.map((p) => p.address), events: PAD_EVENTS, fromBlock: a, toBlock: b }),
-    ]);
+  for (let a = from; a <= to; a += chunk) {
+    const b = a + chunk - 1n < to ? a + chunk - 1n : to;
+    let tl, pads;
+    try {
+      [tl, pads] = await Promise.all([
+        client.getLogs({ address: TIMELOCKS.map((t) => t.address), events: TIMELOCK_EVENTS, fromBlock: a, toBlock: b }),
+        client.getLogs({ address: PADS.map((p) => p.address), events: PAD_EVENTS, fromBlock: a, toBlock: b }),
+      ]);
+    } catch (e) {
+      const msg = String(e.shortMessage ?? e.message ?? e);
+      if (chunk > 100n && /range|too many|limit|exceed|large/i.test(msg)) {
+        chunk /= 2n;
+        log(`getLogs refused ${a}–${b}: ${chunk} blocks a call from now on`);
+      }
+      throw e;
+    }
     out.push(...tl, ...pads);
   }
   out.sort((x, y) => (x.blockNumber === y.blockNumber ? Number(x.logIndex) - Number(y.logIndex) : x.blockNumber < y.blockNumber ? -1 : 1));
@@ -305,7 +329,7 @@ async function blockTime(n) {
 
 /** One log → a message (or null) and a change of the pending map. `quiet`: the
  *  first run's catch-up, which only fills the pending map. */
-async function handle(l, state, quiet) {
+async function handle(l, pending, quiet) {
   const at = who(l.address);
   const a = l.args;
   switch (l.eventName) {
@@ -315,23 +339,23 @@ async function handle(l, state, quiet) {
       const d = describeCall(a.target, a.data, a.value);
       const ts = await blockTime(l.blockNumber);
       const readyAt = Number(ts + a.delay);
-      const p = state.pending[a.id];
+      const p = pending[a.id];
       if (p && p.tx === l.transactionHash) {
         p.calls.push(d.text);
         p.siren ||= d.siren;
-      } else state.pending[a.id] = { calls: [d.text], readyAt, timelock: at, reminded: false, siren: d.siren, tx: l.transactionHash };
+      } else pending[a.id] = { calls: [d.text], readyAt, timelock: at, reminded: false, siren: d.siren, tx: l.transactionHash };
       if (quiet) return null;
       return { kind: "scheduled", id: a.id, at, timelock: l.address, calls: [d.text], siren: d.siren, readyAt, delay: a.delay, tx: l.transactionHash };
     }
     case "CallExecuted": {
       const d = describeCall(a.target, a.data, a.value);
-      delete state.pending[a.id];
+      delete pending[a.id];
       if (quiet) return null;
       return { kind: "executed", id: a.id, at, calls: [d.text], siren: d.siren, tx: l.transactionHash };
     }
     case "Cancelled": {
-      const p = state.pending[a.id];
-      delete state.pending[a.id];
+      const p = pending[a.id];
+      delete pending[a.id];
       if (quiet) return null;
       return `🛑 ${at}: operazione ANNULLATA\n${p ? calls(p) : `id ${a.id}`}\n${txLink(l.transactionHash)}`;
     }
@@ -390,6 +414,7 @@ async function chainPass(state) {
   const first = state.lastBlock === null;
   const from = first ? FIRST_BLOCK : BigInt(state.lastBlock) + 1n;
   if (from <= head) await readPass(state, from, head, first);
+  state.lastPassAt = new Date().toISOString();
   // an operation that became executable (by the chain's clock): said once more, so the
   // owner's own work is not forgotten and somebody else's is not missed
   const now = Number(await blockTime(head));
@@ -405,8 +430,11 @@ async function readPass(state, from, head, first) {
   const logs = await readLogs(from, head);
   const messages = [];
   const groups = new Map();
+  // the pending map is worked on a copy: a pass that fails halfway leaves the state as it
+  // was, and the next pass reads the same logs into a clean map (no call counted twice)
+  const pending = structuredClone(state.pending);
   for (const l of logs) {
-    const m = await handle(l, state, first);
+    const m = await handle(l, pending, first);
     if (!m) continue;
     const order = { block: l.blockNumber, tx: l.transactionHash, index: Number(l.logIndex) };
     if (typeof m === "string") {
@@ -427,6 +455,7 @@ async function readPass(state, from, head, first) {
   messages.sort((x, y) =>
     x.block !== y.block ? (x.block < y.block ? -1 : 1) : x.tx !== y.tx ? x.index - y.index : x.group !== y.group ? (x.group ? -1 : 1) : x.index - y.index
   );
+  state.pending = pending;
   state.lastBlock = head.toString();
   if (first) {
     const pend = Object.values(state.pending);
@@ -458,10 +487,11 @@ async function sitePass(state) {
     try {
       j = JSON.parse(text);
     } catch {}
-    if (status !== 200 || !j?.ok) problems.push(`/api/health risponde ${status}${j?.failing?.length ? `, guasti: ${j.failing.join(", ")}` : ""}`);
-    healthNote = j?.status ?? `http ${status}`;
+    // the site's own words, cut short: a page somebody else controls must not shape the message
+    if (status !== 200 || !j?.ok) problems.push(`/api/health risponde ${status}${Array.isArray(j?.failing) && j.failing.length ? `, guasti: ${clip(j.failing.join(", "))}` : ""}`);
+    healthNote = j?.status !== undefined ? clip(j.status, 80) : `http ${status}`;
   } catch (e) {
-    problems.push(`/api/health non risponde (${e.message ?? e})`);
+    problems.push(`/api/health non risponde (${clip(e.message ?? e, 120)})`);
   }
   let padFound = false;
   let fingerprint = null;
@@ -527,7 +557,7 @@ async function heartbeat(state) {
   state.lastHeartbeat = day;
   const pend = Object.values(state.pending);
   await send(
-    `✅ Notus watch vivo. Base al blocco ${state.lastBlock}.\n` +
+    `✅ Notus watch vivo. Base al blocco ${state.lastBlock}${state.lastPassAt ? ` (ultima lettura riuscita ${whenUtc(Date.parse(state.lastPassAt) / 1000)})` : ""}${state.chainFails ? `; ${state.chainFails} letture fallite di seguito` : ""}.\n` +
       (pend.length ? `Operazioni in attesa sui timelock: ${pend.length}\n${pend.map((p) => `• ${p.calls.join(" + ")} (eseguibile da ${whenUtc(p.readyAt)})`).join("\n")}` : "Nessuna operazione in attesa sui timelock.") +
       (SITE ? `\nSito: ${state.siteNote ?? "non ancora controllato"}${state.fingerprint ? `, deploy ${state.fingerprint}` : ""}.` : "")
   );
@@ -536,6 +566,7 @@ async function heartbeat(state) {
 // ---------------------------------------------------------------- main
 
 const state = loadState();
+outbox.push(...(state.outbox ?? [])); // what the last run did not manage to send
 let lastSite = 0;
 let stopping = false;
 process.on("SIGTERM", () => (stopping = true));
@@ -544,8 +575,17 @@ log(`watch: ${TIMELOCKS.length} timelock, ${PADS.length} pad, site ${SITE || "(o
 for (;;) {
   try {
     await chainPass(state);
+    if (state.chainFails >= FAILS_TO_TELL) await send(`✅ Lettura di Base ripresa dopo ${state.chainFails} tentativi falliti: al blocco ${state.lastBlock}.`);
+    state.chainFails = 0;
   } catch (e) {
     log("chain pass failed:", e.shortMessage ?? e.message ?? e);
+    state.chainFails += 1;
+    // a watch that cannot read the chain sees no operation: said once, when it has lasted minutes, not every minute
+    if (state.chainFails === FAILS_TO_TELL || state.chainFails % 60 === 0) {
+      await send(
+        `⚠️ Il watch non legge Base da ${state.chainFails} minuti (ultimo blocco letto ${state.lastBlock ?? "nessuno"}${state.lastPassAt ? `, alle ${whenUtc(Date.parse(state.lastPassAt) / 1000)}` : ""}): ${clip(e.shortMessage ?? e.message ?? e, 160)}`
+      );
+    }
   }
   if (Date.now() - lastSite >= SITE_EVERY_MS) {
     lastSite = Date.now();

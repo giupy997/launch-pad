@@ -46,6 +46,7 @@
 // a few hundred calls ("over rate limit"), so each call goes to the next node
 // when one refuses, the whole chain is retried with a growing pause, and the
 // calls are paced a little apart.
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import {
@@ -497,9 +498,15 @@ if (contractHolders.length) {
   if (!allowContractHolders) throw new Error(`${contractHolders.length} holder${contractHolders.length === 1 ? " is a contract" : "s are contracts"} (${contractHolders.join("; ")}): on another chain nothing may live at that address. Pass --allow-contract-holders when the destination is the same chain, or settle with them first`);
 }
 
-// bigints as JSON numbers, for vm.parseJson
-const big = (_, v) => (typeof v === "bigint" ? `__big_${v}` : v);
-const numbers = (s) => s.replace(/"__big_(\d+)"/g, "$1");
+// bigints as JSON numbers, for the script's typed parse: marked with a nonce
+// nobody could have written into a coin's name or description, then unquoted
+const mark = `__big_${crypto.randomBytes(12).toString("hex")}_`;
+const big = (_, v) => (typeof v === "bigint" ? `${mark}${v}` : v);
+const numbers = (s) => {
+  const out = s.replace(new RegExp(`"${mark}(\\d+)"`, "g"), "$1");
+  if (out.includes(mark)) throw new Error("a bigint was not written as a number");
+  return out;
+};
 const canonical = numbers(JSON.stringify(coins, big));
 // the root the receiving pad commits to: the tree of every coin and every holder (merkle.mjs),
 // which MigrateFromLedger.s.sol rebuilds from this file and proves each delivery against
@@ -520,6 +527,8 @@ const out = {
   rootScheme: "merkle-1", // a leaf per coin and per holder, OpenZeppelin's standard leaves, pairs hashed sorted: merkle.mjs
   coinsHash,
   scale: Number(scale),
+  // true for a file of a moving ledger or of scaled prices: MigrateFromLedger refuses it
+  dryRun: scale !== 1n || block !== freezeBlock,
   partial: false,
   generatedAt: new Date().toISOString(),
   totals: {

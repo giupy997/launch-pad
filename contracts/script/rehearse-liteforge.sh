@@ -122,7 +122,7 @@ fi
 
 echo "== 4. the migration (MigrateFromLedger, direct: the deployer owns this pad)"
 # a failed step ends the script with its last lines shown and a non-zero status (the grep alone would hide both)
-OUT=$(LAUNCHPAD=$TARGET MIGRATION_FILE=$FILE forge script script/MigrateFromLedger.s.sol --rpc-url "$DST_RPC" "${SIGNER[@]}" --broadcast 2>&1) \
+OUT=$(ALLOW_DRY_RUN=true LAUNCHPAD=$TARGET MIGRATION_FILE=$FILE forge script script/MigrateFromLedger.s.sol --rpc-url "$DST_RPC" "${SIGNER[@]}" --broadcast 2>&1) \
   || { echo "the migration failed:"; echo "$OUT" | tail -30; exit 1; }
 echo "$OUT" | grep -E "^  [A-Za-z]|->|written|root|Error|revert|Reason" || true
 

@@ -52,8 +52,10 @@ import {MerkleTree} from "./MerkleTree.sol";
 ///   forge script script/MigrateFromLedger.s.sol --rpc-url base \
 ///     --account notus --broadcast
 contract MigrateFromLedger is Script {
-    /// One coin as the file lists it. Field order is alphabetical because
-    /// that is how vm.parseJson lays a JSON object out.
+    /// One coin as the file lists it, read with its types declared (COIN_TYPE):
+    /// a string that happens to look like an address or a hash (a creator's
+    /// description, a logo) stays a string, where vm.parseJson's inference
+    /// would have made it bytes and refused the file.
     struct Coin {
         uint256[] balances;
         uint256 burnBps;
@@ -103,6 +105,10 @@ contract MigrateFromLedger is Script {
         bytes32 salt;
     }
 
+    /// The Coin struct for vm.parseJsonTypeArray, field for field in declaration order.
+    string public constant COIN_TYPE =
+        "Coin(uint256[] balances,uint256 burnBps,uint256 burnPot,uint256 burned,uint256 buyTaxBps,address creator,uint256 creatorBps,string description,address feeRecipient,address[] holders,uint256 holdersBps,uint256 liquidityBps,uint256 liquidityPot,string livestream,string logo,string name,uint256 poolToken,uint256 realQuote,uint256 sellTaxBps,uint256 sold,string symbol,string telegram,string twitter,uint256 virtualQuote,string website)";
+
     /// Holders delivered per transaction: ~35k gas each keeps a batch well
     /// inside any block.
     uint256 public constant BATCH = 150;
@@ -114,6 +120,7 @@ contract MigrateFromLedger is Script {
         Launchpad pad = Launchpad(payable(vm.envAddress("LAUNCHPAD")));
         string memory file = vm.envString("MIGRATION_FILE");
         string memory json = vm.readFile(file);
+        refuseDryRun(json);
         Coin[] memory coins = load(json);
         address quote = destQuote(json);
         require(pad.quoteVirtualReserve(quote) != 0, "the file's destination quote is not enabled on this Launchpad");
@@ -140,7 +147,18 @@ contract MigrateFromLedger is Script {
     }
 
     function load(string memory json) public pure returns (Coin[] memory coins) {
-        coins = abi.decode(vm.parseJson(json, ".coins"), (Coin[]));
+        coins = abi.decode(vm.parseJsonTypeArray(json, ".coins", COIN_TYPE), (Coin[]));
+    }
+
+    /// A file written for a dry run (snapshot-evm.mjs --allow-unfrozen or --scale: balances
+    /// of a moving ledger, or prices N times lower) is refused: its root would be committed
+    /// for good. ALLOW_DRY_RUN=true runs it anyway, on a rehearsal pad.
+    function refuseDryRun(string memory json) public view {
+        bool dry = (vm.keyExistsJson(json, ".dryRun") && vm.parseJsonBool(json, ".dryRun"))
+            || (vm.keyExistsJson(json, ".scale") && vm.parseJsonUint(json, ".scale") != 1);
+        if (dry && !vm.envOr("ALLOW_DRY_RUN", false)) {
+            revert("a dry-run file (unfrozen, or scaled): not for a migration. ALLOW_DRY_RUN=true for a rehearsal");
+        }
     }
 
     /// The file's tree, as script/merkle.mjs built it for its stateRoot: the leaves of
