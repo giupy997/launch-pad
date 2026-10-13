@@ -10,7 +10,9 @@
 
 import type { PointsSeason } from "./chains.ts";
 
-export const RULES_VERSION = 1;
+// 2: the early-buyer bonus follows the buyer's own trade points on the coin; a coin that
+// arrives graduated (a migration) earns its creator nothing
+export const RULES_VERSION = 2;
 
 export const RULES = {
   /** 20 points per whole quote unit traded (one ten-thousandth of what reaches the treasury) */
@@ -19,8 +21,10 @@ export const RULES = {
   holderBonusPct: 50n,
   /** the creator of a coin that graduates */
   creatorGraduationMilli: 2_000_000n,
-  /** the first distinct buyers of a coin that graduates, and what each gets */
+  /** the first distinct buyers of a coin that graduates: each gets this much of its own trade
+   *  points on the coin, up to the cap (a dust buy among the first earns dust, not the cap) */
   earlyBuyers: 25,
+  earlyBonusPct: 200n,
   earlyBuyerMilli: 100_000n,
   /** the inviter's share of the invitee's trade points, for the season */
   inviterPct: 10n,
@@ -144,6 +148,10 @@ export function computeLedger(input: LedgerInput): LedgerEntry[] {
     if (c.graduatedBlock === null || !inSeason(c.graduatedBlock) || hidden.has(c.token.toLowerCase())) continue;
     const g = c.graduatedBlock;
     const coinTrades = trades.filter((t) => t.token.toLowerCase() === c.token.toLowerCase() && t.block <= g);
+    // created and graduated in one block with no trade in between: a coin that arrived graduated
+    // from another launchpad (migrateToken), not one graduated here: no bonus for a graduation
+    // that happened elsewhere, in no season
+    if (c.createdBlock === g && coinTrades.length === 0) continue;
     // before graduation a coin only moves through the pad: a wallet's balance is its buys minus its sells
     const net = new Map<string, bigint>();
     const earned = new Map<string, bigint>();
@@ -164,7 +172,9 @@ export function computeLedger(input: LedgerInput): LedgerEntry[] {
       const w = low(t.wallet);
       if (early.has(w)) continue;
       early.add(w);
-      out.push({ wallet: w, kind: "early", milli: RULES.earlyBuyerMilli, token: c.token, ref: refOf(t), block: g });
+      const own = ((earned.get(w) ?? 0n) * RULES.earlyBonusPct) / 100n;
+      const bonus = own < RULES.earlyBuyerMilli ? own : RULES.earlyBuyerMilli;
+      if (bonus > 0n) out.push({ wallet: w, kind: "early", milli: bonus, token: c.token, ref: refOf(t), block: g });
       if (early.size >= RULES.earlyBuyers) break;
     }
   }

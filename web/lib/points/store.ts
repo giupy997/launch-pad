@@ -4,7 +4,7 @@
 // `git pull` or a Node upgrade never has a database to migrate, and anyone
 // can read them. The ledger is never stored: it is recomputed from these.
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, truncateSync, writeSync } from "node:fs";
 import { join } from "node:path";
 import type { PadEvent } from "./decode.ts";
 import type { Referral } from "./rules.ts";
@@ -51,17 +51,40 @@ export class Store {
 
   private readLines<T>(path: string): T[] {
     if (!existsSync(path)) return [];
+    const text = readFileSync(path, "utf8");
+    const lines = text.split("\n");
     const out: T[] = [];
-    for (const line of readFileSync(path, "utf8").split("\n")) {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
       if (!line.trim()) continue;
-      out.push(unpack(JSON.parse(line) as Json) as T);
+      try {
+        out.push(unpack(JSON.parse(line) as Json) as T);
+      } catch (e) {
+        // a last line without its newline is a write cut short (a crash, a full disk): dropped,
+        // the file trimmed to its last whole line; the events in it are read again from the
+        // chain. Anything else is a corrupt file, which is not guessed at
+        if (i === lines.length - 1 && !text.endsWith("\n")) {
+          console.warn(`${path}: the last line is cut short (${line.length} chars): dropped`);
+          truncateSync(path, Buffer.byteLength(text.slice(0, text.lastIndexOf("\n") + 1)));
+          break;
+        }
+        throw e;
+      }
     }
     return out;
   }
 
+  /** appended and flushed to disk before returning: the checkpoint written after it never
+   *  outlives the events it covers */
   private appendLines(path: string, rows: unknown[]) {
     if (!rows.length) return;
-    appendFileSync(path, rows.map((r) => JSON.stringify(pack(r))).join("\n") + "\n");
+    const fd = openSync(path, "a");
+    try {
+      writeSync(fd, rows.map((r) => JSON.stringify(pack(r))).join("\n") + "\n");
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
   }
 
   loadEvents(): PadEvent[] {
@@ -86,10 +109,16 @@ export class Store {
       return null;
     }
   }
-  /** written whole and renamed into place: a crash leaves the old file, never half a new one */
+  /** written whole, flushed, and renamed into place: a crash leaves the old file, never half a new one */
   writeMeta(meta: Meta) {
     const tmp = `${this.metaPath}.tmp`;
-    writeFileSync(tmp, JSON.stringify(pack(meta)));
+    const fd = openSync(tmp, "w");
+    try {
+      writeSync(fd, JSON.stringify(pack(meta)));
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
     renameSync(tmp, this.metaPath);
   }
 }

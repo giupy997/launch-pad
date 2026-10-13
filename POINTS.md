@@ -40,7 +40,7 @@ by something that costs real money:
 |---|---|---|---|
 | A coin graduates | every wallet still holding it at the graduation block | +50% on all the trade points it earned on that coin | proportional to fees already paid; a dust balance only keeps what you bought |
 | A coin graduates | its creator | 2,000 points (the equivalent of 100 LTC traded) | graduating your own coin alone costs about 40 LTC of slippage into the locked pool, 18× the price of the same points earned trading |
-| A coin graduates | its first 25 distinct buyers | 100 points each | needs the graduation above; 25 sybil wallets still pay gas and fees |
+| A coin graduates | its first 25 distinct buyers | twice the trade points each earned on the coin, 100 points at most | needs the graduation above, and the bonus is a multiple of fees already paid: 25 dust buys among the first earn dust |
 | Referral | the inviter | 10% of the invitee's trade points, for the season | an inviter inviting their own second wallet gets a 10% discount on their own points, nothing more |
 | Referral | the invitee | +5% on their own trade points for 30 days after accepting | same |
 

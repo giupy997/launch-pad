@@ -117,6 +117,9 @@ export class ChainIndexer {
     return { ...s, end };
   }
 
+  /** trades and volume per wallet in the season, computed once per recompute (the board read it per row) */
+  private stats = new Map<string, { trades: number; volume: bigint }>();
+
   recompute() {
     const season = this.effectiveSeason();
     this.ledger = season
@@ -133,6 +136,16 @@ export class ChainIndexer {
     this.totals = totals(this.ledger);
     this.board = ranking(this.totals);
     this.ranks = new Map(this.board.map((r, i) => [r.wallet, i + 1]));
+    const stats = new Map<string, { trades: number; volume: bigint }>();
+    for (const t of this.trades) {
+      if (season && (t.block < season.start || (season.end !== null && t.block > season.end))) continue;
+      if (this.hidden.has(t.token)) continue;
+      const s = stats.get(t.wallet) ?? { trades: 0, volume: 0n };
+      s.trades++;
+      s.volume += t.quote;
+      stats.set(t.wallet, s);
+    }
+    this.stats = stats;
   }
 
   /** read the blocks mined since the last pass (up to maxChunksPerPass ranges), keep what came back contiguous */
@@ -213,17 +226,7 @@ export class ChainIndexer {
   }
 
   private tradeStats(wallet: string): { trades: number; volume: bigint } {
-    let trades = 0;
-    let volume = 0n;
-    const season = this.effectiveSeason();
-    for (const t of this.trades) {
-      if (t.wallet !== wallet) continue;
-      if (season && (t.block < season.start || (season.end !== null && t.block > season.end))) continue;
-      if (this.hidden.has(t.token)) continue;
-      trades++;
-      volume += t.quote;
-    }
-    return { trades, volume };
+    return this.stats.get(wallet) ?? { trades: 0, volume: 0n };
   }
 
   private inviteesOf(wallet: string): { wallet: `0x${string}`; points: number }[] {
@@ -253,7 +256,7 @@ export class ChainIndexer {
       const k = r.inviter.toLowerCase();
       inviteeCount.set(k, (inviteeCount.get(k) ?? 0) + 1);
     }
-    return this.board.slice(0, Math.max(1, Math.min(limit, 500))).map((r, i) => {
+    return this.board.slice(0, Math.max(1, Math.min(limit, 100))).map((r, i) => {
       const s = this.tradeStats(r.wallet);
       return { rank: i + 1, wallet: r.wallet, points: milliToPoints(r.milli), trades: s.trades, volume: s.volume.toString(), invitees: inviteeCount.get(r.wallet) ?? 0 };
     });

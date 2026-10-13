@@ -79,6 +79,29 @@ test("only the first 25 distinct buyers are early, counted once each", () => {
   assert.equal(early.length, 25);
   assert.equal(early[0].wallet, trades[0].wallet);
   assert.equal(early[24].wallet, trades[48].wallet);
+  // each bought 0.2 LTC in all (4 points): the bonus is twice that, not the cap
+  assert.ok(early.every((e) => e.milli === 8_000n));
+});
+
+test("an early buyer's bonus follows its own trade points on the coin, up to the cap", () => {
+  const trades = [trade(A, "buy", 0.001, 110n), trade(B, "buy", 2, 111n), trade(D, "buy", 5, 112n)];
+  const coins: Coin[] = [{ token: COIN, creator: C, createdBlock: 105n, graduatedBlock: 300n }];
+  const ledger = computeLedger({ trades, coins, referrals: [], season, quoteDecimals: 18, blockSeconds: 1, hidden: new Set() });
+  const early = new Map(ledger.filter((e) => e.kind === "early").map((e) => [e.wallet, e.milli]));
+  assert.equal(early.get(A), 40n); // a dust buy: 0.02 points of trades, twice that
+  assert.equal(early.get(B), 80_000n); // 40 points of trades: 80
+  assert.equal(early.get(D), 100_000n); // 100 points of trades: the cap
+});
+
+test("a coin that arrived graduated from another launchpad earns its creator nothing", () => {
+  // migrateToken emits TokenCreated and Graduated in one block, with no trade between
+  const coins: Coin[] = [{ token: COIN, creator: C, createdBlock: 200n, graduatedBlock: 200n }];
+  const ledger = computeLedger({ trades: [], coins, referrals: [], season, quoteDecimals: 18, blockSeconds: 1, hidden: new Set() });
+  assert.equal(ledger.length, 0);
+  // created and graduated in one block by a buy that took the whole curve: a graduation here
+  const trades = [trade(A, "buy", 200, 200n)];
+  const here = computeLedger({ trades, coins, referrals: [], season, quoteDecimals: 18, blockSeconds: 1, hidden: new Set() });
+  assert.ok(here.some((e) => e.kind === "grad_creator" && e.wallet === C));
 });
 
 test("a binding pays nothing for the past, and the invitee's bonus ends after 30 days", () => {

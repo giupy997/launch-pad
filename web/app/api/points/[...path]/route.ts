@@ -23,10 +23,14 @@ const json = (body: unknown, status = 200) => NextResponse.json(body, { status, 
 
 /** who is asking, for the service's rate limit: the address Netlify's edge
  *  saw, which a client cannot set. Without it (a run outside Netlify) every
- *  client shares one bucket, rather than naming its own address in a header. */
+ *  client shares one bucket, rather than naming its own address in a header.
+ *  It travels in the site's own header under the secret the service shares
+ *  (POINTS_TOKEN): the proxy in front of the service rewrites x-forwarded-for
+ *  to the address that connects, this function's. */
 function clientIp(req: NextRequest): string {
   return req.headers.get("x-nf-client-connection-ip") ?? "?";
 }
+const POINTS_TOKEN = process.env.POINTS_TOKEN ?? "";
 
 async function proxy(req: NextRequest, path: string[]) {
   const p = path.join("/");
@@ -41,6 +45,10 @@ async function proxy(req: NextRequest, path: string[]) {
     if (limit && /^\d{1,3}$/.test(limit)) url.searchParams.set("limit", limit);
   }
   const headers: Record<string, string> = { accept: "application/json", "x-forwarded-for": clientIp(req) };
+  if (POINTS_TOKEN) {
+    headers["x-points-token"] = POINTS_TOKEN;
+    headers["x-points-client"] = clientIp(req);
+  }
   const init: RequestInit = { method: req.method, headers, cache: "no-store", signal: AbortSignal.timeout(8_000) };
   if (isPost) {
     const body = await req.text();

@@ -40,7 +40,17 @@ RPC=${BASE_RPC:-${SRC_RPC:-}}; RPC=${RPC%%,*}; RPC=${RPC:-base}
 OPS=${NOTUS_OPS_DIR:-$HOME/notus-ops}
 mkdir -p "$OPS"
 ZERO32=0x0000000000000000000000000000000000000000000000000000000000000000
-if [ -n "${PRIVATE_KEY:-}" ]; then SIGNER=(--private-key "$PRIVATE_KEY"); else SIGNER=(--account "${ACCOUNT:-notus}"); fi
+export ETH_RPC_URL=$RPC # cast and forge read it from here: the (keyed) URL stays off every command line
+CHAIN=$(cast chain-id 2>/dev/null || echo "?")
+[ "$CHAIN" = "${CHAIN_ID:-8453}" ] || { echo "the node answers for chain $CHAIN; this addresses file is for chain ${CHAIN_ID:-8453}"; exit 1; }
+if [ -n "${PRIVATE_KEY:-}" ]; then
+  # a test key from the environment signs on a test network only: on a live chain the keystore does
+  case "$CHAIN" in 1 | 8453) [ "${ALLOW_PRIVATE_KEY:-}" = 1 ] || { echo "PRIVATE_KEY is set in the environment: on chain $CHAIN the keystore signs (unset it, or ALLOW_PRIVATE_KEY=1 to sign with it anyway)"; exit 1; } ;; esac
+  SIGNER=(--private-key "$PRIVATE_KEY")
+  echo "   signer: $(cast wallet address --private-key "$PRIVATE_KEY") (PRIVATE_KEY from the environment)"
+else
+  SIGNER=(--account "${ACCOUNT:-notus}")
+fi
 PROPOSER_ROLE=$(cast keccak "PROPOSER_ROLE")
 CANCELLER_ROLE=$(cast keccak "CANCELLER_ROLE")
 SIG_SCHEDULE="schedule(address,uint256,bytes,bytes32,bytes32,uint256)"
@@ -48,7 +58,7 @@ SIG_SCHEDULE_BATCH="scheduleBatch(address[],uint256[],bytes[],bytes32,bytes32,ui
 SIG_EXECUTE="execute(address,uint256,bytes,bytes32,bytes32)"
 SIG_EXECUTE_BATCH="executeBatch(address[],uint256[],bytes[],bytes32,bytes32)"
 
-call() { cast call "$TIMELOCK" "$@" --rpc-url "$RPC"; }
+call() { cast call "$TIMELOCK" "$@"; }
 lower() { echo "$1" | tr 'A-F' 'a-f'; }
 delay() { call "getMinDelay()(uint256)" | awk '{print $1}'; }
 when() { date -u -d "@$1" "+%Y-%m-%d %H:%M UTC" 2>/dev/null || date -u -r "$1" "+%Y-%m-%d %H:%M UTC"; }
@@ -60,7 +70,7 @@ ask() {
   read -rp "$1 (0x...): " raw
   sum=$(cast to-check-sum-address "$raw" 2>/dev/null) || { echo "not an address: $raw"; exit 1; }
   [ "$sum" != "0x0000000000000000000000000000000000000000" ] || { echo "the zero address: refused (a pad paying its fee there would stop every trade)"; exit 1; }
-  local code; code=$(cast code "$sum" --rpc-url "$RPC" 2>/dev/null || echo "?")
+  local code; code=$(cast code "$sum" 2>/dev/null || echo "?")
   echo "   $sum  ($([ "$code" = "0x" ] && echo "no code: a wallet" || echo "a contract, $(( (${#code} - 2) / 2 )) bytes of code"))"
   read -rp "   is this exactly the address you mean? (yes/no): " yes
   [ "$yes" = "yes" ] || { echo "stopped"; exit 1; }
@@ -81,8 +91,8 @@ schedule_single() {
   d=$(delay); s=$(salt "$kind")
   id=$(call "hashOperation(address,uint256,bytes,bytes32,bytes32)(bytes32)" "$target" 0 "$data" "$ZERO32" "$s")
   echo "== scheduling $kind on $TIMELOCK (delay $d s)"
-  cast send "$TIMELOCK" "$SIG_SCHEDULE" "$target" 0 "$data" "$ZERO32" "$s" "$d" "${SIGNER[@]}" --rpc-url "$RPC" >/dev/null
-  save "$kind" "$id" "$target" "0" "$data" "$ZERO32" "$s" 0
+  save "$kind" "$id" "$target" "0" "$data" "$ZERO32" "$s" 0 # before the send: a send that lands while cast reports a failure keeps its id here
+  cast send "$TIMELOCK" "$SIG_SCHEDULE" "$target" 0 "$data" "$ZERO32" "$s" "$d" "${SIGNER[@]}" >/dev/null
   done_msg "$id"
 }
 # schedule_batch KIND "T1,T2" "D1,D2"
@@ -92,8 +102,8 @@ schedule_batch() {
   n=$(echo "$targets" | tr ',' '\n' | wc -l); values=; for ((i = 0; i < n; i++)); do values+="0,"; done; values=${values%,}
   id=$(call "hashOperationBatch(address[],uint256[],bytes[],bytes32,bytes32)(bytes32)" "[$targets]" "[$values]" "[$datas]" "$ZERO32" "$s")
   echo "== scheduling $kind on $TIMELOCK (delay $d s)"
-  cast send "$TIMELOCK" "$SIG_SCHEDULE_BATCH" "[$targets]" "[$values]" "[$datas]" "$ZERO32" "$s" "$d" "${SIGNER[@]}" --rpc-url "$RPC" >/dev/null
   save "$kind" "$id" "$targets" "$values" "$datas" "$ZERO32" "$s" 1
+  cast send "$TIMELOCK" "$SIG_SCHEDULE_BATCH" "[$targets]" "[$values]" "[$datas]" "$ZERO32" "$s" "$d" "${SIGNER[@]}" >/dev/null
   done_msg "$id"
 }
 done_msg() {
@@ -144,7 +154,7 @@ case "${1:-}" in
     echo "The pad $PAD pays its fee to a new address from the execution on."
     echo "Send a few satoshis of cbLTC to it first and see them arrive: an address nobody holds the key to keeps every fee for good."
     ask "new treasury"
-    OLD=$(cast call "$PAD" "treasury()(address)" --rpc-url "$RPC")
+    OLD=$(cast call "$PAD" "treasury()(address)")
     echo "   treasury now $OLD"
     schedule_single "setTreasury $ADDR" "$PAD" "$(cast calldata "setTreasury(address)" "$ADDR")"
     ;;
@@ -161,9 +171,9 @@ case "${1:-}" in
     # the outcome from the transaction's own receipt: a read right after a send can reach a
     # node still a block behind and answer "not done" for an operation that just was
     if [ "$(field "$ID" batch)" = 1 ]; then
-      RECEIPT=$(cast send "$TIMELOCK" "$SIG_EXECUTE_BATCH" "[$(field "$ID" targets)]" "[$(field "$ID" values)]" "[$(field "$ID" payloads)]" "$(field "$ID" predecessor)" "$(field "$ID" salt)" "${SIGNER[@]}" --rpc-url "$RPC" --json)
+      RECEIPT=$(cast send "$TIMELOCK" "$SIG_EXECUTE_BATCH" "[$(field "$ID" targets)]" "[$(field "$ID" values)]" "[$(field "$ID" payloads)]" "$(field "$ID" predecessor)" "$(field "$ID" salt)" "${SIGNER[@]}" --json)
     else
-      RECEIPT=$(cast send "$TIMELOCK" "$SIG_EXECUTE" "$(field "$ID" targets)" 0 "$(field "$ID" payloads)" "$(field "$ID" predecessor)" "$(field "$ID" salt)" "${SIGNER[@]}" --rpc-url "$RPC" --json)
+      RECEIPT=$(cast send "$TIMELOCK" "$SIG_EXECUTE" "$(field "$ID" targets)" 0 "$(field "$ID" payloads)" "$(field "$ID" predecessor)" "$(field "$ID" salt)" "${SIGNER[@]}" --json)
     fi
     STATUS=$(echo "$RECEIPT" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const r=JSON.parse(s.slice(s.indexOf("{"),s.lastIndexOf("}")+1));console.log((r.status==="0x1"||r.status===1||r.status==="success"?"executed":"REVERTED ("+r.status+")")+" in block "+parseInt(r.blockNumber)+", tx "+r.transactionHash)})')
     echo "   $STATUS"
@@ -181,7 +191,7 @@ case "${1:-}" in
     echo "== cancelling $ID$( [ -f "$OPS/$ID.json" ] && echo " ($(field "$ID" kind))") from this machine's key $KEY"
     [ "$(call "hasRole(bytes32,address)(bool)" "$(cast keccak CANCELLER_ROLE)" "$KEY")" = true ] || {
       echo "   $KEY is no canceller on $TIMELOCK (the Safe is): bash script/ops/timelock.sh safe-calldata cancel $ID"; exit 1; }
-    cast send "$TIMELOCK" "cancel(bytes32)" "$ID" "${SIGNER[@]}" --rpc-url "$RPC" >/dev/null
+    cast send "$TIMELOCK" "cancel(bytes32)" "$ID" "${SIGNER[@]}" >/dev/null
     echo "   cancelled: $([ "$(call "getTimestamp(bytes32)(uint256)" "$ID" | awk '{print $1}')" = 0 ] && echo yes || echo no)"
     ;;
   safe-calldata)
@@ -195,7 +205,7 @@ case "${1:-}" in
         [ -f "$FILE" ] || { echo "no such file: $FILE"; exit 1; }
         ROOT=$(node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));if(j.dryRun||(j.scale&&j.scale!==1)){console.error("a dry-run file (unfrozen, or scaled): not for a migration");process.exit(1)}console.log("0x"+String(j.stateRoot).replace(/^0x/,""))' "$FILE") || exit 1
         FREEZE=$(node -p 'JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).freezeHeight' "$FILE")
-        [ "$(cast call "$PAD" "migrationRoot()(bytes32)" --rpc-url "$RPC")" = "$ZERO32" ] || { echo "   the pad $PAD holds a root already: $(cast call "$PAD" "migrationRoot()(bytes32)" --rpc-url "$RPC")"; exit 1; }
+        [ "$(cast call "$PAD" "migrationRoot()(bytes32)")" = "$ZERO32" ] || { echo "   the pad $PAD holds a root already: $(cast call "$PAD" "migrationRoot()(bytes32)")"; exit 1; }
         echo "The pad $PAD commits to the snapshot $FILE: root $ROOT, frozen at block $FREEZE. Once, for good."
         read -rp "   type ROOT to go on: " yes; [ "$yes" = ROOT ] || { echo "stopped"; exit 1; }
         S=$(salt "safe set-root"); DATA=$(cast calldata "setMigrationRoot(bytes32,uint256)" "$ROOT" "$FREEZE")
@@ -224,9 +234,9 @@ case "${1:-}" in
         echo "The pad $PAD graduates every coin through a new migrator from the execution on (a coin keeps the"
         echo "migrator it graduated through: switch before any coin graduates). One deployed with script/ops/migrator.sh."
         ask "new migrator"
-        MPAD=$(cast call "$ADDR" "launchpad()(address)" --rpc-url "$RPC" 2>/dev/null || true)
+        MPAD=$(cast call "$ADDR" "launchpad()(address)" 2>/dev/null || true)
         [ "$(lower "$MPAD")" = "$(lower "$PAD")" ] || { echo "   $ADDR is not a migrator of this pad (its launchpad: ${MPAD:-none})"; exit 1; }
-        OLD=$(cast call "$PAD" "migrator()(address)" --rpc-url "$RPC")
+        OLD=$(cast call "$PAD" "migrator()(address)")
         echo "   migrator now $OLD"
         S=$(salt "safe set-migrator"); DATA=$(cast calldata "setMigrator(address)" "$ADDR")
         ID=$(call "hashOperation(address,uint256,bytes,bytes32,bytes32)(bytes32)" "$PAD" 0 "$DATA" "$ZERO32" "$S")

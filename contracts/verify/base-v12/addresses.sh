@@ -1,4 +1,5 @@
 # The Base v12 stack, from the output of script/DeployBase.s.sol (2026-10-09, block 52397620).
+CHAIN_ID=8453 # the ops scripts refuse a node that answers for another chain
 PAD=0x23231924281B34Bb28F10D854DB8D2DcBd7F78c5
 MODULE=0x0F413C63Cfeb342Bcd1ae176DE896b530e02B2a2
 FACTORY=0x2662A5433f360176E3555D5EEc81AC5aCE5F36f9

@@ -30,7 +30,17 @@ source "${ADDRESSES:-verify/base-v12/addresses.sh}"
 RPC=${BASE_RPC:-${SRC_RPC:-}}
 RPC=${RPC%%,*}
 RPC=${RPC:-base}
-if [ -n "${PRIVATE_KEY:-}" ]; then SIGNER=(--private-key "$PRIVATE_KEY"); else SIGNER=(--account "${ACCOUNT:-notus}"); fi
+export ETH_RPC_URL=$RPC # cast and forge read it from here: the (keyed) URL stays off every command line
+CHAIN=$(cast chain-id 2>/dev/null || echo "?")
+[ "$CHAIN" = "${CHAIN_ID:-8453}" ] || { echo "the node answers for chain $CHAIN; this addresses file is for chain ${CHAIN_ID:-8453}"; exit 1; }
+if [ -n "${PRIVATE_KEY:-}" ]; then
+  # a test key from the environment signs on a test network only: on a live chain the keystore does
+  case "$CHAIN" in 1 | 8453) [ "${ALLOW_PRIVATE_KEY:-}" = 1 ] || { echo "PRIVATE_KEY is set in the environment: on chain $CHAIN the keystore signs (unset it, or ALLOW_PRIVATE_KEY=1 to sign with it anyway)"; exit 1; } ;; esac
+  SIGNER=(--private-key "$PRIVATE_KEY")
+  echo "   signer: $(cast wallet address --private-key "$PRIVATE_KEY") (PRIVATE_KEY from the environment)"
+else
+  SIGNER=(--account "${ACCOUNT:-notus}")
+fi
 MODE=${1:-once}
 EVERY=${HARVEST_EVERY:-60}
 ZERO=0x0000000000000000000000000000000000000000
@@ -38,7 +48,7 @@ ZERO=0x0000000000000000000000000000000000000000
 # a read of the pad: its first word, or a failure (exit 1) when the node did not answer
 call() {
   local out
-  out=$(cast call "$1" "$2" "${@:3}" --rpc-url "$RPC" 2>/dev/null) || return 1
+  out=$(cast call "$1" "$2" "${@:3}" 2>/dev/null) || return 1
   echo "$out" | awk '{print $1}'
 }
 # the outcome of a send from its receipt: harvested, reverted, or not sent (signer, gas, node)
@@ -68,7 +78,7 @@ pass() {
       echo "   $token: $buckets coins wait; the next slice may go at $(date -u -d "@$due" +%H:%M:%S 2>/dev/null || echo "$due") UTC"
       continue
     fi
-    case "$(cast send "$via" "harvest(address)" "$token" "${SIGNER[@]}" --rpc-url "$RPC" --json 2>/dev/null | outcome)" in
+    case "$(cast send "$via" "harvest(address)" "$token" "${SIGNER[@]}" --json 2>/dev/null | outcome)" in
       harvested) echo "   $token: a slice harvested ($buckets coins waited)";;
       reverted) echo "   $token: harvest reverted this pass (cooldown, or a slice too small): $buckets coins wait";;
       *) echo "   $token: the harvest was NOT sent (the signer, gas, or the node): $buckets coins wait";;
@@ -77,7 +87,7 @@ pass() {
   return $left
 }
 
-echo "== harvest on $PAD through $(node -e 'console.log(new URL(process.argv[1]).host)' "$RPC" 2>/dev/null || echo "$RPC") · block $(cast block-number --rpc-url "$RPC" 2>/dev/null || echo "? (the node did not answer)")"
+echo "== harvest on $PAD through $(node -e 'console.log(new URL(process.argv[1]).host)' "$RPC" 2>/dev/null || echo "$RPC") · block $(cast block-number 2>/dev/null || echo "? (the node did not answer)")"
 case "$MODE" in
   once | --dry)
     pass; rc=$?

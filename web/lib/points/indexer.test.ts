@@ -114,13 +114,13 @@ test("passes read the pad's life and score it; a restart resumes from disk", asy
   assert.equal(ix.coins.get(COIN)?.graduatedBlock, 1_040n);
 
   const board = ix.leaderboard();
-  // carol: 2,000 creator. alice: 60 trade + 30 holder + 100 early = 190. bob: 10 + 5 holder + 100 early = 115.
+  // carol: 2,000 creator. alice: 60 trade + 30 holder + 100 early (twice her 60, capped) = 190. bob: 10 + 5 holder + 20 early = 35.
   assert.deepEqual(
     board.map((row) => [row.wallet, row.points]),
     [
       [carol.address.toLowerCase(), 2000],
       [alice.address.toLowerCase(), 190],
-      [bob.address.toLowerCase(), 115],
+      [bob.address.toLowerCase(), 35],
     ]
   );
   const a = ix.wallet(alice.address);

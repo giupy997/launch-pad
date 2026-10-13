@@ -87,20 +87,34 @@ const json = (res: ServerResponse, status: number, body: unknown, cache = false,
   res.end(head ? undefined : text);
 };
 
-// POSTs are rare and cheap to abuse: a handful per minute per address
+// POSTs are rare and cheap to abuse: a handful per minute per client address, and a few per
+// invitee address (one binding per wallet is all a wallet ever needs)
 const posts = new Map<string, number[]>();
-function allowPost(ip: string): boolean {
+function allowPost(key: string, limit: number): boolean {
   const now = Date.now();
-  const recent = (posts.get(ip) ?? []).filter((t) => now - t < 60_000);
-  if (recent.length >= 10) return false;
+  const recent = (posts.get(key) ?? []).filter((t) => now - t < 60_000);
+  if (recent.length >= limit) return false;
   recent.push(now);
-  posts.set(ip, recent);
+  posts.set(key, recent);
   return true;
 }
+// the map forgets keys quiet for a minute: it grows with the clients seen, not for ever
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of posts) if (!v.some((t) => now - t < 60_000)) posts.delete(k);
+}, 60_000).unref();
+// The site's route forwards the visitor's address in its own header, under a secret the two
+// share (POINTS_TOKEN here and in the site's environment): Caddy sets x-forwarded-for to the
+// address that connects to it, the site's function in that case, so without the secret every
+// visitor of the site would count as one client. Unset, the connecting address is the client.
+const POINTS_TOKEN = process.env.POINTS_TOKEN ?? "";
 function clientIp(req: IncomingMessage): string {
-  const fwd = req.headers["x-forwarded-for"];
-  const first = Array.isArray(fwd) ? fwd[0] : fwd?.split(",")[0];
-  return (first ?? req.socket.remoteAddress ?? "?").trim();
+  const one = (h: string | string[] | undefined) => (Array.isArray(h) ? h[0] : h)?.split(",")[0]?.trim();
+  if (POINTS_TOKEN && one(req.headers["x-points-token"]) === POINTS_TOKEN) {
+    const forwarded = one(req.headers["x-points-client"]);
+    if (forwarded) return `site:${forwarded}`;
+  }
+  return one(req.headers["x-forwarded-for"]) ?? req.socket.remoteAddress ?? "?";
 }
 function readBody(req: IncomingMessage, limit = 4_096): Promise<string | null> {
   return new Promise((resolve) => {
@@ -173,7 +187,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
       json(res, 405, { error: "POST an invite acceptance here" });
       return;
     }
-    if (!allowPost(clientIp(req))) {
+    if (!allowPost(`ip:${clientIp(req)}`, 10)) {
       json(res, 429, { error: "too many requests" });
       return;
     }
@@ -190,6 +204,10 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     }
     if (typeof claim.invitee !== "string" || typeof claim.inviter !== "string" || typeof claim.signature !== "string") {
       json(res, 400, { error: "invitee, inviter and signature are needed" });
+      return;
+    }
+    if (!allowPost(`invitee:${claim.invitee.toLowerCase()}`, 5)) {
+      json(res, 429, { error: "too many requests for this wallet" });
       return;
     }
     const r = await ix.bindReferral({ invitee: claim.invitee, inviter: claim.inviter, signature: claim.signature });

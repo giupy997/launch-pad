@@ -26,7 +26,17 @@ source "$ADDRESSES"
 RPC=${BASE_RPC:-${SRC_RPC:-}}
 RPC=${RPC%%,*}
 RPC=${RPC:-base}
-if [ -n "${PRIVATE_KEY:-}" ]; then SIGNER=(--private-key "$PRIVATE_KEY"); else SIGNER=(--account "${ACCOUNT:-notus}"); fi
+export ETH_RPC_URL=$RPC # cast and forge read it from here: the (keyed) URL stays off every command line
+CHAIN=$(cast chain-id 2>/dev/null || echo "?")
+[ "$CHAIN" = "${CHAIN_ID:-8453}" ] || { echo "the node answers for chain $CHAIN; this addresses file is for chain ${CHAIN_ID:-8453}"; exit 1; }
+if [ -n "${PRIVATE_KEY:-}" ]; then
+  # a test key from the environment signs on a test network only: on a live chain the keystore does
+  case "$CHAIN" in 1 | 8453) [ "${ALLOW_PRIVATE_KEY:-}" = 1 ] || { echo "PRIVATE_KEY is set in the environment: on chain $CHAIN the keystore signs (unset it, or ALLOW_PRIVATE_KEY=1 to sign with it anyway)"; exit 1; } ;; esac
+  SIGNER=(--private-key "$PRIVATE_KEY")
+  echo "   signer: $(cast wallet address --private-key "$PRIVATE_KEY") (PRIVATE_KEY from the environment)"
+else
+  SIGNER=(--account "${ACCOUNT:-notus}")
+fi
 UNIV2_ROUTER=0x4752ba5DBc23f44D87826276BF6Fd6b1C372aD24 # Uniswap v2 Router02 on Base
 # the Standard JSON input of a migrator, by its address (v4's keeps its old name)
 input_of() { local f="$(dirname "$ADDRESSES")/UniV2Migrator-$(lower "$1").standard-input.json"; [ -f "$f" ] || [ "$(lower "$1")" != "$(lower "${MIGRATOR_V4:-}")" ] || f="$(dirname "$ADDRESSES")/UniV2Migrator-v4.standard-input.json"; echo "$f"; }
@@ -36,7 +46,7 @@ API="https://api.etherscan.io/v2/api?chainid=8453"
 lower() { echo "$1" | tr 'A-F' 'a-f'; }
 # a field of the JSON on stdin (forge and cast print it over several lines)
 jfield() { node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const t=s.slice(s.indexOf("{"),s.lastIndexOf("}")+1);console.log(JSON.parse(t)[process.argv[1]]??"")})' "$1"; }
-call() { cast call "$1" "$2" "${@:3}" --rpc-url "$RPC" 2>/dev/null | awk '{print $1}'; }
+call() { cast call "$1" "$2" "${@:3}" 2>/dev/null | awk '{print $1}'; }
 json() { node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{try{const j=JSON.parse(d);const v=process.argv[1].split(".").reduce((o,k)=>o==null?undefined:o[k],j);console.log(v==null?"":typeof v==="string"?v:JSON.stringify(v))}catch{console.log("")}})' "$1"; }
 
 # found ADDR: the Standard JSON input for Basescan from this build, the checks, the next steps
@@ -61,7 +71,7 @@ found() {
 # check ADDR: a migrator of this pad on Base's Uniswap v2, with code
 check() {
   local addr=$1 code pad router ok=0
-  code=$(cast code "$addr" --rpc-url "$RPC" 2>/dev/null || echo 0x)
+  code=$(cast code "$addr" 2>/dev/null || echo 0x)
   if [ "${#code}" -gt 4 ]; then echo "PASS  code at $addr ($(( (${#code} - 2) / 2 )) bytes)"; else echo "FAIL  no code at $addr"; ok=1; fi
   pad=$(call "$addr" 'launchpad()(address)')
   if [ "$(lower "$pad")" = "$(lower "$PAD")" ]; then echo "PASS  launchpad = the v12 pad $PAD"; else echo "FAIL  launchpad = $pad, want $PAD"; ok=1; fi
@@ -76,22 +86,22 @@ case "${1:-}" in
     echo "== UniV2Migrator for the pad $PAD, Uniswap v2 Router02 $UNIV2_ROUTER, from $(git rev-parse --short HEAD)"
     forge build --quiet
     # --constructor-args takes every argument after it, so it comes last
-    OUT=$(forge create --rpc-url "$RPC" "${SIGNER[@]}" --broadcast --json src/UniV2Migrator.sol:UniV2Migrator --constructor-args "$PAD" "$UNIV2_ROUTER")
+    OUT=$(forge create "${SIGNER[@]}" --broadcast --json src/UniV2Migrator.sol:UniV2Migrator --constructor-args "$PAD" "$UNIV2_ROUTER")
     ADDR=$(echo "$OUT" | jfield deployedTo)
     TX=$(echo "$OUT" | jfield transactionHash)
     [ -n "$ADDR" ] || { echo "forge create answered without an address:"; echo "$OUT"; echo "(if a transaction was sent: bash script/ops/migrator.sh find)"; exit 1; }
-    echo "   deployed: $ADDR (tx $TX, block $(cast block-number --rpc-url "$RPC"))"
+    echo "   deployed: $ADDR (tx $TX, block $(cast block-number))"
     found "$ADDR"
     ;;
   find)
     # the last contracts the deployer's key created: the address a deploy lands at is a function of
     # the deployer and the nonce it used, so the latest nonces are tried for a migrator of this pad
-    NONCE=$(cast nonce "$DEPLOYER" --rpc-url "$RPC")
+    NONCE=$(cast nonce "$DEPLOYER")
     echo "== the deployer's key $DEPLOYER is at nonce $NONCE: the contracts of its last transactions"
     ADDR=
     for ((n = NONCE - 1; n >= NONCE - 5 && n >= 0; n--)); do
       CAND=$(cast compute-address "$DEPLOYER" --nonce "$n" | awk '{print $NF}')
-      CODE=$(cast code "$CAND" --rpc-url "$RPC" 2>/dev/null || echo 0x)
+      CODE=$(cast code "$CAND" 2>/dev/null || echo 0x)
       [ "${#CODE}" -gt 4 ] || { echo "   nonce $n: $CAND, no contract"; continue; }
       if [ "$(lower "$(call "$CAND" 'launchpad()(address)')")" = "$(lower "$PAD")" ]; then
         echo "   nonce $n: $CAND, a migrator of this pad"
