@@ -210,10 +210,11 @@ longer served by the site, built or run.
   (`feesToHolders` only names whom a tax would go to)
 - Buyback-and-burn: the burn pot buys the coin on its curve (a fee-free buy
   that raises the price and the reserve) or, once graduated, on its pool
-  through the migrator, and burns what it gets — a slice at a time (a
-  hundredth of the curve's virtual reserve, half a percent of the pool's
-  quote side), once a block per coin, so a trade wrapped around it earns
-  less than its fees; `burned` counts it, holders own `sold` less `burned`. The liquidity pot joins the pool's quote side at
+  through the migrator, and burns what it gets — a slice at a time (half
+  a percent of the curve's virtual reserve once a block, half a percent of
+  the pool's quote side every five minutes), so a trade wrapped around a
+  slice earns less than its fees and a run of slices has to be fronted for
+  minutes a slice in the open; `burned` counts it, holders own `sold` less `burned`. The liquidity pot joins the pool's quote side at
   graduation (a deeper, slightly higher opening). Unspent pots leave with
   the reserve at `migrateOut` and arrive as pots on the other chain
 - Graduation: once the 800M are sold out → curve trading closes and the
@@ -287,8 +288,8 @@ operation scheduled, executed or cancelled on the Base timelocks (decoded to
 the call it makes), every role change, the pads' owner-only events, a deploy
 of the site and the pad's address gone from it; and
 `contracts/script/ops/harvest.sh`, the keeper that harvests every graduated
-coin's pool fees a slice a block until the buckets are empty (`--watch` for
-the notice before a freeze); `contracts/script/ops/migrator.sh`, a new
+coin's pool fees a slice every five minutes until the buckets are empty
+(`--watch` for the notice before a freeze); `contracts/script/ops/migrator.sh`, a new
 `UniV2Migrator` for the pad: deployed, its Standard JSON input for Basescan
 written, verified, read back (the pad takes it through the timelock, from
 the Safe: `timelock.sh safe-calldata set-migrator`); `contracts/script/ops/timelock.sh`, the owner's timelock operations (a Safe

@@ -148,6 +148,7 @@ contract FreezeTest is Test {
     function _freeze() internal {
         mig.announceFreeze(block.number + 5);
         vm.roll(block.number + 5);
+        vm.warp(block.timestamp + 5 minutes);
         assertTrue(pad.frozen());
     }
 
@@ -285,8 +286,10 @@ contract FreezeTest is Test {
         assertFalse(pad.frozen(), "announced, not landed: trading goes on");
         _buy(bob, curveCoin, 1e8);
         vm.roll(block.number + 4);
+        vm.warp(block.timestamp + 5 minutes);
         assertFalse(pad.frozen());
         vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 5 minutes);
         assertTrue(pad.frozen());
     }
 
@@ -563,6 +566,7 @@ contract FreezeTest is Test {
         vm.expectRevert(LaunchpadBase.CreationClosed.selector);
         mig.migrateToken(another, new bytes32[](0), none);
         vm.roll(block.number + 5);
+        vm.warp(block.timestamp + 5 minutes);
         vm.expectRevert(LaunchpadBase.Frozen.selector);
         mig.migrateBalances(token, d);
     }
@@ -867,6 +871,7 @@ contract FreezeTest is Test {
         vm.expectRevert(UniV2Migrator.HarvestCooldown.selector);
         migrator.harvest(gradCoin);
         vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 5 minutes);
         cap = migrator.harvestCap(gradCoin);
         vm.prank(dave);
         (tokensIn,,) = migrator.harvest(gradCoin);
@@ -876,6 +881,7 @@ contract FreezeTest is Test {
         uint256 blocks;
         while (_buckets() != 0) {
             vm.roll(block.number + 1);
+            vm.warp(block.timestamp + 5 minutes);
             vm.prank(dave);
             migrator.harvest(gradCoin);
             blocks++;
@@ -892,6 +898,7 @@ contract FreezeTest is Test {
         assertGt(tax, 0);
         assertEq(_buckets(), tax);
         vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 5 minutes);
         assertLt(tax, migrator.harvestCap(gradCoin), "one buy's tax: less than a slice");
         vm.prank(dave);
         (tokensIn,,) = migrator.harvest(gradCoin);
@@ -903,6 +910,7 @@ contract FreezeTest is Test {
         uint256 left = _buckets();
         assertGt(left, 0);
         vm.roll(pad.freezeBlock());
+        vm.warp(block.timestamp + 5 minutes); // past the pacing: it is the freeze that refuses
         assertTrue(pad.frozen());
 
         // the pad hands nothing out, not even to its migrator...
@@ -974,6 +982,7 @@ contract FreezeTest is Test {
         vm.expectRevert(UniV2Migrator.HarvestCooldown.selector);
         migrator.harvest(gradCoin);
         vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 5 minutes);
         vm.prank(dave);
         (tokensIn,,) = migrator.harvest(gradCoin);
         assertGt(tokensIn, 0, "the next block");

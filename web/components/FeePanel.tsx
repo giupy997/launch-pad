@@ -162,7 +162,7 @@ export function FeePanel({
               writeContract({ address: pad, abi: launchpadAbi, functionName: "buybackAndBurn", chainId: chain.id, args: [token] });
             }}
             className="btn-primary px-4 py-1.5 text-xs"
-            title={cannotBurn ?? "Buys the coin back with a slice of the pot and burns it: a hundredth of the curve, or half a percent of the pool, once a block. Anyone may."}
+            title={cannotBurn ?? "Buys the coin back with a slice of the pot and burns it: half a percent of the curve once a block, or half a percent of the pool every five minutes. Anyone may."}
           >
             {isPending ? "Sign…" : isConfirming ? "Burning…" : "Burn now"}
           </button>

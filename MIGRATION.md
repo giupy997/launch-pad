@@ -187,11 +187,14 @@ buckets: `taxTreasury` (the launchpad's 0.5%, the treasury's) and `taxPot`
 (the coin's tax: its creator's, holders', burn and liquidity shares). Only a
 harvest sells them and pays them out; `migrateOut` burns what is still there,
 so whatever waits in a bucket at the freeze is destroyed, not paid. A harvest
-is a slice a block per coin — at most what sells for half a percent of the
-pool's quote side, which a trade wrapped around it cannot profit from — on
-any day, a freeze announced included (the Base v12 migrator `0x6f33…40B3`
-sells the buckets whole once a freeze is announced: on that pad, empty them
-before the announcement and keep them small through the notice, step 3).
+is a slice every five minutes per coin — at most what sells for half a
+percent of the pool's quote side, which a trade wrapped around one slice
+cannot profit from, and paced so that a price moved against a run of slices
+has to be held in the open for minutes a slice — on any day, a freeze
+announced included (the Base v12 migrator v4 `0xaB95…fEf1` paces a slice a
+block instead, v3 `0x6f33…40B3` sold the buckets whole under a freeze: a coin
+keeps the migrator it graduated through, so the switch to this code's v5
+comes before the first graduation).
 Anyone may call it (the site has the button; the caller is tipped a
 twentieth of the treasury's part). The keeper does it for every graduated
 coin until every bucket is empty:
@@ -348,12 +351,14 @@ Two timelock rounds of 24 hours, with the coin list closing between them:
 
 3. **Through the notice window, keep the buckets empty.** Leave the keeper
    running on the VPS (`bash script/ops/harvest.sh --watch`, from a tmux
-   session): a slice a block per coin, as on any day, so no bucket grows to
-   more than what the last block's trades left. On the Base v12 migrator
-   (`0x6f33…40B3`, the one its coins graduated through) a harvest under an
-   announced freeze sells both buckets whole in one call, so there the
-   keeper matters most: buckets that together (`taxTreasury` + `taxPot`)
-   are no larger than one capped slice (`harvestCap`) are no more exposed
+   session): a slice every five minutes per coin, as on any day (288 a day,
+   each half a percent of the pool: any bucket empties within the notice),
+   so no bucket grows to more than what the last minutes' trades left. On
+   a coin that graduated through the Base v12 migrator v3 (`0x6f33…40B3`,
+   none did) a harvest under an announced freeze sells both buckets whole
+   in one call, so there the keeper matters most: buckets that together
+   (`taxTreasury` + `taxPot`) are no larger than one capped slice
+   (`harvestCap`) are no more exposed
    than a normal harvest; in the check, the coins the next harvest takes
    are that sum, the figure to keep under `one capped slice`. Just before
    the freeze block, a last pass and the check: `taxTreasury` and `taxPot`

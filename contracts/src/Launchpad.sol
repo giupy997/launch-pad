@@ -334,7 +334,10 @@ contract Launchpad is LaunchpadBase {
         uint256 used = pot;
         if (!c.graduated) {
             // a buy on the curve, with no fee: a slice of the pot, up to what is left on the curve
-            if (used > c.vEth / 100) used = c.vEth / 100;
+            // half a percent of the virtual reserve: a move a trade wrapped around it cannot
+            // profit from, the pool's slice being the same (a hundredth, twice the move,
+            // paid a bot more than its fees cost on a coin taxed under half a percent)
+            if (used > c.vEth / 200) used = c.vEth / 200;
             uint256 k = c.vEth * c.vToken;
             tokensBurned = c.vToken - k / (c.vEth + used);
             uint256 remaining = CURVE_SUPPLY - c.sold;
@@ -472,6 +475,17 @@ contract Launchpad is LaunchpadBase {
         _registerPool(token, pool);
     }
 
+    /// @notice Owner only (a timelock: public a delay ahead): undo
+    ///         registerTaxedPool for an address that is no pool of the coin
+    ///         after all (a vault, a wrapper that answers token0/token1), so
+    ///         its transfers are not taxed and what it holds earns cashback
+    ///         again. A pool unregistered by mistake is registered again the
+    ///         same way.
+    function unregisterTaxedPool(address token, address pool) external onlyOwner {
+        if (!taxedPool[token][pool]) revert BadPool();
+        _unregisterPool(token, pool);
+    }
+
     // ---------------------------------------------------------------- cashback
 
     /// @notice Transfer hook called by LaunchTokens right after every balance
@@ -551,6 +565,7 @@ contract Launchpad is LaunchpadBase {
     }
 
     function setTreasury(address newTreasury) external onlyOwner {
+        if (newTreasury == address(0)) revert ZeroAddress(); // every fee-paying trade would revert
         treasury = newTreasury;
         emit TreasuryUpdated(newTreasury);
     }

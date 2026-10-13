@@ -171,6 +171,7 @@ contract CashbackSolvencyTest is Test {
     /// off its event.
     function _harvest() internal returns (bool done, Fee memory fee) {
         vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 5 minutes);
         vm.recordLogs();
         vm.prank(keeper);
         try migrator.harvest(token) {
@@ -203,6 +204,7 @@ contract CashbackSolvencyTest is Test {
     function _buyback() internal returns (bool done) {
         if (pad.burnPot(token) == 0) return false;
         vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 5 minutes);
         vm.prank(keeper);
         try pad.buybackAndBurn(token) {
             done = true;

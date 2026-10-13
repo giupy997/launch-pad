@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAccount, useBlockNumber, useReadContract, useReadContracts, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { launchpadAbi } from "@/lib/abi";
@@ -12,13 +12,12 @@ import { refreshAfterTrade } from "@/components/TradeBox";
 /** The Harvest button of a graduated v12 coin. Anyone may call the migrator's
  *  harvest(token): it sells a slice of the coins waiting in the pad's two
  *  buckets on the pool (harvestCap: half a percent of the pool's quote side,
- *  once a block; once a freeze is announced, both buckets whole in one call,
- *  uncapped), burns the burn share, deepens the locked liquidity, and the pad
- *  pays the treasury, the creator and the holders; the caller keeps a
- *  twentieth of the treasury's part. Disabled while nothing waits, while the
- *  last harvest's block has not passed (not once a freeze is announced), while
- *  the pad holds no liquidity in the pool (the migrator has nothing to sell
- *  into), and from the freeze block on (the pad stands still). */
+ *  every five minutes at most, on any day), burns the burn share, deepens the
+ *  locked liquidity, and the pad pays the treasury, the creator and the
+ *  holders; the caller keeps a twentieth of the treasury's part. Disabled
+ *  while nothing waits, while the last slice's five minutes have not passed,
+ *  while the pad holds no liquidity in the pool (the migrator has nothing to
+ *  sell into), and from the freeze block on (the pad stands still). */
 export function Harvest({
   token,
   symbol,
@@ -44,12 +43,12 @@ export function Harvest({
   const queryClient = useQueryClient();
   const migrator = pool?.migrator;
 
-  // the block the next harvest may run from, the slice it may sell, and whether the
+  // the time the next harvest may run from, the slice it may sell, and whether the
   // pad's liquidity is in the pool at all (parked at another price: nothing to sell into)
   const { data: reads } = useReadContracts({
     contracts: migrator
       ? [
-          { address: migrator, abi: migratorAbi, functionName: "nextHarvestBlock", args: [token], chainId: chain.id },
+          { address: migrator, abi: migratorAbi, functionName: "nextHarvestAt", args: [token], chainId: chain.id },
           { address: migrator, abi: migratorAbi, functionName: "harvestCap", args: [token], chainId: chain.id },
           { address: migrator, abi: migratorAbi, functionName: "liquidity", args: [token], chainId: chain.id },
         ]
@@ -60,13 +59,17 @@ export function Harvest({
     const r = (reads as readonly { status: string; result?: unknown }[] | undefined)?.[i];
     return r?.status === "success" ? (r.result as bigint) : undefined;
   };
-  const nextBlock = big(0);
+  const nextAt = big(0);
   const cap = big(1);
   const locked = big(2);
   const { data: blockNumber } = useBlockNumber({ chainId: chain.id, query: { enabled: !!migrator, refetchInterval: 5_000 } });
-  // a freeze announced lifts the cap and the once-a-block rule (harvestCap still says the slice:
-  // only harvest() looks at the freeze), so the buckets can be emptied before the snapshot; from
-  // the freeze block the pad refuses the harvest
+  // the clock the pacing is read against, a tick every few seconds
+  const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
+  useEffect(() => {
+    const t = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 5_000);
+    return () => clearInterval(t);
+  }, []);
+  // from the freeze block the pad refuses the harvest (a freeze announced changes nothing before it)
   const pad = useLaunchpadAddress();
   const { data: freezeRaw } = useReadContract({
     address: pad,
@@ -76,8 +79,7 @@ export function Harvest({
     query: { enabled: !!pad && !!migrator, refetchInterval: 15_000 },
   });
   const freezeBlock = freezeRaw as bigint | undefined;
-  const rush = freezeBlock !== undefined && freezeBlock !== 0n;
-  const frozen = rush && blockNumber !== undefined && blockNumber >= freezeBlock;
+  const frozen = freezeBlock !== undefined && freezeBlock !== 0n && blockNumber !== undefined && blockNumber >= freezeBlock;
 
   const { writeContract, data: hash, isPending, error, reset } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash, chainId: chain.id });
@@ -91,12 +93,13 @@ export function Harvest({
     void queryClient.invalidateQueries({ queryKey: ["blockNumber"] });
   }, [isSuccess, hash, queryClient]);
 
-  const cooling = !rush && nextBlock !== undefined && blockNumber !== undefined && nextBlock > blockNumber;
+  const cooling = nextAt !== undefined && nextAt > BigInt(now);
+  const minutesLeft = nextAt === undefined ? 0 : Math.max(1, Math.ceil((Number(nextAt) - now) / 60));
   // why the button is off, in the order the migrator would refuse: no pool, the pad frozen, no
-  // liquidity of ours in it, nothing in the buckets, a harvest already this block
+  // liquidity of ours in it, nothing in the buckets, a slice within the last five minutes
   const state = noPool
     ? "noPool"
-    : !pool || locked === undefined || nextBlock === undefined || pending === undefined || freezeBlock === undefined
+    : !pool || locked === undefined || nextAt === undefined || pending === undefined || freezeBlock === undefined
       ? "reading"
       : frozen
         ? "frozen"
@@ -113,13 +116,13 @@ export function Harvest({
     frozen: "The launchpad stands still from its freeze block: nothing can be harvested",
     unseeded: "The pad holds no liquidity in the pool: nothing to sell into",
     empty: "Nothing waiting: the buckets fill as the pool trades",
-    cooling: `A slice went this block; the next may go from block ${nextBlock}`,
+    cooling: `A slice went within the last five minutes; the next may go in ${minutesLeft} min`,
     ready: null,
   }[state];
   // what the next harvest takes from the buckets, and what that is worth at the pool's
   // price (an estimate: the burn share is burned, not sold, and the sale moves the price)
   const waiting = pending ?? 0n; // "ready" has read it
-  const capped = !rush && cap !== undefined && cap < waiting;
+  const capped = cap !== undefined && cap < waiting;
   const slice = capped ? cap : waiting;
   const worth = pool && pool.tokenReserve > 0n ? (slice * pool.quoteReserve) / pool.tokenReserve : undefined;
 
@@ -131,10 +134,10 @@ export function Harvest({
             <>
               Next harvest takes {fmtTokens(slice)} ${symbol}
               {worth !== undefined && <> ≈ {fmtUnits(worth, quoteDecimals)} {quoteSymbol}</>}
-              {capped ? " · a slice a block" : rush && " · all of it: a freeze is announced"}
+              {capped && " · a slice every five minutes"}
             </>
           ) : state === "cooling" ? (
-            "A slice went this block; what is left goes the next."
+            `A slice went within the last five minutes; what is left goes in ${minutesLeft} min.`
           ) : state === "frozen" ? (
             "The launchpad stands still: harvests ended at the freeze block."
           ) : (
@@ -152,17 +155,15 @@ export function Harvest({
           className="btn-primary px-4 py-1.5 text-xs shrink-0"
           title={
             cannot ??
-            "Sells a slice of the fees waiting in coins (half a percent of the pool at most, once a block; all of it at once, uncapped, after a freeze is announced), burns the burn share, deepens the liquidity, pays the treasury, the creator and the holders. Anyone may; the caller keeps a twentieth of the treasury's part."
+            "Sells a slice of the fees waiting in coins (half a percent of the pool at most, every five minutes, on any day), burns the burn share, deepens the liquidity, pays the treasury, the creator and the holders. Anyone may; the caller keeps a twentieth of the treasury's part."
           }
         >
-          {isPending ? "Sign…" : isConfirming ? "Harvesting…" : state === "cooling" ? "Next block" : "Harvest"}
+          {isPending ? "Sign…" : isConfirming ? "Harvesting…" : state === "cooling" ? `In ${minutesLeft} min` : "Harvest"}
         </button>
       </div>
       {isSuccess && (
         <p className="text-xs text-zinc-400">
-          {rush
-            ? "Harvested what was waiting: the treasury is paid, the creator's and the holders' shares are claimable."
-            : "Harvested a slice: the treasury is paid, the creator's and the holders' shares are claimable. What is left goes the next block."}
+          Harvested a slice: the treasury is paid, the creator&apos;s and the holders&apos; shares are claimable. What is left goes in five minutes.
         </p>
       )}
       {error && (

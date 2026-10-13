@@ -565,8 +565,9 @@ contract HarvestTest is Test {
 
     // ---------------------------------------------------------- cap and cooldown
 
-    /// One harvest a block per coin.
-    function test_aSecondHarvestInTheSameBlockWaits() public {
+    /// One harvest per coin every five minutes: the next block is not enough, the pacing is
+    /// what makes a run of slices cost whoever moved the price minutes in the open a slice.
+    function test_aSecondHarvestWaitsFiveMinutes() public {
         address token = _create(address(cb), custom);
         _graduate(token);
         _fillBuckets(token);
@@ -574,14 +575,24 @@ contract HarvestTest is Test {
         vm.prank(dave);
         (uint256 first,,) = migrator.harvest(token);
         assertLt(first, total, "a slice: more waits");
-        assertEq(migrator.nextHarvestBlock(token), block.number + 1);
+        assertEq(migrator.nextHarvestAt(token), block.timestamp + migrator.HARVEST_COOLDOWN());
+        assertEq(migrator.HARVEST_COOLDOWN(), 5 minutes);
         vm.prank(dave);
         vm.expectRevert(UniV2Migrator.HarvestCooldown.selector);
         migrator.harvest(token);
-        vm.roll(block.number + 1);
+        vm.roll(block.number + 1); // the next block, a second later: still cooling
+        vm.warp(block.timestamp + 1);
+        vm.prank(dave);
+        vm.expectRevert(UniV2Migrator.HarvestCooldown.selector);
+        migrator.harvest(token);
+        vm.warp(block.timestamp + 5 minutes - 2);
+        vm.prank(dave);
+        vm.expectRevert(UniV2Migrator.HarvestCooldown.selector);
+        migrator.harvest(token);
+        vm.warp(block.timestamp + 1); // five minutes to the second
         Exp memory e = _expected(token);
         Snap memory s = _snap(token, carol);
-        _harvest(token, e, carol); // the next block, the next slice, whoever calls
+        _harvest(token, e, carol); // the next slice, whoever calls
         _check(token, e, s, carol);
     }
 
@@ -661,6 +672,7 @@ contract HarvestTest is Test {
         uint256 blocks;
         while (pad.taxTreasury(token) + pad.taxPot(token) != 0) {
             vm.roll(block.number + 1);
+            vm.warp(block.timestamp + 5 minutes);
             e = _expected(token);
             s = _snap(token, dave);
             _harvest(token, e, dave);
@@ -670,6 +682,7 @@ contract HarvestTest is Test {
         assertGt(blocks, 1, "it took several blocks");
         assertLt(block.number, pad.freezeBlock(), "and the notice was long enough");
         vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 5 minutes);
         vm.prank(dave);
         vm.expectRevert(UniV2Migrator.NothingToSell.selector);
         migrator.harvest(token);
@@ -688,6 +701,7 @@ contract HarvestTest is Test {
         assertGt(pad.taxTreasury(token) + pad.taxPot(token), 0);
         address pair = migrator.pairOf(token);
         vm.roll(pad.freezeBlock());
+        vm.warp(block.timestamp + 5 minutes); // past the pacing: it is the freeze that refuses
         assertTrue(pad.frozen());
         vm.prank(carol);
         vm.expectRevert(LaunchpadBase.Frozen.selector);
@@ -708,6 +722,7 @@ contract HarvestTest is Test {
         _poolBuy(eve, token, 1e8);
         uint256 coins = IERC20(token).balanceOf(eve);
         vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 5 minutes);
         _fillBuckets(token);
         assertGt(
             pad.taxTreasury(token) + pad.taxPot(token), 2 * migrator.harvestCap(token), "buckets worth many slices"
@@ -876,6 +891,7 @@ contract HarvestTest is Test {
         _poolBuy(eve, token, 1e8);
         uint256 coins = IERC20(token).balanceOf(eve);
         vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 5 minutes);
         _fillBuckets(token);
         assertEq(cb.balanceOf(eve), 0);
         _poolSell(eve, token, coins);

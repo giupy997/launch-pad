@@ -293,6 +293,8 @@ abstract contract LaunchpadBase is Ownable, ReentrancyGuard {
     event PoolFee(address indexed token, uint256 toTreasury, uint256 toCreator, uint256 toHolders, uint256 toBurnPot);
     /// A pool of the coin: taxed from now on, no cashback.
     event PoolRegistered(address indexed token, address indexed pool);
+    /// An address registered as a pool by mistake: a counterparty like any other again.
+    event PoolUnregistered(address indexed token, address indexed pool);
 
     // ---------------------------------------------------------------- errors
 
@@ -337,6 +339,7 @@ abstract contract LaunchpadBase is Ownable, ReentrancyGuard {
     error BadHarvest();
     /// an address that is not a pool of this coin.
     error BadPool();
+    error ZeroAddress();
     /// neither the owner nor the migration operator.
     error NotOperator();
     error NotInSnapshot();
@@ -442,6 +445,18 @@ abstract contract LaunchpadBase is Ownable, ReentrancyGuard {
         uint256 held = IERC20(token).balanceOf(pool);
         if (held != 0) eligibleSupply[token] -= held;
         emit PoolRegistered(token, pool);
+    }
+
+    /// The reverse: what the address holds counts again from now on (its debt anchored
+    /// here, so nothing accrued while it was a pool is paid to it).
+    function _unregisterPool(address token, address pool) internal {
+        taxedPool[token][pool] = false;
+        uint256 held = IERC20(token).balanceOf(pool);
+        if (held != 0) {
+            eligibleSupply[token] += held;
+            cashbackDebt[token][pool] = Math.mulDiv(held, accCashbackPerShare[token], ACC_PRECISION, Math.Rounding.Ceil);
+        }
+        emit PoolUnregistered(token, pool);
     }
 
     /// Whether `account` earns cashback on `token`: everyone but the zero

@@ -61,12 +61,12 @@ interface ILaunchpadFees {
 ///         migration to another chain: frozen, it asks for the pool back
 ///         (unlock), quote to the bridge, tokens to be burned.
 ///
-///         The pair may already exist by the time this is called, and once a
-///         coin has graduated anyone may put liquidity in it at any price
-///         before the launchpad's (public) migrate lands — the window the
-///         launchpad's try/catch around the automatic migration leaves open
-///         when that call is starved of gas. So nothing here trusts the pair's
-///         state, and nothing here trades against it. The first version did
+///         The pair may already exist by the time this is called (anyone can
+///         create it), and a coin graduated while the launchpad had no
+///         migrator set waits, transferable, for the public migrate: anyone
+///         may put liquidity in its pair at any price before that lands. So
+///         nothing here trusts the pair's state, and nothing here trades
+///         against it. The first version did
 ///         ("trade the pool back to our price, then join it"), and that is how
 ///         both coins' raises were taken on Base at block 52,105,142: the
 ///         liquidity minted at the other price belonged to the attacker, who
@@ -98,8 +98,16 @@ contract UniV2Migrator is IDexMigrator, IDexMigratorUnlock, IDexMigratorBuyback,
     mapping(address token => uint256) public liquidity;
     /// Pools of a native-quoted curve: WETH in the pair, the chain's coin in and out of the launchpad.
     mapping(address token => bool) public nativeQuote;
-    /// The first block a coin's next harvest may happen in: one a block, a slice at a time.
-    mapping(address token => uint256) public nextHarvestBlock;
+    /// The earliest time a coin's next harvest may run: a slice every HARVEST_COOLDOWN at most.
+    mapping(address token => uint256) public nextHarvestAt;
+    /// The earliest time a coin's next buyback may run (the launchpad's buybackAndBurn): the same pacing.
+    mapping(address token => uint256) public nextBuybackAt;
+    /// Between two slices of one coin, harvest and buyback alike. A slice is sized so that a
+    /// trade wrapped around it loses (harvestCap, buybackCap: half a percent of the pool's
+    /// quote side, less than the coin's tax and the pool's fee cost both legs); a run of
+    /// slices is paced so that whoever moves the price first has to hold it there, in the
+    /// open and against anyone who trades the gap, for minutes a slice rather than seconds.
+    uint256 public constant HARVEST_COOLDOWN = 5 minutes;
     /// The caller's tip, out of the launchpad's part of what a harvest realises: a twentieth.
     uint256 public constant TIP_DIVISOR = 20;
 
@@ -156,6 +164,7 @@ contract UniV2Migrator is IDexMigrator, IDexMigratorUnlock, IDexMigratorBuyback,
     error WrongPayment();
     error NothingToSell();
     error HarvestCooldown();
+    error BuybackCooldown();
     error TipFailed();
 
     constructor(address launchpad_, address router_) {
@@ -243,6 +252,8 @@ contract UniV2Migrator is IDexMigrator, IDexMigratorUnlock, IDexMigratorBuyback,
             if (quote != weth || msg.value != quoteIn) revert WrongPayment();
             IWETH(weth).deposit{value: msg.value}();
         }
+        if (block.timestamp < nextBuybackAt[token]) revert BuybackCooldown();
+        nextBuybackAt[token] = block.timestamp + HARVEST_COOLDOWN;
         address pair = factory.getPair(token, quote);
         (uint256 rToken, uint256 rQuote) = _reserves(token, pair);
         // Uniswap's own arithmetic for a swap in, the 0.3% fee included
@@ -305,12 +316,14 @@ contract UniV2Migrator is IDexMigrator, IDexMigratorUnlock, IDexMigratorBuyback,
     }
 
     /// @inheritdoc IDexMigratorHarvest
-    /// @dev Anyone, once a block per coin, a slice at most (harvestCap):
-    ///      a sale that moves the pool half a percent, which a trade
-    ///      wrapped around it cannot profit from, on any day — a freeze
-    ///      announced changes nothing here, the notice before it (a day at
-    ///      least) being time enough for a keeper to empty any bucket a
-    ///      slice a block (script/ops/harvest.sh). The slice is taken pro
+    /// @dev Anyone, a slice at most (harvestCap) every HARVEST_COOLDOWN per
+    ///      coin: a sale that moves the pool half a percent, which a trade
+    ///      wrapped around it cannot profit from, and slices paced so that
+    ///      a price moved against a run of them must be held in the open
+    ///      for minutes a slice, on any day — a freeze announced changes
+    ///      nothing here, the notice before it (a day at least) being time
+    ///      enough for a keeper to empty any bucket (script/ops/harvest.sh:
+    ///      288 slices a day, each half a percent of the pool). The slice is taken pro
     ///      rata from the launchpad's bucket and the coin's; the coin's part
     ///      is split by its FeeConfig in coins: the burn share is burned by
     ///      the launchpad, the liquidity share half kept and half sold so
@@ -327,8 +340,8 @@ contract UniV2Migrator is IDexMigrator, IDexMigratorUnlock, IDexMigratorBuyback,
         h.quote = pairAsset[token];
         if (h.quote == address(0) || liquidity[token] == 0) revert NothingToSell();
         ILaunchpadFees pad = ILaunchpadFees(launchpad);
-        if (block.number < nextHarvestBlock[token]) revert HarvestCooldown();
-        nextHarvestBlock[token] = block.number + 1;
+        if (block.timestamp < nextHarvestAt[token]) revert HarvestCooldown();
+        nextHarvestAt[token] = block.timestamp + HARVEST_COOLDOWN;
         uint256 bucketT = pad.taxTreasury(token);
         uint256 total = bucketT + pad.taxPot(token);
         if (total == 0) revert NothingToSell();
@@ -457,16 +470,10 @@ contract UniV2Migrator is IDexMigrator, IDexMigratorUnlock, IDexMigratorBuyback,
         // what the pool's ratio left over (rounding, or a pool deeper than what we hold) goes to the treasury
         address treasury = ILaunchpadFees(launchpad).treasury();
         if (p.tokenAmount > useToken) IERC20(token).safeTransfer(treasury, p.tokenAmount - useToken);
+        // as the pool holds it (WETH for a native pool): a transfer, never a call that could
+        // fail or be ignored, so nothing is ever stranded here
         uint256 left = p.quoteAmount - useQuote;
-        if (left > 0) {
-            if (quote == weth) {
-                IWETH(weth).withdraw(left);
-                (bool ok,) = treasury.call{value: left}("");
-                ok; // best effort: a reverting treasury must never block a graduation
-            } else {
-                IERC20(quote).safeTransfer(treasury, left);
-            }
-        }
+        if (left > 0) IERC20(quote).safeTransfer(treasury, left);
         return true;
     }
 

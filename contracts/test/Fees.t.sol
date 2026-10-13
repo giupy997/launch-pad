@@ -344,6 +344,7 @@ contract FeesTest is Test {
             "holders own sold less burned"
         );
         vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 5 minutes);
         vm.expectRevert(LaunchpadBase.ZeroAmount.selector);
         pad.buybackAndBurn(token); // nothing left in the pot
     }
@@ -359,16 +360,17 @@ contract FeesTest is Test {
         assertEq(burnPot, 5.25e8, "half the 10% tax (the launchpad's 0.5% is not in it)");
         assertEq(liqPot, 5.25e8, "the other half");
 
-        // a slice a block — a hundredth of the virtual reserve, 1.24 cbLTC — against the 2.025 cbLTC the
-        // curve still needs: two presses finish it (v11's 1% platform fee left the curve 3 presses short)
+        // a slice a block — half a percent of the virtual reserve, 0.62 cbLTC — against the 2.025 cbLTC the
+        // curve still needs: four presses finish it
         uint256 burned;
         uint256 presses;
         while (!_curve(token).graduated) {
             vm.roll(block.number + 1);
+            vm.warp(block.timestamp + 5 minutes);
             burned += pad.buybackAndBurn(token);
             presses++;
         }
-        assertEq(presses, 2, "a hundredth of the reserve at a time");
+        assertEq(presses, 4, "half a percent of the reserve at a time");
         LaunchpadBase.Curve memory c = _curve(token);
         assertEq(c.sold, pad.CURVE_SUPPLY());
         assertGt(burned, 0);
@@ -396,6 +398,7 @@ contract FeesTest is Test {
         assertEq(cap, rQuote / 200);
         assertLt(cap, leftover);
         vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 5 minutes);
         uint256 burned2 = pad.buybackAndBurn(token);
         assertGt(burned2, 0);
         assertEq(pad.burnPot(token), leftover - cap, "the rest waits for the next block");
@@ -411,15 +414,16 @@ contract FeesTest is Test {
         _buy(bob, token, 50e8);
         LaunchpadBase.Curve memory c = _curve(token);
         uint256 pot = pad.burnPot(token);
-        assertGt(pot, c.vEth / 100, "more in the pot than one slice");
+        assertGt(pot, c.vEth / 200, "more in the pot than one slice");
         pad.buybackAndBurn(token);
-        assertEq(_curve(token).realEth, c.realEth + c.vEth / 100, "one hundredth of the virtual reserve, no more");
-        assertEq(pad.burnPot(token), pot - c.vEth / 100);
+        assertEq(_curve(token).realEth, c.realEth + c.vEth / 200, "half a percent of the virtual reserve, no more");
+        assertEq(pad.burnPot(token), pot - c.vEth / 200);
         vm.expectRevert(LaunchpadBase.BurnCooldown.selector);
         pad.buybackAndBurn(token); // not twice in a block
         vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 5 minutes);
         pad.buybackAndBurn(token); // the next block, the next slice
-        assertLt(pad.burnPot(token), pot - c.vEth / 100);
+        assertLt(pad.burnPot(token), pot - c.vEth / 200);
     }
 
     function test_buybackNeedsAPoolOnceGraduated() public {
@@ -728,6 +732,7 @@ contract FeesTest is Test {
             uint256 expectOut = _amountOut(spend, rQuote, rToken);
             uint256 supply = IERC20(token).totalSupply();
             vm.roll(block.number + 1);
+            vm.warp(block.timestamp + 5 minutes);
             uint256 burned = pad.buybackAndBurn(token);
             assertEq(burned, expectOut, "the whole of what the pool paid out, no tax off it");
             assertEq(IERC20(token).totalSupply(), supply - burned);
@@ -738,6 +743,7 @@ contract FeesTest is Test {
         // a harvest: the pad hands the migrator a slice, the migrator sells it to the pool — neither leg taxed,
         // so the buckets drop by exactly the slice (the sale itself is Harvest.t.sol's business)
         vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 5 minutes);
         (uint256 tokensIn,,) = migrator.harvest(token);
         assertGt(tokensIn, 0);
         assertEq(pad.taxTreasury(token) + pad.taxPot(token), buckets - tokensIn, "the slice left, nothing came back");
@@ -1093,5 +1099,75 @@ contract FeesTest is Test {
         vm.prank(address(migrator));
         vm.expectRevert(LaunchpadBase.Frozen.selector);
         pad.takeTax(token, 0, 1, 0);
+    }
+
+    /// The treasury is never the zero address: every fee-paying trade would revert on the payout.
+    function test_theTreasuryIsNeverTheZeroAddress() public {
+        vm.expectRevert(LaunchpadBase.ZeroAddress.selector);
+        pad.setTreasury(address(0));
+        pad.setTreasury(bob);
+        assertEq(pad.treasury(), bob);
+    }
+
+    /// An address registered as a pool by mistake is a counterparty again once unregistered:
+    /// untaxed, and what it holds earns cashback from then on, not for the time it was a pool.
+    function test_unregisterTaxedPoolUndoesAMistake() public {
+        (address token, address pair) = _graduate(asym);
+        // a second pair of the coin, seeded by bob: registered, then found to be a mistake
+        address pair2 = factory.createPair(token, address(weth));
+        uint256 seedT = 10_000_000e18;
+        vm.deal(bob, 1 ether);
+        vm.startPrank(bob);
+        weth.deposit{value: 1 ether}();
+        IERC20(token).transfer(pair2, seedT);
+        weth.transfer(pair2, 1 ether);
+        MockV2Pair(pair2).mint(bob);
+        vm.stopPrank();
+        uint256 eligible = pad.eligibleSupply(token);
+        pad.registerTaxedPool(token, pair2);
+        assertEq(pad.eligibleSupply(token), eligible - seedT);
+        assertEq(pad.transferRate(token, carol, pair2), 450, "taxed like a pool");
+        _poolBuy(carol, token, pair, 1e8); // the pool trades meanwhile: cashback accrues to the holders
+
+        vm.expectRevert(LaunchpadBase.BadPool.selector);
+        pad.unregisterTaxedPool(token, bob); // never registered
+        vm.prank(bob);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, bob));
+        pad.unregisterTaxedPool(token, pair2);
+        uint256 before = pad.eligibleSupply(token); // the pool traded meanwhile: the supply moved with it
+        vm.expectEmit(true, true, false, false, address(pad));
+        emit LaunchpadBase.PoolUnregistered(token, pair2);
+        pad.unregisterTaxedPool(token, pair2);
+        assertFalse(pad.taxedPool(token, pair2));
+        assertEq(pad.eligibleSupply(token), before + IERC20(token).balanceOf(pair2), "what it holds counts again");
+        assertEq(pad.transferRate(token, carol, pair2), 0, "a transfer between counterparties again");
+        assertEq(pad.cashbackOf(token, pair2), 0, "nothing for the time it was a pool");
+        assertTrue(pad.taxedPool(token, pair), "the coin's own pool stays");
+        assertEq(
+            pad.eligibleSupply(token),
+            IERC20(token).totalSupply() - IERC20(token).balanceOf(address(pad)) - IERC20(token).balanceOf(pair)
+                - IERC20(token).balanceOf(address(migrator)),
+            "the invariant, one pool out"
+        );
+        pad.registerTaxedPool(token, pair2); // and back, if it was a pool after all
+        assertEq(pad.eligibleSupply(token), before);
+    }
+
+    /// The pool-side buyback is paced like the harvest: a slice every five minutes per coin.
+    function test_aPoolBuybackWaitsFiveMinutes() public {
+        (address token, address pair) = _graduate(custom);
+        _poolBuy(carol, token, pair, 20e8); // taxed: the pot fills
+        assertGt(pad.taxPot(token), 0);
+        vm.prank(carol);
+        migrator.harvest(token); // the burn share of the slice lands in the burn pot
+        uint256 pot = pad.burnPot(token);
+        assertGt(pot, 0);
+        pad.buybackAndBurn(token);
+        assertLt(pad.burnPot(token), pot);
+        vm.roll(block.number + 1); // the next block: the pad's own once-a-block passes, the migrator's pacing holds
+        vm.expectRevert(UniV2Migrator.BuybackCooldown.selector);
+        pad.buybackAndBurn(token);
+        vm.warp(block.timestamp + 5 minutes);
+        pad.buybackAndBurn(token);
     }
 }

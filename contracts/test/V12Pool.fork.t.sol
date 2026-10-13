@@ -588,6 +588,7 @@ abstract contract V12PoolForkBase is Test {
         vm.expectRevert(UniV2Migrator.HarvestCooldown.selector);
         migrator.harvest(token);
         vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 5 minutes);
         vm.prank(dave);
         vm.expectRevert(UniV2Migrator.NothingToSell.selector);
         migrator.harvest(token);

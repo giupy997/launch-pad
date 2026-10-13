@@ -1,8 +1,8 @@
 #!/bin/bash
-# UniV2Migrator v4 on Base: this checkout's migrator (a harvest a slice a
-# block on any day, a freeze announced included: SECURITY.md, H-02) deployed
-# for the v12 pad, verified on Basescan, and read back. The pad takes it
-# through the timelock, from the Safe (timelock.sh safe-calldata
+# A UniV2Migrator on Base from this checkout (a harvest a slice every five
+# minutes on any day, a freeze announced included: SECURITY.md, H-02),
+# deployed for the v12 pad, verified on Basescan, and read back. The pad
+# takes it through the timelock, from the Safe (timelock.sh safe-calldata
 # set-migrator): a coin keeps the migrator it graduated through, so the
 # switch comes before any coin graduates on the pad.
 #
@@ -28,7 +28,8 @@ RPC=${RPC%%,*}
 RPC=${RPC:-base}
 if [ -n "${PRIVATE_KEY:-}" ]; then SIGNER=(--private-key "$PRIVATE_KEY"); else SIGNER=(--account "${ACCOUNT:-notus}"); fi
 UNIV2_ROUTER=0x4752ba5DBc23f44D87826276BF6Fd6b1C372aD24 # Uniswap v2 Router02 on Base
-INPUT=$(dirname "$ADDRESSES")/UniV2Migrator-v4.standard-input.json
+# the Standard JSON input of a migrator, by its address (v4's keeps its old name)
+input_of() { local f="$(dirname "$ADDRESSES")/UniV2Migrator-$(lower "$1").standard-input.json"; [ -f "$f" ] || [ "$(lower "$1")" != "$(lower "${MIGRATOR_V4:-}")" ] || f="$(dirname "$ADDRESSES")/UniV2Migrator-v4.standard-input.json"; echo "$f"; }
 COMPILER="v0.8.24+commit.e11b9ed9"
 API="https://api.etherscan.io/v2/api?chainid=8453"
 
@@ -40,11 +41,16 @@ json() { node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{try{co
 
 # found ADDR: the Standard JSON input for Basescan from this build, the checks, the next steps
 found() {
-  local addr=$1
-  forge build --quiet
-  node script/standard-input.mjs src/UniV2Migrator.sol:UniV2Migrator >/dev/null
-  cp out/verify/UniV2Migrator.standard-input.json "$INPUT"
-  echo "   Standard JSON input written to $INPUT (commit it with the address)"
+  local addr=$1 input
+  input=$(input_of "$addr")
+  if [ -f "$input" ]; then
+    echo "   Standard JSON input already there: $input (the record of what $addr was compiled from; not overwritten)"
+  else
+    forge build --quiet
+    node script/standard-input.mjs src/UniV2Migrator.sol:UniV2Migrator >/dev/null
+    cp out/verify/UniV2Migrator.standard-input.json "$input"
+    echo "   Standard JSON input written to $input (commit it with the address)"
+  fi
   check "$addr"
   echo
   echo "next: bash script/ops/migrator.sh verify $addr"
@@ -99,6 +105,7 @@ case "${1:-}" in
     ;;
   verify)
     ADDR=${2:?address}
+    INPUT=$(input_of "$ADDR")
     [ -f "$INPUT" ] || { echo "$INPUT is missing: run deploy first (or node script/standard-input.mjs src/UniV2Migrator.sol:UniV2Migrator from the deploying checkout)"; exit 1; }
     : "${ETHERSCAN_API_KEY:?ETHERSCAN_API_KEY is not set: add it to contracts/.env}"
     ARGS=$(cast abi-encode 'constructor(address,address)' "$PAD" "$UNIV2_ROUTER" | sed 's/^0x//')

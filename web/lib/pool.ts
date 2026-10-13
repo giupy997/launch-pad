@@ -18,7 +18,8 @@ export const migratorAbi = parseAbi([
   "function router() view returns (address)",
   "function harvest(address token) returns (uint256 tokensIn, uint256 quoteOut, uint256 tokensBurned)",
   "function harvestCap(address token) view returns (uint256)",
-  "function nextHarvestBlock(address token) view returns (uint256)",
+  "function nextHarvestAt(address token) view returns (uint256)",
+  "function HARVEST_COOLDOWN() view returns (uint256)",
 ]);
 
 /** What the site reads of a Uniswap v2 pair. */

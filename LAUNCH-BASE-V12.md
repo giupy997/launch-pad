@@ -114,9 +114,9 @@ rehearsal pad (Season 0 of the points runs on it) until decided otherwise.
   Lester cashback (0.2254 cbLTC) and any creator fees are claimed on the v11
   pad's contract page on Blockscout whenever.
 - On v12 the pool fees run: anyone may `harvest` a coin (the site has the
-  button; the caller is tipped), a capped slice a block — both buckets
-  whole in one call, uncapped, once a freeze is announced, which is why
-  `MIGRATION.md` empties the buckets first — the treasury gets 0.5% of
+  button; the caller is tipped), a capped slice at a time (v4: a block
+  apart; this code's v5: five minutes apart, on any day, a freeze announced
+  included) — the treasury gets 0.5% of
   every trade, the creator's and the holders' shares accrue as before, the
   burn share is burned, the liquidity share deepens the locked pool.
 - The v12 migrator keeps the code it was deployed with
