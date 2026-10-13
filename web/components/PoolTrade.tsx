@@ -6,6 +6,7 @@ import { erc20Abi, formatUnits, maxUint256, parseAbi, parseUnits } from "viem";
 import { useAccount, useBalance, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { launchTokenAbi, type PadVersion } from "@/lib/abi";
 import { useAppChain, useExplorer, useNativeSymbol } from "@/lib/hooks";
+import { POOL_ROUTERS } from "@/lib/config";
 import { netOfRate, poolRate, sideFeeLabel, type FeeConfig } from "@/lib/curve";
 import { fmtEth, fmtTokens, fmtUnits } from "@/lib/format";
 import type { PoolInfo } from "@/lib/pool";
@@ -68,6 +69,10 @@ export function PoolTrade({
   const [slippageBps, setSlippageBps] = useSlippageBps();
   const isNative = quote.address === null;
   const router = pool.router;
+  // the router the migrator names, checked against the ones the site knows for this chain:
+  // an unknown one gets no approval and no trade from here
+  const known = POOL_ROUTERS[chain.id];
+  const routerTrusted = !known || known.some((r) => r.toLowerCase() === router.toLowerCase());
 
   // the wallet's side, read on the app chain (not on whatever chain the wallet sits on)
   const { data: balance, refetch: refetchBalance } = useReadContract({
@@ -191,14 +196,15 @@ export function PoolTrade({
   const needsBuyApproval =
     mode === "buy" && !isNative && parsed > 0n && (quoteAllowance === undefined || (quoteAllowance as bigint) < parsed);
   const needsApproval = needsBuyApproval || needsSellApproval;
-  const canTrade = isConnected && parsed > 0n && (needsApproval || out > 0n) && (spendable === undefined || parsed <= (sideBalance ?? 0n));
+  const canTrade =
+    routerTrusted && isConnected && parsed > 0n && (needsApproval || out > 0n) && (spendable === undefined || parsed <= (sideBalance ?? 0n));
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
     reset();
     setLastAction(needsApproval ? "approve" : "trade");
     const deadline = swapDeadline();
-    if (!user) return;
+    if (!user || !routerTrusted) return;
     if (mode === "buy") {
       if (isNative) {
         writeContract({
@@ -302,6 +308,11 @@ export function PoolTrade({
           </p>
         )}
         {parsed > 0n && out === 0n && !needsApproval && <p className="text-sm text-zinc-500">The pool cannot fill this.</p>}
+        {!routerTrusted && (
+          <p className="text-sm text-zinc-500">
+            This pool&apos;s router ({router.slice(0, 6)}…{router.slice(-4)}) is not one the site knows on this chain: no approval is asked here.
+          </p>
+        )}
         <button
           type="submit"
           disabled={!canTrade || isPending || isConfirming}

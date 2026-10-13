@@ -4,7 +4,8 @@
   # credits): the pages under web/, and this file, which carries the
   # redirect rules; the command runs in the base directory
   ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- . ../netlify.toml"
-  command = "npm run build"
+  # the lock as it is, no lifecycle script (web/.npmrc), then the build: what CI tested is what is served
+  command = "npm ci --ignore-scripts && npm run build"
   publish = ".next"
 
 [[plugins]]

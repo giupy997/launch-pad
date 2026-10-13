@@ -6,7 +6,7 @@ import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persist
 import { WagmiProvider, deserialize, serialize, useAccount } from "wagmi";
 import { useState, type ReactNode, useEffect, useRef } from "react";
 import { config } from "@/lib/config";
-import { chainAnswered } from "@/lib/hooks";
+import { chainAnswered, zeroDataAnswer } from "@/lib/hooks";
 
 /** When the wallet changes under the page — another account picked in the
  *  extension, or the wallet gone — every read of the old state is asked
@@ -44,7 +44,9 @@ function keepQuery(query: Query): boolean {
     return (
       !!params?.contracts?.length &&
       params.contracts.every((c) => typeof c.functionName === "string" && !WALLET_BOUND.has(c.functionName)) &&
-      ((query.state.data as readonly { status?: unknown; error?: unknown }[] | undefined) ?? []).every(chainAnswered)
+      ((query.state.data as readonly { status?: unknown; error?: unknown }[] | undefined) ?? []).every(
+        (e) => chainAnswered(e) && !zeroDataAnswer(e) // empty data is a node behind, not the chain's word: ask again
+      )
     );
   return false;
 }

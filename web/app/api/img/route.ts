@@ -22,6 +22,12 @@ const notFound = () => new NextResponse("not found", { status: 404, headers: { "
 export async function GET(req: NextRequest) {
   const u = req.nextUrl.searchParams.get("u") ?? "";
   if (u.length > 2_000 || !/^https:\/\//i.test(u)) return notFound();
+  // not this deployment's own host under any name (lib/safeFetch.ts refuses the site's known names)
+  try {
+    if (new URL(u).hostname.toLowerCase() === req.nextUrl.hostname.toLowerCase()) return notFound();
+  } catch {
+    return notFound();
+  }
   const found = await fetchPublicImage(u, MAX_BYTES, TIMEOUT_MS);
   if (!found) return notFound();
   // the bytes say what the image is, whatever the host declared

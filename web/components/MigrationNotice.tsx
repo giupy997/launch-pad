@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
+import { isAddress } from "viem";
 import { useReadContracts } from "wagmi";
 import { launchpadAbi } from "@/lib/abi";
 import { BLOCK_SECONDS, MIGRATION_TARGET } from "@/lib/config";
@@ -9,7 +10,9 @@ import { useAppChain, useLaunchpadAddress } from "@/lib/hooks";
 import { useNow } from "@/lib/useNow";
 
 /** Where a chain's migrated coins live on the other side, published with the
- *  site after the migration as /migrated/<chainId>.json (absent until then). */
+ *  site after the migration as /migrated/<chainId>.json (absent until then):
+ *  `tokens` keyed by the coin's address on this chain, lowercase (a ticker is
+ *  not unique: a copy under the same symbol must not borrow the link). */
 function useMigratedFrom(chainId: number) {
   return useQuery({
     queryKey: ["migrated-from", chainId],
@@ -63,7 +66,8 @@ export function MigrationNotice({ token, symbol, compact = false }: { token?: `0
   if (freezeBlock === 0) return null;
   const frozen = data[1]?.status === "success" && (data[1].result as boolean);
   const movedOut = token && data[2]?.status === "success" && (data[2].result as boolean);
-  const twin = symbol ? migrated?.tokens?.[symbol] : undefined;
+  const twinRaw = token ? migrated?.tokens?.[token.toLowerCase()] : undefined;
+  const twin = typeof twinRaw === "string" && isAddress(twinRaw) ? twinRaw : undefined;
   const pad_ = compact ? "p-3 text-xs" : "p-4 text-sm";
 
   if (!frozen) {

@@ -255,6 +255,14 @@ export function rwaLogo(asset: QuoteAssetInfo): string | undefined {
   return `https://cdn.robinhood.com/ncw_assets/logos/${asset.address.toLowerCase()}.png`;
 }
 
+// The DEX routers the site approves coins and quote to, per chain: a pool's
+// router is read from the coin's migrator, which the pad's owner sets, so a
+// migrator that named another contract would otherwise have every trader
+// approve it without limit. A chain not listed here trusts the migrator's word.
+export const POOL_ROUTERS: Partial<Record<number, readonly `0x${string}`[]>> = {
+  [base.id]: ["0x4752ba5DBc23f44D87826276BF6Fd6b1C372aD24"], // Uniswap v2 Router02
+};
+
 // ETH-zap infrastructure: a router deployed per launchpad, and the quoter of
 // the DEX it swaps on — Uniswap v3 on Robinhood; on Base, Aerodrome
 // Slipstream, where cbLTC's liquidity is (SlipstreamZapRouter speaks that

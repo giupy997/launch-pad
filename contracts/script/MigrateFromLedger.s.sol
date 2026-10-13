@@ -541,14 +541,24 @@ contract MigrateFromLedger is Script {
     /// The ticker → token map the site serves as /migrated/<source chain id>.json,
     /// written next to the migration file.
     function writeMigrated(Launchpad pad, Coin[] memory coins, string memory file) public {
+        string memory json = vm.readFile(file);
         string memory tokensKey = "tokens";
         string memory tokensJson = "";
+        // keyed by the coin's address on the source pad, lowercase, where the file names them
+        // (snapshot-evm.mjs: `sourceTokens`): a ticker is not unique, an address is; by ticker
+        // for a file without them (the Litecoin ledger's)
+        bool byAddress = vm.keyExistsJson(json, ".sourceTokens");
         for (uint256 i = 0; i < coins.length; i++) {
-            tokensJson =
-                vm.serializeAddress(tokensKey, coins[i].symbol, pad.migratedTicker(keccak256(bytes(coins[i].symbol))));
+            string memory key = coins[i].symbol;
+            if (byAddress) {
+                key = vm.toLowercase(
+                    vm.toString(vm.parseJsonAddress(json, string.concat(".sourceTokens.", coins[i].symbol)))
+                );
+            }
+            tokensJson = vm.serializeAddress(tokensKey, key, pad.migratedTicker(keccak256(bytes(coins[i].symbol))));
         }
         string memory outKey = "out";
-        vm.serializeString(outKey, "network", vm.parseJsonString(vm.readFile(file), ".network"));
+        vm.serializeString(outKey, "network", vm.parseJsonString(json, ".network"));
         vm.serializeUint(outKey, "chainId", block.chainid);
         vm.serializeUint(outKey, "freezeHeight", pad.migrationFreezeHeight());
         vm.serializeBytes32(outKey, "stateRoot", pad.migrationRoot());
@@ -556,7 +566,7 @@ contract MigrateFromLedger is Script {
         string memory out = vm.serializeString(outKey, "tokens", tokensJson);
         string memory path = string.concat(file, ".migrated.json");
         vm.writeJson(out, path);
-        console.log("ticker -> token map written to", path);
+        console.log(byAddress ? "address -> token map written to" : "ticker -> token map written to", path);
     }
 
     /// The holders from `from` to `to`, with their proofs.

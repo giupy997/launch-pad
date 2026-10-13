@@ -8,6 +8,7 @@ import "server-only";
 import { lookup } from "node:dns/promises";
 import { request as httpsRequest } from "node:https";
 import { isIP } from "node:net";
+import { SITE_HOSTS } from "@/lib/site";
 
 export const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 
@@ -45,6 +46,9 @@ export async function publicAddressOf(url: string): Promise<{ url: URL; address:
   if (u.protocol !== "https:" || u.username || u.password) return null;
   const host = u.hostname.toLowerCase();
   if (!host.includes(".") || isIP(host) || host.endsWith(".local") || host.endsWith(".internal") || host.endsWith(".arpa") || host.endsWith(".localhost")) return null;
+  // never the site itself (nor its host's platform): a URL of our own proxy nested in a
+  // proxy request would chain function calls and spend the egress addresses' allowance
+  if (SITE_HOSTS.includes(host) || host.endsWith(".netlify.app")) return null;
   try {
     const addrs = await lookup(host, { all: true });
     if (!addrs.length || !addrs.every((a) => isPublicAddress(a.address))) return null;

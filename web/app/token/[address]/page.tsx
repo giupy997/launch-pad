@@ -1,3 +1,5 @@
+import { notFound } from "next/navigation";
+import { isAddress } from "viem";
 import { TokenPage } from "./TokenPage";
 import { listTokens } from "@/lib/tokens.server";
 
@@ -14,5 +16,6 @@ export async function generateStaticParams() {
 
 export default async function Page({ params }: { params: Promise<{ address: string }> }) {
   const { address } = await params;
+  if (!isAddress(address)) notFound(); // anything else would render (and cache) an empty shell per path
   return <TokenPage address={address} />;
 }

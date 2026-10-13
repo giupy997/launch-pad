@@ -149,6 +149,16 @@ const CHAIN_ANSWERS = new Set([
   "AbiDecodingZeroDataError",
   "ExecutionRevertedError",
 ]);
+/** An answer of empty data (a contract not there yet, on a node a few blocks behind): read
+ *  again, never kept as what the chain says. */
+export function zeroDataAnswer(entry: { status?: unknown; error?: unknown } | undefined): boolean {
+  if (!entry || entry.status !== "failure") return false;
+  let e = entry.error as { name?: unknown; cause?: unknown } | undefined;
+  for (let depth = 0; e && depth < 12; depth++, e = e.cause as typeof e) {
+    if (e.name === "ContractFunctionZeroDataError" || e.name === "AbiDecodingZeroDataError") return true;
+  }
+  return false;
+}
 export function chainAnswered(entry: { status?: unknown; error?: unknown } | undefined): boolean {
   if (!entry) return false;
   if (entry.status !== "failure") return true;

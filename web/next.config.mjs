@@ -47,7 +47,8 @@ const CSP = [
   "font-src 'self' data: https://fonts.gstatic.com",
   "media-src 'self'",
   `connect-src 'self' ${[...RPC_HOSTS, ...WALLETCONNECT_CONNECT].join(" ")}${dev ? " ws://localhost:* http://localhost:*" : ""}`,
-  `frame-src ${WALLETCONNECT_FRAMES.join(" ")}`,
+  // the coin pages' livestream embeds (components/LiveStream.tsx, sandboxed iframes) and WalletConnect's
+  `frame-src ${[...WALLETCONNECT_FRAMES, "https://www.youtube-nocookie.com", "https://player.twitch.tv"].join(" ")}`,
   "worker-src 'self' blob:",
   "manifest-src 'self'",
   "form-action 'self'",
