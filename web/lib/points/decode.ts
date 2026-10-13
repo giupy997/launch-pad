@@ -1,6 +1,7 @@
 // The pad's logs that the points read, and nothing else: a coin and its
-// creator, a trade, a graduation, a freeze announcement. The same five
-// signatures on every pad the site reads (v7.7 on Liteforge, v9 on Base).
+// creator, a trade, a graduation, a freeze announced or withdrawn. The same
+// signatures on every pad the site reads (v7.7 on Liteforge, v12 on Base; a
+// pad without the withdrawal event simply never emits it).
 
 import { decodeEventLog, encodeEventTopics, parseAbi } from "viem";
 
@@ -10,9 +11,10 @@ export const padEventsAbi = parseAbi([
   "event Sold(address indexed token, address indexed seller, uint256 tokensIn, uint256 ethOut, uint256 fee)",
   "event Graduated(address indexed token, uint256 raisedEth)",
   "event FreezeAnnounced(uint256 freezeBlock)",
+  "event FreezeCancelled()",
 ]);
 
-const topic = (eventName: "TokenCreated" | "Bought" | "Sold" | "Graduated" | "FreezeAnnounced") =>
+const topic = (eventName: "TokenCreated" | "Bought" | "Sold" | "Graduated" | "FreezeAnnounced" | "FreezeCancelled") =>
   encodeEventTopics({ abi: padEventsAbi, eventName })[0];
 
 export const TOPICS = {
@@ -21,10 +23,11 @@ export const TOPICS = {
   sold: topic("Sold"),
   graduated: topic("Graduated"),
   freeze: topic("FreezeAnnounced"),
+  freezeCancelled: topic("FreezeCancelled"),
 } as const;
 
 /** the topic0 filter for one eth_getLogs over the pad */
-export const PAD_TOPICS: `0x${string}`[] = [TOPICS.created, TOPICS.bought, TOPICS.sold, TOPICS.graduated, TOPICS.freeze];
+export const PAD_TOPICS: `0x${string}`[] = [TOPICS.created, TOPICS.bought, TOPICS.sold, TOPICS.graduated, TOPICS.freeze, TOPICS.freezeCancelled];
 
 /** an eth_getLogs entry as the node returns it */
 export type RpcLog = {
@@ -50,7 +53,8 @@ export type PadEvent =
       tokens: bigint;
     }
   | { kind: "graduated"; block: bigint; logIndex: number; tx: `0x${string}`; token: `0x${string}`; raised: bigint }
-  | { kind: "freeze"; block: bigint; logIndex: number; tx: `0x${string}`; freezeBlock: bigint };
+  | { kind: "freeze"; block: bigint; logIndex: number; tx: `0x${string}`; freezeBlock: bigint }
+  | { kind: "freezeCancelled"; block: bigint; logIndex: number; tx: `0x${string}` };
 
 const low = (a: string) => a.toLowerCase() as `0x${string}`;
 
@@ -81,6 +85,10 @@ export function decodePadLog(log: RpcLog): PadEvent | null {
     if (t0 === TOPICS.freeze) {
       const d = decodeEventLog({ abi: padEventsAbi, eventName: "FreezeAnnounced", data: log.data, topics });
       return { kind: "freeze", ...base, freezeBlock: d.args.freezeBlock };
+    }
+    if (t0 === TOPICS.freezeCancelled) {
+      decodeEventLog({ abi: padEventsAbi, eventName: "FreezeCancelled", data: log.data, topics }); // the shape check
+      return { kind: "freezeCancelled", ...base };
     }
   } catch {
     return null; // a log with this topic but another shape: not ours

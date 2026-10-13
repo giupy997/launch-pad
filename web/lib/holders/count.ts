@@ -102,7 +102,7 @@ async function save(key: string, state: State) {
 
 const topicAddress = (topic: string | undefined): string | null => (topic && topic.length === 66 ? `0x${topic.slice(26)}`.toLowerCase() : null);
 
-function client(t: ScanTarget): PublicClient {
+export function client(t: ScanTarget): PublicClient {
   return createPublicClient({
     // no retries of the whole chain of nodes: each gets one go, in order
     transport: fallback(
@@ -122,7 +122,7 @@ function before<T>(p: Promise<T>, deadline: number): Promise<T> {
 }
 
 /** whether the pad knows `token` as one of its coins (its curve exists); remembered once true */
-async function isPadCoin(c: PublicClient, chain: PointsChain, token: `0x${string}`): Promise<boolean> {
+export async function isPadCoin(c: PublicClient, chain: PointsChain, token: `0x${string}`): Promise<boolean> {
   const key = `${chain.chainId}.${token.toLowerCase()}`;
   if (coins.has(key)) return true;
   const curve = (await c.readContract({ address: chain.pad, abi: launchpadAbi, functionName: "curves", args: [token] })) as readonly unknown[];

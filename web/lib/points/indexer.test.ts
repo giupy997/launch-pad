@@ -64,6 +64,9 @@ const sold = (block: bigint, token: `0x${string}`, seller: `0x${string}`, ltc: n
   );
 const graduated = (block: bigint, token: `0x${string}`) =>
   emit(block, [encodeEventTopics({ abi: padEventsAbi, eventName: "Graduated" })[0], addrTopic(token)], encodeAbiParameters([{ type: "uint256" }], [192n * LTC]));
+const freezeAnnounced = (block: bigint, atBlock: bigint) =>
+  emit(block, [encodeEventTopics({ abi: padEventsAbi, eventName: "FreezeAnnounced" })[0]], encodeAbiParameters([{ type: "uint256" }], [atBlock]));
+const freezeCancelled = (block: bigint) => emit(block, [encodeEventTopics({ abi: padEventsAbi, eventName: "FreezeCancelled" })[0]], "0x");
 
 let head = 1_000n;
 let refuse: ((lo: bigint, hi: bigint) => boolean) | null = null;
@@ -206,4 +209,30 @@ test("a crash between the events and the checkpoint counts nothing twice on the 
   assert.deepEqual(again.leaderboard(), board);
   assert.equal(store.loadEvents().length, onDisk); // and written again to nobody
   assert.equal(again.last, ix.last);
+});
+
+test("a freeze announced ends the season there; withdrawn before it lands, the season runs on", async () => {
+  const store = new Store(join(dir, "freeze"));
+  const nodes = new Nodes(chain.rpcs, chain.chunk, { transport, sleep: async () => {} });
+  const ix = new ChainIndexer(chain, nodes, store);
+  await ix.pass(); // everything emitted so far
+  const alicePoints = () => ix.leaderboard().find((r) => r.wallet === alice.address.toLowerCase())?.points ?? 0;
+  const before = alicePoints();
+
+  freezeAnnounced(1_410n, 1_500n); // the pad stands still from block 1,500: the season ends there
+  head = 1_440n; // lag 10: this pass reads to 1,430, the announcement included
+  await ix.pass();
+  assert.equal(ix.effectiveSeason()?.end, 1_500n);
+
+  freezeCancelled(1_450n); // withdrawn before it landed
+  bought(1_520n, COIN, alice.address, 1, 10n * LTC); // past the block once announced: the freeze never came
+  head = 1_600n;
+  await ix.pass();
+  assert.equal(ix.effectiveSeason()?.end, null);
+  assert.ok(alicePoints() > before);
+
+  // a restart replays the file in order and lands on the same answer
+  const again = new ChainIndexer(chain, nodes, store);
+  assert.equal(again.effectiveSeason()?.end, null);
+  assert.equal(again.leaderboard().find((r) => r.wallet === alice.address.toLowerCase())?.points, alicePoints());
 });

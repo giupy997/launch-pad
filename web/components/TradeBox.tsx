@@ -274,6 +274,8 @@ export function TradeBox({
       : undefined;
   const sellQuote: bigint | undefined =
     mode === "sell" && parsed > 0n && platformFeeBps !== undefined ? quoteSell(curve, parsed, platformFeeBps, fees) : undefined;
+  // a zap waits for its quote: sent on nothing, its two minimums would be nothing and the slippage setting void
+  const zapWaiting = mode === "buy" && zapMode && parsed > 0n && (zapQuoteOut === undefined || buyQuote === undefined);
 
   const { writeContract, data: hash, isPending, error, reset } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash, chainId: chain.id });
@@ -340,34 +342,28 @@ export function TradeBox({
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (zapWaiting) return; // the button is off; a submit by keyboard waits for the quote too
     reset();
     setLastAction(needsApproval ? "approve" : "trade");
     if (mode === "buy") {
       if (curveZapMode && zapAddr) {
+        if (zapQuoteOut === undefined || buyQuote === undefined) return;
         writeContract({
           address: zapAddr,
           abi: zapRouterAbi,
           functionName: "zapBuyCurve",
           chainId: chain.id,
-          args: [
-            token,
-            zapQuoteOut !== undefined ? withSlippage(zapQuoteOut) : 0n,
-            buyQuote !== undefined ? withSlippage(buyQuote as bigint) : 0n,
-          ],
+          args: [token, withSlippage(zapQuoteOut), withSlippage(buyQuote)],
           value: parsed,
         });
       } else if (zapMode && zapPath && zapAddr) {
+        if (zapQuoteOut === undefined || buyQuote === undefined) return;
         writeContract({
           address: zapAddr,
           abi: zapRouterAbi,
           functionName: "zapBuy",
           chainId: chain.id,
-          args: [
-            token,
-            zapPath,
-            zapQuoteOut !== undefined ? withSlippage(zapQuoteOut) : 0n,
-            buyQuote !== undefined ? withSlippage(buyQuote as bigint) : 0n,
-          ],
+          args: [token, zapPath, withSlippage(zapQuoteOut), withSlippage(buyQuote)],
           value: parsed,
         });
       } else if (isEthQuote) {
@@ -514,7 +510,7 @@ export function TradeBox({
 
         <button
           type="submit"
-          disabled={!deployed || !isConnected || parsed === 0n || feesPending || isPending || isConfirming}
+          disabled={!deployed || !isConnected || parsed === 0n || feesPending || zapWaiting || isPending || isConfirming}
           className={`w-full rounded-lg py-2.5 font-semibold text-black disabled:opacity-40 ${
             mode === "buy" ? "bg-white hover:bg-zinc-100 transition-colors" : "bg-zinc-300 hover:bg-white"
           }`}

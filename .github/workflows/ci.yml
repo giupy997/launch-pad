@@ -56,6 +56,7 @@ jobs:
       - run: npm audit signatures
       - run: npm audit --omit=dev --audit-level=high
       - run: npx tsc --noEmit
+      - run: npx tsc -p ../points/tsconfig.json --noEmit
       - run: npx eslint . --max-warnings 0
-      - run: node --test --experimental-strip-types lib/points/*.test.ts lib/trades/*.test.ts lib/sanitize.test.ts lib/imageType.test.ts
+      - run: node --test --experimental-strip-types lib/points/*.test.ts lib/trades/*.test.ts lib/sanitize.test.ts lib/imageType.test.ts ../points/service.test.ts
       - run: npm run build

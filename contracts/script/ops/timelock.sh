@@ -1,35 +1,40 @@
 #!/bin/bash
 # The owner's operations on the Base v12 timelock, each one scheduled now and
-# executable by anyone after the delay (24 h), from the proposer's key on this
-# machine (the keystore ACCOUNT, default `notus`; PRIVATE_KEY for a test key):
+# executable by anyone after the delay (24 h). Since the handover of
+# 2026-10-12 the only proposer and canceller is the Safe: an operation is
+# prepared here as calldata (safe-calldata), signed in the Safe, and executed
+# from here once ready; the key on this machine (the keystore ACCOUNT,
+# default `notus`; PRIVATE_KEY for a test key) executes, and schedules only
+# on a timelock where it still proposes (a rehearsal pad's).
 #
-#   bash script/ops/timelock.sh grant           # an address (a Safe) becomes proposer and canceller too
-#   bash script/ops/timelock.sh revoke          # the deployer's key loses both roles: only after the Safe has proven itself,
-#                                               # or, with no other proposer, to close a timelock for good (v11)
-#   bash script/ops/timelock.sh handover        # grant and revoke in one operation: one delay instead of two, for a
-#                                               # Safe that has already signed a transaction of its own with two keys
-#   bash script/ops/timelock.sh set-treasury    # the pad pays its 0.5% to a new address from the execution on
+#   bash script/ops/timelock.sh safe-calldata set-treasury   # the pad pays its 0.5% to a new address from the execution on
+#   bash script/ops/timelock.sh safe-calldata set-migrator   # a migrator deployed with script/ops/migrator.sh, before any coin graduates
+#   bash script/ops/timelock.sh safe-calldata revoke         # this machine's key loses PROPOSER and CANCELLER (never the Safe's own)
+#   bash script/ops/timelock.sh safe-calldata cancel ID      # a pending operation is withdrawn: the Safe's one move against a wrong one
+#                                               # each prints the calldata to send to the timelock from the Safe's
+#                                               # Transaction Builder (to, value 0, data) and saves the operation by id
 #   bash script/ops/timelock.sh execute ID      # an operation of this script, once ready (no role needed)
 #   bash script/ops/timelock.sh status ID
-#   bash script/ops/timelock.sh cancel ID       # the proposer's key, before it executes
-#   bash script/ops/timelock.sh safe-calldata set-treasury|set-migrator|revoke
-#                                               # the same operations prepared for a Safe that is proposer: the
-#                                               # calldata to send to the timelock from the Safe's Transaction
-#                                               # Builder; the execution stays a plain command from here
-#                                               # (set-migrator: a migrator deployed with script/ops/migrator.sh)
+#
+#   bash script/ops/timelock.sh grant|handover|revoke|set-treasury|cancel ID
+#                                               # the same from this machine's key, for a timelock it proposes on
 #
 # Addresses are asked at the prompt and echoed back checksummed for a yes
 # before anything is sent; every scheduled operation is written to
 # $NOTUS_OPS_DIR (default ~/notus-ops) by its id, so `execute` and `cancel`
-# find their arguments. The timelock is read from verify/base-v12/addresses.sh,
-# the node from BASE_RPC or SRC_RPC in .env (else foundry's `base`).
-# The watch (ops/watch.mjs) reports every one of these on Telegram as it lands.
+# find their arguments. The timelock is read from verify/base-v12/addresses.sh
+# (PROPOSER is the Safe, DEPLOYER this machine's key), the node from BASE_RPC
+# or SRC_RPC in .env (else foundry's `base`). The watch (ops/watch.mjs)
+# reports every one of these on Telegram as it lands.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 export PATH="$HOME/.foundry/bin:$PATH"
 if [ -f .env ]; then set -a; source .env; set +a; fi
-# shellcheck disable=SC1091
-source "${ADDRESSES:-verify/base-v12/addresses.sh}"
+ADDRESSES=${ADDRESSES:-verify/base-v12/addresses.sh}
+# shellcheck disable=SC1090
+source "$ADDRESSES"
+# this machine's key: DEPLOYER where the file names one (Base: PROPOSER is the Safe), else the proposer
+KEY=${DEPLOYER:-$PROPOSER}
 RPC=${BASE_RPC:-${SRC_RPC:-}}; RPC=${RPC%%,*}; RPC=${RPC:-base}
 OPS=${NOTUS_OPS_DIR:-$HOME/notus-ops}
 mkdir -p "$OPS"
@@ -53,6 +58,7 @@ ask() {
   local raw sum yes
   read -rp "$1 (0x...): " raw
   sum=$(cast to-check-sum-address "$raw" 2>/dev/null) || { echo "not an address: $raw"; exit 1; }
+  [ "$sum" != "0x0000000000000000000000000000000000000000" ] || { echo "the zero address: refused (a pad paying its fee there would stop every trade)"; exit 1; }
   local code; code=$(cast code "$sum" --rpc-url "$RPC" 2>/dev/null || echo "?")
   echo "   $sum  ($([ "$code" = "0x" ] && echo "no code: a wallet" || echo "a contract, $(( (${#code} - 2) / 2 )) bytes of code"))"
   read -rp "   is this exactly the address you mean? (yes/no): " yes
@@ -94,7 +100,8 @@ done_msg() {
   echo "   scheduled. id $1"
   echo "   executable from $(when "$ts") by anyone:"
   echo "   bash script/ops/timelock.sh execute $1"
-  echo "   (until then the proposer can cancel it: bash script/ops/timelock.sh cancel $1)"
+  echo "   (until then a canceller withdraws it: the Safe, bash script/ops/timelock.sh safe-calldata cancel $1;"
+  echo "    this machine's key, where it still cancels: bash script/ops/timelock.sh cancel $1)"
 }
 
 case "${1:-}" in
@@ -107,30 +114,30 @@ case "${1:-}" in
     schedule_batch "grant roles to $ADDR" "$TIMELOCK,$TIMELOCK" "$D1,$D2"
     ;;
   handover)
-    echo "In one operation: the address below becomes PROPOSER and CANCELLER, and the deployer's key"
-    echo "$PROPOSER loses both. From the execution on, only that address schedules and cancels."
+    echo "In one operation: the address below becomes PROPOSER and CANCELLER, and this machine's key"
+    echo "$KEY loses both. From the execution on, only that address schedules and cancels."
     echo "Only for a Safe whose owners and threshold you have read back from the chain, and that has"
     echo "already executed one transaction of its own with two signatures."
     ask "address to hand over to"
-    [ "$ADDR" != "$PROPOSER" ] || { echo "that is the deployer's own key"; exit 1; }
+    [ "$ADDR" != "$KEY" ] || { echo "that is this machine's own key"; exit 1; }
     read -rp "   type HANDOVER to go on: " yes; [ "$yes" = HANDOVER ] || { echo "stopped"; exit 1; }
     D1=$(cast calldata "grantRole(bytes32,address)" "$PROPOSER_ROLE" "$ADDR")
     D2=$(cast calldata "grantRole(bytes32,address)" "$CANCELLER_ROLE" "$ADDR")
-    D3=$(cast calldata "revokeRole(bytes32,address)" "$PROPOSER_ROLE" "$PROPOSER")
-    D4=$(cast calldata "revokeRole(bytes32,address)" "$CANCELLER_ROLE" "$PROPOSER")
+    D3=$(cast calldata "revokeRole(bytes32,address)" "$PROPOSER_ROLE" "$KEY")
+    D4=$(cast calldata "revokeRole(bytes32,address)" "$CANCELLER_ROLE" "$KEY")
     schedule_batch "handover to $ADDR" "$TIMELOCK,$TIMELOCK,$TIMELOCK,$TIMELOCK" "$D1,$D2,$D3,$D4"
     ;;
   revoke)
-    echo "The deployer's key $PROPOSER loses PROPOSER and CANCELLER on the timelock $TIMELOCK."
+    echo "This machine's key $KEY loses PROPOSER and CANCELLER on the timelock $TIMELOCK."
     echo "After this, nothing on this machine can schedule or cancel on it any more. With a Safe as proposer:"
     echo "only once the Safe has scheduled AND executed one operation of its own. With no other proposer:"
     echo "nobody ever can again, and the pad $PAD keeps its settings for good (no way back)."
-    HAS=$(call "hasRole(bytes32,address)(bool)" "$PROPOSER_ROLE" "$PROPOSER")
-    [ "$HAS" = true ] || { echo "   $PROPOSER is not a proposer: nothing to revoke"; exit 1; }
+    HAS=$(call "hasRole(bytes32,address)(bool)" "$PROPOSER_ROLE" "$KEY")
+    [ "$HAS" = true ] || { echo "   $KEY is not a proposer: nothing to revoke"; exit 1; }
     read -rp "   type REVOKE to go on: " yes; [ "$yes" = REVOKE ] || { echo "stopped"; exit 1; }
-    D1=$(cast calldata "revokeRole(bytes32,address)" "$PROPOSER_ROLE" "$PROPOSER")
-    D2=$(cast calldata "revokeRole(bytes32,address)" "$CANCELLER_ROLE" "$PROPOSER")
-    schedule_batch "revoke roles of $PROPOSER" "$TIMELOCK,$TIMELOCK" "$D1,$D2"
+    D1=$(cast calldata "revokeRole(bytes32,address)" "$PROPOSER_ROLE" "$KEY")
+    D2=$(cast calldata "revokeRole(bytes32,address)" "$CANCELLER_ROLE" "$KEY")
+    schedule_batch "revoke roles of $KEY" "$TIMELOCK,$TIMELOCK" "$D1,$D2"
     ;;
   set-treasury)
     echo "The pad $PAD pays its fee to a new address from the execution on."
@@ -170,14 +177,33 @@ case "${1:-}" in
   cancel)
     ID=${2:?id}
     [ -f "$OPS/$ID.json" ] && TIMELOCK=$(field "$ID" timelock)
-    echo "== cancelling $ID$( [ -f "$OPS/$ID.json" ] && echo " ($(field "$ID" kind))")"
+    echo "== cancelling $ID$( [ -f "$OPS/$ID.json" ] && echo " ($(field "$ID" kind))") from this machine's key $KEY"
+    [ "$(call "hasRole(bytes32,address)(bool)" "$(cast keccak CANCELLER_ROLE)" "$KEY")" = true ] || {
+      echo "   $KEY is no canceller on $TIMELOCK (the Safe is): bash script/ops/timelock.sh safe-calldata cancel $ID"; exit 1; }
     cast send "$TIMELOCK" "cancel(bytes32)" "$ID" "${SIGNER[@]}" --rpc-url "$RPC" >/dev/null
     echo "   cancelled: $([ "$(call "getTimestamp(bytes32)(uint256)" "$ID" | awk '{print $1}')" = 0 ] && echo yes || echo no)"
     ;;
   safe-calldata)
-    KIND=${2:?set-treasury|set-migrator|revoke}
+    KIND=${2:?set-treasury|set-migrator|revoke|cancel ID}
     d=$(delay)
     case "$KIND" in
+      cancel)
+        # the one move against a wrong or hostile operation, before it is ready: the Safe is the canceller
+        ID=${3:?id}
+        [ -f "$OPS/$ID.json" ] && TIMELOCK=$(field "$ID" timelock)
+        TS=$(call "getTimestamp(bytes32)(uint256)" "$ID" | awk '{print $1}')
+        case "$TS" in
+          0) echo "   $ID: not scheduled on $TIMELOCK (or cancelled already)"; exit 1;;
+          1) echo "   $ID: executed already, nothing to cancel"; exit 1;;
+        esac
+        echo "== cancel $ID on $TIMELOCK$( [ -f "$OPS/$ID.json" ] && echo " ($(field "$ID" kind))"): executable from $(when "$TS")"
+        echo "== in the Safe: New transaction → Transaction Builder → custom data, then two signatures, before that time"
+        echo "   to:    $TIMELOCK"
+        echo "   value: 0"
+        echo "   data:  $(cast calldata "cancel(bytes32)" "$ID")"
+        echo "   check: bash script/ops/timelock.sh status $ID  (unknown or cancelled = done)"
+        exit 0
+        ;;
       set-migrator)
         echo "The pad $PAD graduates every coin through a new migrator from the execution on (a coin keeps the"
         echo "migrator it graduated through: switch before any coin graduates). One deployed with script/ops/migrator.sh."
@@ -199,14 +225,22 @@ case "${1:-}" in
         CALL=$(cast calldata "$SIG_SCHEDULE" "$PAD" 0 "$DATA" "$ZERO32" "$S" "$d")
         ;;
       revoke)
-        D1=$(cast calldata "revokeRole(bytes32,address)" "$PROPOSER_ROLE" "$PROPOSER")
-        D2=$(cast calldata "revokeRole(bytes32,address)" "$CANCELLER_ROLE" "$PROPOSER")
+        # this machine's key loses both roles; never the Safe's own (a timelock with no proposer and no admin
+        # can never be given one again: every setting of the pad would be final)
+        [ "$(lower "$KEY")" != "$(lower "$PROPOSER")" ] || { echo "   $KEY is the Safe (PROPOSER in $ADDRESSES): refused"; exit 1; }
+        echo "This operation revokes PROPOSER and CANCELLER of this machine's key $KEY on $TIMELOCK; the Safe keeps its own."
+        HAS=$(call "hasRole(bytes32,address)(bool)" "$PROPOSER_ROLE" "$KEY")
+        [ "$HAS" = true ] || { echo "   $KEY is not a proposer: nothing to revoke"; exit 1; }
+        read -rp "   type the last four characters of $KEY to go on: " yes
+        [ "$(lower "$yes")" = "$(lower "${KEY: -4}")" ] || { echo "stopped"; exit 1; }
+        D1=$(cast calldata "revokeRole(bytes32,address)" "$PROPOSER_ROLE" "$KEY")
+        D2=$(cast calldata "revokeRole(bytes32,address)" "$CANCELLER_ROLE" "$KEY")
         S=$(salt "safe revoke")
         ID=$(call "hashOperationBatch(address[],uint256[],bytes[],bytes32,bytes32)(bytes32)" "[$TIMELOCK,$TIMELOCK]" "[0,0]" "[$D1,$D2]" "$ZERO32" "$S")
-        save "revoke roles of $PROPOSER (from the Safe)" "$ID" "$TIMELOCK,$TIMELOCK" "0,0" "$D1,$D2" "$ZERO32" "$S" 1
+        save "revoke roles of $KEY (from the Safe)" "$ID" "$TIMELOCK,$TIMELOCK" "0,0" "$D1,$D2" "$ZERO32" "$S" 1
         CALL=$(cast calldata "$SIG_SCHEDULE_BATCH" "[$TIMELOCK,$TIMELOCK]" "[0,0]" "[$D1,$D2]" "$ZERO32" "$S" "$d")
         ;;
-      *) echo "safe-calldata set-treasury|set-migrator|revoke"; exit 1;;
+      *) echo "safe-calldata set-treasury|set-migrator|revoke|cancel ID"; exit 1;;
     esac
     echo "== in the Safe: New transaction → Transaction Builder → custom data"
     echo "   to:    $TIMELOCK"

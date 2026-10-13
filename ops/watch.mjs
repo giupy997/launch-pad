@@ -321,7 +321,7 @@ async function handle(l, state, quiet) {
         p.siren ||= d.siren;
       } else state.pending[a.id] = { calls: [d.text], readyAt, timelock: at, reminded: false, siren: d.siren, tx: l.transactionHash };
       if (quiet) return null;
-      return { kind: "scheduled", id: a.id, at, calls: [d.text], siren: d.siren, readyAt, delay: a.delay, tx: l.transactionHash };
+      return { kind: "scheduled", id: a.id, at, timelock: l.address, calls: [d.text], siren: d.siren, readyAt, delay: a.delay, tx: l.transactionHash };
     }
     case "CallExecuted": {
       const d = describeCall(a.target, a.data, a.value);
@@ -380,7 +380,7 @@ function render(g) {
     return (
       `${g.siren ? "🚨" : "⚠️"} ${g.at}: OPERAZIONE PROGRAMMATA${n}\n${calls(g)}\n` +
       `eseguibile da ${whenUtc(g.readyAt)} (tra ${hours(g.delay)} h)\nid ${g.id}\n${txLink(g.tx)}` +
-      (g.siren ? "\nSe non sei stato tu: annullala subito (cancel) prima di quell'ora." : "")
+      (g.siren ? `\nSe non sei stato tu: annullala prima di quell'ora dalla Safe (Transaction Builder → custom data):\nto ${g.timelock}\nvalue 0\ndata 0xc4d252f5${g.id.slice(2)}\n(sul VPS: bash script/ops/timelock.sh safe-calldata cancel ${g.id})` : "")
     );
   return `${g.siren ? "🚨" : "✅"} ${g.at}: operazione ESEGUITA${n}\n${calls(g)}\n${txLink(g.tx)}`;
 }

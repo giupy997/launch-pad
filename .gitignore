@@ -48,3 +48,6 @@ HANDOFF.md
 
 # the watch (ops/watch.mjs): the last block read, the pending operations
 ops/state/
+
+# the points service (points/service.ts): its events and bindings on the VPS
+points/data/

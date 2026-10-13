@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { POINTS_CHAINS } from "@/lib/points/chains";
+import { client as rpcClient, isPadCoin } from "@/lib/holders/count";
 import { SPAN_CHUNKS, latestBlock, packTrades, scanTrades, stampTimestamps, type PoolRef, type ScanTarget, type Trade } from "@/lib/trades/scan";
 
 /** The trades of one coin (its curve and, given its pool, its swaps), or of
@@ -19,15 +20,18 @@ const CONCURRENCY = 4; // ranges in flight: a server, but on public nodes
 const BUDGET_MS = 8_500; // what a request may spend reading, under the hosting function's ten seconds
 // Netlify's CDN leaves the query string out of its cache key unless told
 // otherwise: without `netlify-vary` every coin would be served the first
-// coin's trades.
+// coin's trades. The three parameters that shape the answer, and only those:
+// a stray `&x=1` shares the entry rather than costing the nodes a scan.
 const cache = (seconds: number) => ({
   "cache-control": `public, max-age=${seconds}, s-maxage=${seconds}, stale-while-revalidate=${seconds * 4}`,
   "netlify-cdn-cache-control": `public, s-maxage=${seconds}, stale-while-revalidate=${seconds * 4}`,
-  "netlify-vary": "query",
+  "netlify-vary": "query=chain|token|pools",
 });
+const NO_STORE = { "cache-control": "no-store" };
 
 type Held = { first: bigint; last: bigint; trades: Trade[]; truncated: boolean };
 const memory = new Map<string, Held>();
+const MEMORY_KEYS = 64; // answers a warm instance keeps: the oldest goes when a new key comes
 
 export async function GET(req: NextRequest) {
   const p = req.nextUrl.searchParams;
@@ -44,11 +48,21 @@ export async function GET(req: NextRequest) {
   });
   const all = token === "all";
   const coin = all ? null : (token as `0x${string}`);
+  // one coin's pools are its own: a pool of another token is not scanned under its name
+  if (!all && pools.some((x) => x.token.toLowerCase() !== token.toLowerCase())) {
+    return NextResponse.json({ error: "a pool of another token" }, { status: 400 });
+  }
   const target: ScanTarget = { chainId, urls: chain.rpcs, chunk: chain.chunk, archive: chain.archive };
   const deadline = Date.now() + BUDGET_MS;
   const key = `${chainId}.${token.toLowerCase()}.${pools.map((x) => x.pair.toLowerCase()).sort().join(",")}`;
 
   try {
+    // coins of the pad only, before any scan: a scan costs the nodes the same whatever the
+    // address, a read of the curve costs one call and is remembered once true
+    const c = rpcClient(target);
+    const named = all ? [...new Set(pools.map((x) => x.token.toLowerCase() as `0x${string}`))] : [coin!];
+    const known = await Promise.all(named.map((t) => isPadCoin(c, chain, t)));
+    if (known.some((k) => !k)) return NextResponse.json({ error: "not a coin of this launchpad" }, { status: 404, headers: cache(300) });
     const latest = await latestBlock(target, 2_500, deadline);
     // one coin: the same window a browser's first scan reads; the pad: the last day
     const span = all ? BigInt(Math.round(86_400 / chain.blockSeconds)) : chain.chunk * SPAN_CHUNKS;
@@ -84,12 +98,13 @@ export async function GET(req: NextRequest) {
       out.truncated = true;
     }
     await stampTimestamps(target, out.trades, deadline);
+    if (!memory.has(key) && memory.size >= MEMORY_KEYS) memory.delete(memory.keys().next().value!);
     memory.set(key, out);
     return NextResponse.json(
       { chain: chainId, token, first: out.first.toString(), last: out.last.toString(), truncated: out.truncated, trades: packTrades(out.trades) },
       { headers: cache(20) }
     );
   } catch {
-    return NextResponse.json({ error: "the chain's nodes did not answer" }, { status: 503, headers: { "cache-control": "no-store" } });
+    return NextResponse.json({ error: "the chain's nodes did not answer" }, { status: 503, headers: NO_STORE });
   }
 }

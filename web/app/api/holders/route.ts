@@ -8,11 +8,13 @@ const TOKEN = /^0x[0-9a-fA-F]{40}$/;
 const FUNCTION_MS = 9_000; // what a request may spend in all, under the hosting function's ten seconds
 // Netlify's CDN leaves the query string out of its cache key unless told
 // otherwise: without `netlify-vary` every coin would be served the first
-// coin's answer.
+// coin's answer. The two parameters that shape the answer, and only those:
+// a stray `&x=1` shares the entry rather than opening a new one (and a new
+// count on the nodes).
 const cache = (seconds: number) => ({
   "cache-control": `public, max-age=${seconds}, s-maxage=${seconds}, stale-while-revalidate=${seconds * 4}`,
   "netlify-cdn-cache-control": `public, s-maxage=${seconds}, stale-while-revalidate=${seconds * 4}`,
-  "netlify-vary": "query",
+  "netlify-vary": "query=chain|token",
 });
 const NO_STORE = { "cache-control": "no-store" };
 const none = { holders: null, launched: null, partial: false, top: [] };

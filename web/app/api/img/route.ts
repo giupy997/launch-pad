@@ -15,7 +15,9 @@ export const dynamic = "force-dynamic";
 const MAX_BYTES = 2 * 1024 * 1024;
 const TIMEOUT_MS = 8_000;
 
-const notFound = () => new NextResponse("not found", { status: 404, headers: { "cache-control": "public, max-age=300" } });
+// a miss is remembered a few minutes, per URL: without `netlify-vary` the CDN would
+// key it by path alone and answer every logo with this one's 404
+const notFound = () => new NextResponse("not found", { status: 404, headers: { "cache-control": "public, max-age=300", "netlify-vary": "query" } });
 
 export async function GET(req: NextRequest) {
   const u = req.nextUrl.searchParams.get("u") ?? "";

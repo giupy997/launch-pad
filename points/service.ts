@@ -122,7 +122,18 @@ function readBody(req: IncomingMessage, limit = 4_096): Promise<string | null> {
 
 const ROUTE = /^\/([a-z0-9-]+)\/(season|leaderboard|referral|wallet\/(0x[0-9a-fA-F]{40}))\/?$/;
 
-const server = createServer(async (req, res) => {
+// one request: a throw anywhere in here is answered 500 and logged, never left to
+// take the process down (an unhandled rejection exits Node)
+const server = createServer((req, res) => {
+  handle(req, res).catch((e) => {
+    log(`request failed: ${e instanceof Error ? e.message.split("\n")[0] : String(e)}`);
+    if (!res.headersSent) json(res, 500, { error: "internal error" });
+    else res.end();
+  });
+});
+process.on("unhandledRejection", (e) => log(`unhandled rejection: ${e instanceof Error ? e.message.split("\n")[0] : String(e)}`));
+
+async function handle(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url ?? "/", "http://localhost");
   const path = url.pathname;
   if (req.method === "OPTIONS") {
@@ -167,11 +178,14 @@ const server = createServer(async (req, res) => {
       return;
     }
     const raw = await readBody(req);
-    let claim: { invitee?: unknown; inviter?: unknown; signature?: unknown } = {};
+    let claim: { invitee?: unknown; inviter?: unknown; signature?: unknown };
     try {
-      claim = raw ? (JSON.parse(raw) as typeof claim) : {};
+      const parsed: unknown = raw ? JSON.parse(raw) : {};
+      // a plain object only: `null`, a number, an array are JSON too and have no fields to read
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw new Error("not an object");
+      claim = parsed as typeof claim;
     } catch {
-      json(res, 400, { error: "not JSON" });
+      json(res, 400, { error: "not a JSON object" });
       return;
     }
     if (typeof claim.invitee !== "string" || typeof claim.inviter !== "string" || typeof claim.signature !== "string") {
@@ -201,9 +215,13 @@ const server = createServer(async (req, res) => {
     return;
   }
   json(res, 404, { error: "not found" });
-});
+}
 
-server.listen(PORT, "127.0.0.1", () => log(`points serving ${[...indexers.keys()].join(", ")} on 127.0.0.1:${PORT} · a pass every ${EVERY / 1000}s · data in ${DATA}`));
+server.listen(PORT, "127.0.0.1", () => {
+  const a = server.address();
+  const port = a && typeof a === "object" ? a.port : PORT; // PORT=0: the port the system gave
+  log(`points serving ${[...indexers.keys()].join(", ")} on 127.0.0.1:${port} · a pass every ${EVERY / 1000}s · data in ${DATA}`);
+});
 void tick();
 const timer = setInterval(tick, EVERY);
 

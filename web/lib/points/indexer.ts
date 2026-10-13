@@ -103,6 +103,9 @@ export class ChainIndexer {
       case "freeze":
         this.freezeBlock = ev.freezeBlock;
         break;
+      case "freezeCancelled":
+        this.freezeBlock = null; // withdrawn before it landed: the season runs on
+        break;
     }
   }
 
@@ -148,11 +151,13 @@ export class ChainIndexer {
       const cap = from + this.nodes.chunk * BigInt(this.maxChunksPerPass) - 1n;
       const to = target < cap ? target : cap;
       const { logs, ok, failed } = await this.nodes.getLogs({ address: this.chain.pad, topics: [PAD_TOPICS] }, from, to);
+      const pad = this.chain.pad.toLowerCase();
       // only a stretch that starts where we left off counts; the rest is read again next pass
       const first = stretches(ok).find((s) => s.lo === from);
       if (!first) throw new Error(`no node served blocks ${from}…${to}` + (failed.length ? ` (${failed.length} ranges refused)` : ""));
       const upTo = first.hi;
       const events = logs
+        .filter((l) => l.address.toLowerCase() === pad) // the node was asked for the pad's logs; a wrong one is not believed
         .map(decodePadLog)
         .filter((e): e is PadEvent => e !== null && e.block >= from && e.block <= upTo && !this.seen.has(`${e.tx}:${e.logIndex}`))
         .sort(eventOrder);

@@ -17,7 +17,7 @@ const cache = (seconds: number): Record<string, string> =>
     : {
         "cache-control": `public, max-age=${seconds}, s-maxage=${seconds}, stale-while-revalidate=${seconds * 4}`,
         "netlify-cdn-cache-control": `public, s-maxage=${seconds}, stale-while-revalidate=${seconds * 4}`,
-        "netlify-vary": "query", // the CDN's key leaves the query (the limit) out by default
+        "netlify-vary": "query=limit", // the CDN's key leaves the query (the limit) out by default; nothing else shapes an answer
       };
 const json = (body: unknown, status = 200) => NextResponse.json(body, { status, headers: cache(0) });
 
