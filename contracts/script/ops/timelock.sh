@@ -12,6 +12,13 @@
 #   bash script/ops/timelock.sh safe-calldata revoke         # this machine's key loses PROPOSER and CANCELLER (never the Safe's own)
 #   bash script/ops/timelock.sh safe-calldata cancel ID      # a pending operation is withdrawn: the Safe's one move against a wrong one
 #   bash script/ops/timelock.sh safe-calldata set-root FILE  # the pad commits to a snapshot's root (its stateRoot and freezeHeight), once
+#   bash script/ops/timelock.sh safe-calldata set-operator   # who delivers a migration in beside the owner (the deployer's key, for the days of a move)
+#   bash script/ops/timelock.sh safe-calldata close-migration # no coin arrives any more, the operator's role ends
+#   bash script/ops/timelock.sh safe-calldata abandon-delivery # a migrated coin whose holders can never all be delivered: given up (MIGRATION.md)
+#   bash script/ops/timelock.sh safe-calldata announce-freeze HOURS # the pad stands still HOURS after the execution (24 at least): the move out begins
+#   bash script/ops/timelock.sh safe-calldata cancel-freeze  # the announced freeze withdrawn (before it lands)
+#   bash script/ops/timelock.sh safe-calldata migrate-out    # frozen: every coin's quote to the address asked, as one batch (15 coins an
+#                                               # operation, executed whole; EXCLUDE=0x..,0x.. leaves a coin out)
 #                                               # each prints the calldata to send to the timelock from the Safe's
 #                                               # Transaction Builder (to, value 0, data) and saves the operation by id
 #   bash script/ops/timelock.sh execute ID      # an operation of this script, once ready (no role needed)
@@ -195,9 +202,83 @@ case "${1:-}" in
     echo "   cancelled: $([ "$(call "getTimestamp(bytes32)(uint256)" "$ID" | awk '{print $1}')" = 0 ] && echo yes || echo no)"
     ;;
   safe-calldata)
-    KIND=${2:?set-treasury|set-migrator|revoke|cancel ID|set-root FILE}
+    KIND=${2:?set-treasury|set-migrator|revoke|cancel ID|set-root FILE|set-operator|close-migration|abandon-delivery|announce-freeze HOURS|cancel-freeze|migrate-out}
     d=$(delay)
+    # one call on the pad: saved by its id, the Safe's calldata built
+    pad_single() { # KIND-TEXT DATA
+      S=$(salt "safe $1")
+      ID=$(call "hashOperation(address,uint256,bytes,bytes32,bytes32)(bytes32)" "$PAD" 0 "$2" "$ZERO32" "$S")
+      save "$1 (from the Safe)" "$ID" "$PAD" "0" "$2" "$ZERO32" "$S" 0
+      CALL=$(cast calldata "$SIG_SCHEDULE" "$PAD" 0 "$2" "$ZERO32" "$S" "$d")
+    }
     case "$KIND" in
+      set-operator)
+        echo "The address below may run a migration in (migrateToken, migrateBalances) beside the owner, until closeMigration."
+        echo "The root it delivers against is the Safe's to commit (safe-calldata set-root), not the operator's."
+        ask "migration operator"
+        pad_single "setMigrationOperator $ADDR" "$(cast calldata "setMigrationOperator(address)" "$ADDR")"
+        ;;
+      close-migration)
+        echo "No coin arrives on $PAD any more, ever; the operator's role ends. Balances still pending stay the owner's to deliver."
+        read -rp "   type CLOSE to go on: " yes; [ "$yes" = CLOSE ] || { echo "stopped"; exit 1; }
+        pad_single "closeMigration" "$(cast calldata "closeMigration()")"
+        ;;
+      abandon-delivery)
+        echo "A migrated coin whose holders can never all be delivered: what was not delivered is burned, the coin trades,"
+        echo "and the pad can announce a freeze again. For a snapshot that does not add up, not for one still being delivered."
+        ask "the coin (its token address on $PAD)"
+        PENDING=$(cast call "$PAD" "migrationPending(address)(uint256)" "$ADDR" | awk '{print $1}')
+        [ "$PENDING" != 0 ] || { echo "   nothing pending for $ADDR: nothing to give up"; exit 1; }
+        echo "   $PENDING coins (wei) undelivered would be burned"
+        read -rp "   type ABANDON to go on: " yes; [ "$yes" = ABANDON ] || { echo "stopped"; exit 1; }
+        pad_single "abandonDelivery $ADDR" "$(cast calldata "abandonDelivery(address)" "$ADDR")"
+        ;;
+      announce-freeze)
+        # the block is chosen now for an execution a delay away: the notice counts from the execution,
+        # a day at least, so holders see it coming and the keeper empties the buckets (MIGRATION.md)
+        HOURS=${3:?hours of notice after the execution, 24 at least}
+        [ "$HOURS" -ge 24 ] 2>/dev/null || { echo "the notice is 24 hours at least (PAD-5: a freeze that lands at once cannot be cancelled)"; exit 1; }
+        BLOCK_SECONDS=${BLOCK_SECONDS:-2}
+        NOW_BLOCK=$(cast block-number)
+        AT=$(( NOW_BLOCK + (d + HOURS * 3600) / BLOCK_SECONDS ))
+        echo "The pad $PAD stands still from block $AT: about $HOURS h after the earliest execution (block $NOW_BLOCK now, $BLOCK_SECONDS s a block),"
+        echo "around $(when $(( $(date -u +%s) + d + HOURS * 3600 ))). From the announcement on no coin is created; until the block trading goes on."
+        [ "$(cast call "$PAD" "pendingCoins()(uint256)" | awk '{print $1}')" = 0 ] || { echo "   a migrated coin is still delivering (pendingCoins != 0): the pad would refuse"; exit 1; }
+        read -rp "   type FREEZE to go on: " yes; [ "$yes" = FREEZE ] || { echo "stopped"; exit 1; }
+        pad_single "announceFreeze $AT" "$(cast calldata "announceFreeze(uint256)" "$AT")"
+        ;;
+      cancel-freeze)
+        FB=$(cast call "$PAD" "freezeBlock()(uint256)" | awk '{print $1}')
+        [ "$FB" != 0 ] || { echo "   no freeze announced on $PAD"; exit 1; }
+        echo "The freeze announced for block $FB is withdrawn: only before it lands (the cancel takes the delay too)."
+        pad_single "cancelFreeze" "$(cast calldata "cancelFreeze()")"
+        ;;
+      migrate-out)
+        # frozen: every coin's quote out to one address, the bridge's or the operator's custody
+        # (MIGRATION.md), fifteen coins an operation; run again for the next fifteen
+        [ "$(cast call "$PAD" "frozen()(bool)")" = true ] || { echo "   $PAD is not frozen: migrateOut would revert"; exit 1; }
+        ask "the address the quote goes to"
+        TO=$ADDR
+        N=$(cast call "$PAD" "tokenCount()(uint256)" | awk '{print $1}')
+        TARGETS=; DATAS=; COUNT=0
+        # EXCLUDE=0x..,0x..: coins left out (one whose migrateOut reverts holds the whole batch: it goes alone, later)
+        for ((i = 0; i < N && COUNT < 15; i++)); do
+          T=$(cast call "$PAD" "allTokens(uint256)(address)" "$i")
+          [ "$(cast call "$PAD" "migratedOut(address)(bool)" "$T")" = true ] && continue
+          case ",$(lower "${EXCLUDE:-}")," in *",$(lower "$T"),"*) echo "   $T: left out (EXCLUDE)"; continue;; esac
+          TARGETS+="$PAD,"; DATAS+="$(cast calldata "migrateOut(address,address)" "$T" "$TO"),"; COUNT=$((COUNT + 1))
+          echo "   $T"
+        done
+        [ "$COUNT" != 0 ] || { echo "   every coin has migrated out already"; exit 0; }
+        TARGETS=${TARGETS%,}; DATAS=${DATAS%,}
+        VALUES=; for ((i = 0; i < COUNT; i++)); do VALUES+="0,"; done; VALUES=${VALUES%,}
+        echo "   $COUNT coins' quote to $TO in one operation$([ "$COUNT" = 15 ] && echo " (more remain: run again after this one executed)")"
+        read -rp "   type OUT to go on: " yes; [ "$yes" = OUT ] || { echo "stopped"; exit 1; }
+        S=$(salt "safe migrate-out")
+        ID=$(call "hashOperationBatch(address[],uint256[],bytes[],bytes32,bytes32)(bytes32)" "[$TARGETS]" "[$VALUES]" "[$DATAS]" "$ZERO32" "$S")
+        save "migrateOut of $COUNT coins to $TO (from the Safe)" "$ID" "$TARGETS" "$VALUES" "$DATAS" "$ZERO32" "$S" 1
+        CALL=$(cast calldata "$SIG_SCHEDULE_BATCH" "[$TARGETS]" "[$VALUES]" "[$DATAS]" "$ZERO32" "$S" "$d")
+        ;;
       set-root)
         # the migration in: the pad commits to the snapshot's tree once (setMigrationRoot is the
         # owner's), a delay ahead and in the open; the operator then delivers what it says
@@ -266,7 +347,7 @@ case "${1:-}" in
         save "revoke roles of $KEY (from the Safe)" "$ID" "$TIMELOCK,$TIMELOCK" "0,0" "$D1,$D2" "$ZERO32" "$S" 1
         CALL=$(cast calldata "$SIG_SCHEDULE_BATCH" "[$TIMELOCK,$TIMELOCK]" "[0,0]" "[$D1,$D2]" "$ZERO32" "$S" "$d")
         ;;
-      *) echo "safe-calldata set-treasury|set-migrator|revoke|cancel ID|set-root FILE"; exit 1;;
+      *) echo "safe-calldata set-treasury|set-migrator|revoke|cancel ID|set-root FILE|set-operator|close-migration|abandon-delivery|announce-freeze HOURS|cancel-freeze|migrate-out"; exit 1;;
     esac
     echo "== in the Safe: New transaction → Transaction Builder → custom data"
     echo "   to:    $TIMELOCK"

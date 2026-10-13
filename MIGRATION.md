@@ -77,14 +77,17 @@ safe-calldata`, the Transaction Builder), executed from the deployer's key
 after the delay.
 
 **Since 2026-10-12 the Base timelock's proposer and canceller is the Safe
-2-of-3, not the deployer's key.** Every `schedule(...)` and `cancel(...)` on
-`$BASE_TIMELOCK` below is therefore a Safe transaction: the calldata the
-`cast send` line encodes, sent from the Safe's Transaction Builder (two
-signatures), as `timelock.sh safe-calldata` prepares it for `set-treasury`,
-`set-migrator` and `revoke`; the `execute(...)` lines stay the deployer's
-(anyone's). The `announce-freeze`, `migrate-out`, `cancel-freeze` and
-`set-operator` kinds of `safe-calldata` are to be added before the day, and
-these steps rewritten around them (SECURITY.md, the governance section).
+2-of-3, not the deployer's key.** Every operation on `$BASE_TIMELOCK` below
+is therefore a Safe transaction: `timelock.sh safe-calldata <kind>` on the
+VPS prints `to`, `value` and `data` for the Safe's Transaction Builder (two
+signatures) and saves the operation by its id; 24 hours after the Safe's
+confirmation `timelock.sh execute ID` runs it from the VPS (anyone may). The
+kinds the move needs exist: `announce-freeze HOURS`, `cancel-freeze`,
+`migrate-out`, `set-root FILE`, `set-operator`, `close-migration`,
+`abandon-delivery`, and `cancel ID` to withdraw any of them before it is
+ready. Before signing, decode the `data` on the Mac (`cast 4byte-decode`)
+and compare it with what the VPS printed: the Safe is worth what its signers
+read.
 
 One file holds the names as they arrive; every block below sources it. The
 Base addresses are v12's (`contracts/verify/base-v12/addresses.sh`): the v11
@@ -203,21 +206,17 @@ coin until every bucket is empty:
 cd ~/launch-pad/contracts && bash script/ops/harvest.sh --all
 ```
 
-(`--dry` lists what waits; `--watch` keeps going, a pass every few seconds,
-until Ctrl-C: the loop for the notice. By hand, the same thing:)
+(`--dry` lists what waits; `--watch` keeps going, a pass a minute, until
+Ctrl-C: the loop for the notice. It reads each coin's own migrator
+(`graduatedVia`) and its pacing (`nextHarvestAt`), so a coin that graduated
+through an older migrator is harvested through that one. By hand, the same
+thing, a coin at a time:)
 
 ```bash
 source ~/notus-litvm.env; cd ~/launch-pad/contracts && source .env
-for T in $(cast call "$BASE_PAD" "tokenCount()(uint256)" --rpc-url base | xargs seq 0 | head -n -1); do
-  COIN=$(cast call "$BASE_PAD" "allTokens(uint256)(address)" $T --rpc-url base)
-  # a coin on its curve has no pool and no buckets
-  [ "$(cast call "$BASE_PAD" "graduatedVia(address)(address)" "$COIN" --rpc-url base)" = "$BASE_MIGRATOR" ] || continue
-  while cast send "$BASE_MIGRATOR" "harvest(address)" "$COIN" --rpc-url base --account notus >/dev/null; do
-    echo "$COIN: a slice harvested"
-    sleep 3   # one a block: the node estimates the next one on its latest block
-  done
-  echo "$COIN: the last harvest reverted"
-done
+COIN=0x...   # the coin
+VIA=$(cast call "$BASE_PAD" "graduatedVia(address)(address)" "$COIN" --rpc-url base)   # 0x0: on its curve, no buckets
+cast send "$VIA" "harvest(address)" "$COIN" --rpc-url base --account notus   # a slice; again five minutes later
 ```
 
 Each `cast send` waits for its receipt and the loop a block more, so the
@@ -287,18 +286,18 @@ Two timelock rounds of 24 hours, with the coin list closing between them:
    the execution on.
 
    ```bash
-   source ~/notus-litvm.env; cd ~/launch-pad/contracts && source .env
-   FREEZE=$(( $(cast block-number --rpc-url base) + 100000 )); echo "FREEZE=$FREEZE"   # write it in the env file
-   Z32=0x0000000000000000000000000000000000000000000000000000000000000000
-   cast send "$BASE_TIMELOCK" "schedule(address,uint256,bytes,bytes32,bytes32,uint256)" "$BASE_PAD" 0 \
-     "$(cast calldata 'announceFreeze(uint256)' "$FREEZE")" $Z32 "$(cast keccak "notus-freeze-$FREEZE")" 86400 --rpc-url base --account notus
+   cd ~/launch-pad/contracts && bash script/ops/timelock.sh safe-calldata announce-freeze 31
    ```
 
+   The script picks the block (the delay plus 31 hours of notice from now,
+   at 2 s a block), prints it and the time it lands: write it in the env
+   file as `FREEZE=<that block>`. Then the Safe (Transaction Builder,
+   `to`/`data` as printed, two signatures).
+
    If the execution slips well past the 24 hours (the margin shrinks with
-   every hour), cancel the operation (`cancel(bytes32)` on the timelock,
-   proposer only; its id is the timelock's `hashOperation` of the same
-   arguments, as under *If something goes wrong*) and schedule again with a
-   new `FREEZE` rather than execute it late.
+   every hour), withdraw the operation (`safe-calldata cancel ID`, from the
+   Safe) and prepare it again with a new `FREEZE` rather than execute it
+   late.
 
 2. **Execute it the moment it is ready**, 24 hours after scheduling (same
    arguments, no delay). Run step 2's harvest loop in the last half hour or
@@ -309,36 +308,24 @@ Two timelock rounds of 24 hours, with the coin list closing between them:
    time it is ready, not after. When that is:
 
    ```bash
-   source ~/notus-litvm.env; cd ~/launch-pad/contracts && source .env
-   Z32=0x0000000000000000000000000000000000000000000000000000000000000000
-   ID=$(cast call "$BASE_TIMELOCK" "hashOperation(address,uint256,bytes,bytes32,bytes32)(bytes32)" "$BASE_PAD" 0 \
-     "$(cast calldata 'announceFreeze(uint256)' "$FREEZE")" $Z32 "$(cast keccak "notus-freeze-$FREEZE")" --rpc-url base)
-   date -d @"$(cast call "$BASE_TIMELOCK" "getTimestamp(bytes32)(uint256)" "$ID" --rpc-url base | cut -d' ' -f1)"   # ready from then on
+   cd ~/launch-pad/contracts && bash script/ops/timelock.sh status <id printed by announce-freeze>   # ready from when it says
    ```
 
    Then:
 
    ```bash
-   source ~/notus-litvm.env; cd ~/launch-pad/contracts && source .env
-   Z32=0x0000000000000000000000000000000000000000000000000000000000000000
-   cast send "$BASE_TIMELOCK" "execute(address,uint256,bytes,bytes32,bytes32)" "$BASE_PAD" 0 \
-     "$(cast calldata 'announceFreeze(uint256)' "$FREEZE")" $Z32 "$(cast keccak "notus-freeze-$FREEZE")" --rpc-url base --account notus
+   cd ~/launch-pad/contracts && bash script/ops/timelock.sh execute <that id>
    ```
 
    The pad closes to new coins at once — trading goes on until the block — so
-   the list is final: schedule the migrateOut of every coin right away, each
-   its own operation, ready 24 hours later and executable once the freeze has
-   landed:
-
-   ```bash
-   source ~/notus-litvm.env; cd ~/launch-pad/contracts && source .env
-   Z32=0x0000000000000000000000000000000000000000000000000000000000000000
-   for T in $(cast call "$BASE_PAD" "tokenCount()(uint256)" --rpc-url base | xargs seq 0 | head -n -1); do
-     COIN=$(cast call "$BASE_PAD" "allTokens(uint256)(address)" $T --rpc-url base)
-     cast send "$BASE_TIMELOCK" "schedule(address,uint256,bytes,bytes32,bytes32,uint256)" "$BASE_PAD" 0 \
-       "$(cast calldata 'migrateOut(address,address)' "$COIN" "$BRIDGE_FROM")" $Z32 "$(cast keccak "notus-out-$FREEZE-$COIN")" 86400 --rpc-url base --account notus
-   done
-   ```
+   the list is final: prepare the migrateOut of every coin right away, as
+   batches of fifteen (one Safe transaction each; a batch executes whole, so
+   a coin whose migrateOut would revert — a blocklisted pair — is left out
+   with `EXCLUDE=0x...` and goes alone later), ready 24 hours later and
+   executable once the freeze has landed. `migrate-out` refuses to run before
+   the freeze has landed, so it is prepared then (step 4), not now; what is
+   prepared now is the Safe's readiness: signers at hand the day the freeze
+   lands.
 
    Announce it to holders: trading goes on until the block, then the coins
    move; nothing to do on their side. And to liquidity providers: only the
@@ -388,15 +375,14 @@ cbLTC, a blocklisted pair) holds up no other; it is retried later, with
 another `to` if need be — nothing is marked on a revert.
 
 ```bash
-source ~/notus-litvm.env; cd ~/launch-pad/contracts && source .env
-Z32=0x0000000000000000000000000000000000000000000000000000000000000000
-for T in $(cast call "$BASE_PAD" "tokenCount()(uint256)" --rpc-url base | xargs seq 0 | head -n -1); do
-  COIN=$(cast call "$BASE_PAD" "allTokens(uint256)(address)" $T --rpc-url base)
-  cast send "$BASE_TIMELOCK" "execute(address,uint256,bytes,bytes32,bytes32)" "$BASE_PAD" 0 \
-    "$(cast calldata 'migrateOut(address,address)' "$COIN" "$BRIDGE_FROM")" $Z32 "$(cast keccak "notus-out-$FREEZE-$COIN")" --rpc-url base --account notus \
-    || echo "migrateOut of $COIN reverted: retry it later, or schedule it again with another to"
-done
+cd ~/launch-pad/contracts && bash script/ops/timelock.sh safe-calldata migrate-out   # asks the address: BRIDGE_FROM
 ```
+
+(the Safe signs it; 24 hours later `timelock.sh execute <id>`; again for the
+next fifteen coins until it says every coin is out; a batch that reverts is
+prepared again without the coin that reverts, `EXCLUDE=0x...`, and that coin
+alone once the cause is gone). The freeze landing and the move out are thus
+a day apart at least: the notice in step 3 counts it.
 
 ## 5. cbLTC → LTC → zkLTC
 
@@ -461,59 +447,31 @@ mkdir -p web/public/migrated && cp litecoin/migration/base-$FREEZE.json.migrated
   before the block:
 
   ```bash
-  source ~/notus-litvm.env; cd ~/launch-pad/contracts && source .env
-  Z32=0x0000000000000000000000000000000000000000000000000000000000000000
-  cast send "$BASE_TIMELOCK" "schedule(address,uint256,bytes,bytes32,bytes32,uint256)" "$BASE_PAD" 0 \
-    "$(cast calldata 'cancelFreeze()')" $Z32 "$(cast keccak "notus-unfreeze-$FREEZE")" 86400 --rpc-url base --account notus
+  cd ~/launch-pad/contracts && bash script/ops/timelock.sh safe-calldata cancel-freeze
   ```
 
-  Once scheduled it is armed: from readiness on, anyone may execute it up to
-  the freeze block (the executor role is open) and call the migration off.
-  So it is not scheduled as a hedge, and if the migration goes ahead after
-  all the proposer cancels it before it is ready, with `cancel(bytes32)`,
-  which lands at once:
+  Once the Safe has confirmed it, it is armed: from readiness on, anyone may
+  execute it up to the freeze block (the executor role is open) and call the
+  migration off. So it is not prepared as a hedge, and if the migration goes
+  ahead after all the Safe withdraws it before it is ready, which lands at
+  once:
 
   ```bash
-  source ~/notus-litvm.env; cd ~/launch-pad/contracts && source .env
-  Z32=0x0000000000000000000000000000000000000000000000000000000000000000
-  cast send "$BASE_TIMELOCK" "cancel(bytes32)" "$(cast call "$BASE_TIMELOCK" "hashOperation(address,uint256,bytes,bytes32,bytes32)(bytes32)" "$BASE_PAD" 0 \
-    "$(cast calldata 'cancelFreeze()')" $Z32 "$(cast keccak "notus-unfreeze-$FREEZE")" --rpc-url base)" --rpc-url base --account notus
+  cd ~/launch-pad/contracts && bash script/ops/timelock.sh safe-calldata cancel <the cancel-freeze operation's id>
   ```
 
-  Otherwise, 24 hours later (same arguments, no delay):
+  Otherwise, 24 hours later:
 
   ```bash
-  source ~/notus-litvm.env; cd ~/launch-pad/contracts && source .env
-  Z32=0x0000000000000000000000000000000000000000000000000000000000000000
-  cast send "$BASE_TIMELOCK" "execute(address,uint256,bytes,bytes32,bytes32)" "$BASE_PAD" 0 \
-    "$(cast calldata 'cancelFreeze()')" $Z32 "$(cast keccak "notus-unfreeze-$FREEZE")" --rpc-url base --account notus
+  cd ~/launch-pad/contracts && bash script/ops/timelock.sh execute <the cancel-freeze operation's id>
   ```
 
-  No coin has moved; the pad reopens to new coins and the harvest gets its
-  cap back. But the migrateOut operations scheduled in step 3 are still in
-  the timelock: an OpenZeppelin operation never expires and anyone may
-  execute one that is ready, so after any later freeze each would send its
-  coin's cbLTC to this `BRIDGE_FROM`. Once the cancellation has executed
-  (`cast call "$BASE_PAD" "freezeBlock()(uint256)" --rpc-url base` reads 0)
-  and before any other freeze is scheduled, the proposer cancels every one of
-  them: `cancel(bytes32)`, which lands at once. An operation's id is the
-  timelock's hash of the arguments it was scheduled with, so this runs with
-  the env file's `FREEZE` and `BRIDGE_FROM` as they were then:
-
-  ```bash
-  source ~/notus-litvm.env; cd ~/launch-pad/contracts && source .env
-  Z32=0x0000000000000000000000000000000000000000000000000000000000000000
-  for T in $(cast call "$BASE_PAD" "tokenCount()(uint256)" --rpc-url base | xargs seq 0 | head -n -1); do
-    COIN=$(cast call "$BASE_PAD" "allTokens(uint256)(address)" $T --rpc-url base)
-    ID=$(cast call "$BASE_TIMELOCK" "hashOperation(address,uint256,bytes,bytes32,bytes32)(bytes32)" "$BASE_PAD" 0 \
-      "$(cast calldata 'migrateOut(address,address)' "$COIN" "$BRIDGE_FROM")" $Z32 "$(cast keccak "notus-out-$FREEZE-$COIN")" --rpc-url base)
-    if [ "$(cast call "$BASE_TIMELOCK" "isOperationPending(bytes32)(bool)" "$ID" --rpc-url base)" = true ]; then
-      cast send "$BASE_TIMELOCK" "cancel(bytes32)" "$ID" --rpc-url base --account notus
-    else
-      echo "$COIN: no migrateOut operation pending ($ID)"
-    fi
-  done
-  ```
+  No coin has moved; the pad reopens to new coins. Nothing else is pending:
+  the migrateOut batches are prepared only once a freeze has landed (step
+  4), so no operation waits in the timelock to send cbLTC after some later
+  freeze. Any operation of this runbook still pending for another reason is
+  withdrawn the same way, `safe-calldata cancel ID` (the ids are in
+  `~/notus-ops/`, and the watch names every pending one in its heartbeat).
 
   Past the last hour a `cancelFreeze` can be scheduled in, the freeze lands:
   go forward.
