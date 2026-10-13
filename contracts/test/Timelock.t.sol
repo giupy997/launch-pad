@@ -21,7 +21,7 @@ contract TimelockTest is Test {
     TimelockController timelock;
     MigrateFromLedger script;
     uint256 constant DELAY = 2 days;
-    bytes32 constant ROOT = bytes32(uint256(0x9bb8b9e073b6cde9632ba848277ca117db3725f2e8ee48a3d46d176d6616d433));
+    bytes32 constant ROOT = bytes32(uint256(0x46c19381e8fb095571fe24d39cc68c42759b31f87aacc32c6866c3053061718e));
 
     function setUp() public {
         pad = new Launchpad(makeAddr("treasury"));
@@ -58,16 +58,23 @@ contract TimelockTest is Test {
         assertTrue(timelock.isOperationDone(id));
     }
 
+    /// One call on the pad, scheduled and, a delay later, executed through the timelock.
+    function _viaTimelock(bytes memory data, bytes32 salt) internal {
+        timelock.schedule(address(pad), 0, data, bytes32(0), salt, DELAY);
+        vm.warp(block.timestamp + DELAY);
+        timelock.execute(address(pad), 0, data, bytes32(0), salt);
+    }
+
     /// The operator is the owner's to name, so the name is public a delay ahead;
-    /// once named, the operator opens and runs the migration at once, and the
-    /// owner's other powers stay behind the delay.
+    /// once named, the operator runs the migration at once against the root the
+    /// timelock committed, and the owner's other powers stay behind the delay.
     function test_setMigrationOperatorThroughTheTimelock() public {
         ILaunchpadMigration mig = ILaunchpadMigration(address(pad));
         address op = makeAddr("operator");
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
         mig.setMigrationOperator(op);
         vm.prank(op);
-        vm.expectRevert(LaunchpadBase.NotOperator.selector);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, op));
         mig.setMigrationRoot(ROOT, 100);
 
         bytes memory data = abi.encodeCall(ILaunchpadMigration.setMigrationOperator, (op));
@@ -84,9 +91,11 @@ contract TimelockTest is Test {
         timelock.execute(address(pad), 0, data, bytes32(0), salt);
         assertEq(pad.migrationOperator(), op, "the module ran in the pad's storage, as the timelock");
 
-        // from now on the operator runs the migration in without waiting
+        // the root is the timelock's to commit, a delay ahead like the operator's name
         vm.prank(op);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, op));
         mig.setMigrationRoot(ROOT, 100);
+        _viaTimelock(abi.encodeCall(ILaunchpadMigration.setMigrationRoot, (ROOT, 100)), keccak256("the root"));
         assertEq(pad.migrationRoot(), ROOT);
         // but cannot end it, nor freeze the pad, nor pass the role on: those stay the timelock's
         vm.startPrank(op);
@@ -119,8 +128,8 @@ contract TimelockTest is Test {
             total += coins[i].realQuote;
         }
         vm.deal(address(script), total);
-        // not before the timelock named it
-        vm.expectRevert(LaunchpadBase.NotOperator.selector);
+        // the root is the timelock's: the script cannot set it, named operator or not
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(script)));
         script.ensureRoot(pad, json);
 
         bytes memory data = abi.encodeCall(ILaunchpadMigration.setMigrationOperator, (address(script)));
@@ -128,7 +137,12 @@ contract TimelockTest is Test {
         vm.warp(block.timestamp + DELAY);
         timelock.execute(address(pad), 0, data, bytes32(0), bytes32(0));
         assertEq(pad.migrationOperator(), address(script));
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(script)));
+        script.ensureRoot(pad, json);
 
+        // the timelock commits the root (timelock.sh safe-calldata set-root FILE); the script finds it and goes on
+        (bytes32 root, uint256 freeze) = script.rootOf(json);
+        _viaTimelock(abi.encodeCall(ILaunchpadMigration.setMigrationRoot, (root, freeze)), keccak256("the root"));
         script.ensureRoot(pad, json);
         address[] memory tokens = script.migrateAll(pad, coins);
         assertEq(tokens.length, 3);
@@ -183,7 +197,7 @@ contract TimelockTest is Test {
         assertEq(script.executeFromFile(timelock, pad, json, coins), 1, "the same plan, now ready, runs");
         assertEq(pad.tokenCount(), 3);
         assertEq(
-            pad.migrationRoot(), bytes32(uint256(0x9bb8b9e073b6cde9632ba848277ca117db3725f2e8ee48a3d46d176d6616d433))
+            pad.migrationRoot(), bytes32(uint256(0x46c19381e8fb095571fe24d39cc68c42759b31f87aacc32c6866c3053061718e))
         );
         assertEq(address(pad).balance, total, "every reserve arrived through the timelock");
         assertTrue(script.allMigrated(pad, coins));

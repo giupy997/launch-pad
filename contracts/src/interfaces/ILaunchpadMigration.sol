@@ -18,8 +18,9 @@ interface ILaunchpadMigration {
         LaunchpadBase.Delivery calldata first
     ) external payable returns (address token);
     function migrateBalances(address token, LaunchpadBase.Delivery calldata batch) external;
+    function abandonDelivery(address token) external;
     function migrationLeafCoin(LaunchpadBase.LedgerCoin calldata coin) external pure returns (bytes32);
-    function migrationLeafHolder(bytes32 symbolHash, address holder, uint256 amount) external pure returns (bytes32);
+    function migrationLeafHolder(bytes32 coinLeaf, address holder, uint256 amount) external pure returns (bytes32);
     function announceFreeze(uint256 atBlock) external;
     function cancelFreeze() external;
     function migrateOut(address token, address to) external returns (uint256 quoteOut, uint256 tokensBurned);

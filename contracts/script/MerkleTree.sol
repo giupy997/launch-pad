@@ -20,9 +20,9 @@ library MerkleTree {
         return keccak256(bytes.concat(keccak256(abi.encode(LEAF_COIN, coin))));
     }
 
-    /// A holder's leaf: the coin (by its ticker), the holder, the balance.
-    function holderLeaf(bytes32 symbolHash, address holder, uint256 amount) internal pure returns (bytes32) {
-        return keccak256(bytes.concat(keccak256(abi.encode(LEAF_HOLDER, symbolHash, holder, amount))));
+    /// A holder's leaf: the coin (by its own leaf), the holder, the balance.
+    function holderLeaf(bytes32 coinLeaf, address holder, uint256 amount) internal pure returns (bytes32) {
+        return keccak256(bytes.concat(keccak256(abi.encode(LEAF_HOLDER, coinLeaf, holder, amount))));
     }
 
     /// The root of `leaves`, as given (not sorted): zero for none.

@@ -11,6 +11,7 @@
 #   bash script/ops/timelock.sh safe-calldata set-migrator   # a migrator deployed with script/ops/migrator.sh, before any coin graduates
 #   bash script/ops/timelock.sh safe-calldata revoke         # this machine's key loses PROPOSER and CANCELLER (never the Safe's own)
 #   bash script/ops/timelock.sh safe-calldata cancel ID      # a pending operation is withdrawn: the Safe's one move against a wrong one
+#   bash script/ops/timelock.sh safe-calldata set-root FILE  # the pad commits to a snapshot's root (its stateRoot and freezeHeight), once
 #                                               # each prints the calldata to send to the timelock from the Safe's
 #                                               # Transaction Builder (to, value 0, data) and saves the operation by id
 #   bash script/ops/timelock.sh execute ID      # an operation of this script, once ready (no role needed)
@@ -184,9 +185,24 @@ case "${1:-}" in
     echo "   cancelled: $([ "$(call "getTimestamp(bytes32)(uint256)" "$ID" | awk '{print $1}')" = 0 ] && echo yes || echo no)"
     ;;
   safe-calldata)
-    KIND=${2:?set-treasury|set-migrator|revoke|cancel ID}
+    KIND=${2:?set-treasury|set-migrator|revoke|cancel ID|set-root FILE}
     d=$(delay)
     case "$KIND" in
+      set-root)
+        # the migration in: the pad commits to the snapshot's tree once (setMigrationRoot is the
+        # owner's), a delay ahead and in the open; the operator then delivers what it says
+        FILE=${3:?snapshot file}
+        [ -f "$FILE" ] || { echo "no such file: $FILE"; exit 1; }
+        ROOT=$(node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));if(j.dryRun||(j.scale&&j.scale!==1)){console.error("a dry-run file (unfrozen, or scaled): not for a migration");process.exit(1)}console.log("0x"+String(j.stateRoot).replace(/^0x/,""))' "$FILE") || exit 1
+        FREEZE=$(node -p 'JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).freezeHeight' "$FILE")
+        [ "$(cast call "$PAD" "migrationRoot()(bytes32)" --rpc-url "$RPC")" = "$ZERO32" ] || { echo "   the pad $PAD holds a root already: $(cast call "$PAD" "migrationRoot()(bytes32)" --rpc-url "$RPC")"; exit 1; }
+        echo "The pad $PAD commits to the snapshot $FILE: root $ROOT, frozen at block $FREEZE. Once, for good."
+        read -rp "   type ROOT to go on: " yes; [ "$yes" = ROOT ] || { echo "stopped"; exit 1; }
+        S=$(salt "safe set-root"); DATA=$(cast calldata "setMigrationRoot(bytes32,uint256)" "$ROOT" "$FREEZE")
+        ID=$(call "hashOperation(address,uint256,bytes,bytes32,bytes32)(bytes32)" "$PAD" 0 "$DATA" "$ZERO32" "$S")
+        save "setMigrationRoot $ROOT at $FREEZE (from the Safe)" "$ID" "$PAD" "0" "$DATA" "$ZERO32" "$S" 0
+        CALL=$(cast calldata "$SIG_SCHEDULE" "$PAD" 0 "$DATA" "$ZERO32" "$S" "$d")
+        ;;
       cancel)
         # the one move against a wrong or hostile operation, before it is ready: the Safe is the canceller
         ID=${3:?id}
@@ -240,7 +256,7 @@ case "${1:-}" in
         save "revoke roles of $KEY (from the Safe)" "$ID" "$TIMELOCK,$TIMELOCK" "0,0" "$D1,$D2" "$ZERO32" "$S" 1
         CALL=$(cast calldata "$SIG_SCHEDULE_BATCH" "[$TIMELOCK,$TIMELOCK]" "[0,0]" "[$D1,$D2]" "$ZERO32" "$S" "$d")
         ;;
-      *) echo "safe-calldata set-treasury|set-migrator|revoke|cancel ID"; exit 1;;
+      *) echo "safe-calldata set-treasury|set-migrator|revoke|cancel ID|set-root FILE"; exit 1;;
     esac
     echo "== in the Safe: New transaction → Transaction Builder → custom data"
     echo "   to:    $TIMELOCK"

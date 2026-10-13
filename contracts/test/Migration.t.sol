@@ -78,12 +78,15 @@ contract MigrationTest is Test {
     /// The snapshot's tree a test commits to: every coin and every holder it will submit,
     /// the refused ones included, added before the root is set — set once, as on the day.
     bytes32[] leaves;
+    /// the leaf of each coin added, by its ticker: what its holders' leaves name it by
+    mapping(bytes32 symbolHash => bytes32) coinLeafOf;
 
     function _add(LaunchpadBase.LedgerCoin memory c, address[] memory hs, uint256[] memory bs) internal {
-        leaves.push(MerkleTree.coinLeaf(c));
-        bytes32 sym = keccak256(bytes(c.symbol));
+        bytes32 leaf = MerkleTree.coinLeaf(c);
+        leaves.push(leaf);
+        coinLeafOf[keccak256(bytes(c.symbol))] = leaf;
         for (uint256 i = 0; i < hs.length; i++) {
-            leaves.push(MerkleTree.holderLeaf(sym, hs[i], i < bs.length ? bs[i] : 0));
+            leaves.push(MerkleTree.holderLeaf(leaf, hs[i], i < bs.length ? bs[i] : 0));
         }
     }
 
@@ -110,12 +113,20 @@ contract MigrationTest is Test {
         view
         returns (LaunchpadBase.Delivery memory d)
     {
-        bytes32 sym = keccak256(bytes(symbol));
+        return _deliveryFor(coinLeafOf[keccak256(bytes(symbol))], hs, bs);
+    }
+
+    /// A batch of holders of the coin with this leaf, with their proofs.
+    function _deliveryFor(bytes32 leaf, address[] memory hs, uint256[] memory bs)
+        internal
+        view
+        returns (LaunchpadBase.Delivery memory d)
+    {
         d.holders = hs;
         d.balances = bs;
         d.proofs = new bytes32[][](hs.length);
         for (uint256 i = 0; i < hs.length; i++) {
-            d.proofs[i] = _proofOf(MerkleTree.holderLeaf(sym, hs[i], i < bs.length ? bs[i] : 0));
+            d.proofs[i] = _proofOf(MerkleTree.holderLeaf(leaf, hs[i], i < bs.length ? bs[i] : 0));
         }
     }
 
@@ -127,9 +138,9 @@ contract MigrationTest is Test {
         uint256[] memory bs,
         uint256 value
     ) internal returns (address) {
-        bytes32[] memory coinProof = _proofOf(MerkleTree.coinLeaf(c));
-        LaunchpadBase.Delivery memory d = _delivery(c.symbol, hs, bs);
-        return m.migrateToken{value: value}(c, coinProof, d);
+        bytes32 leaf = MerkleTree.coinLeaf(c);
+        LaunchpadBase.Delivery memory d = _deliveryFor(leaf, hs, bs);
+        return m.migrateToken{value: value}(c, _proofOf(leaf), d);
     }
 
     function _mt(LaunchpadBase.LedgerCoin memory c, address[] memory hs, uint256[] memory bs, uint256 value)
@@ -1065,9 +1076,13 @@ contract MigrationTest is Test {
         restBal[1] = bals[2];
         LaunchpadBase.LedgerCoin memory c = _coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold);
         _add(c, holders, bals);
-        vm.startPrank(op);
+        // the root is the owner's to commit (a timelock: public a delay ahead), never the operator's
+        vm.prank(op);
+        vm.expectRevert(_ownableError(op));
+        fm.setMigrationRoot(_root(), 3_600_085);
         fm.setMigrationRoot(_root(), 3_600_085);
         assertEq(fresh.migrationRoot(), _root());
+        vm.startPrank(op);
         address token = _mtOn(fm, c, first, firstBal, realQuote);
         assertEq(IERC20(token).balanceOf(alice), bals[0]);
         fm.migrateBalances(token, _delivery("LCAT", rest, restBal));
@@ -1099,7 +1114,7 @@ contract MigrationTest is Test {
         address[] memory none = new address[](0);
         uint256[] memory noneBal = new uint256[](0);
         vm.startPrank(dave);
-        vm.expectRevert(LaunchpadBase.NotOperator.selector);
+        vm.expectRevert(_ownableError(dave));
         mig.setMigrationRoot(ROOT, 1);
         vm.expectRevert(LaunchpadBase.NotOperator.selector);
         _mt(_coin("Dog", "DOG", creator, false, virtualQuote, sold), holders, bals, realQuote);
@@ -1159,11 +1174,97 @@ contract MigrationTest is Test {
         assertEq(IERC20(token).balanceOf(carol), bals[2]);
         vm.expectRevert(LaunchpadBase.MigrationNotOpen.selector);
         _mt(_coin("Dog", "DOG", creator, false, virtualQuote, sold), holders, bals, realQuote);
-        // naming an operator again changes nothing: the migration is closed for good
+        // no operator is named once the migration is closed: the role is gone for good
+        vm.expectRevert(LaunchpadBase.MigrationNotOpen.selector);
         mig.setMigrationOperator(op);
         vm.prank(op);
-        vm.expectRevert(LaunchpadBase.MigrationNotOpen.selector);
+        vm.expectRevert(LaunchpadBase.NotOperator.selector);
         _mt(_coin("Dog", "DOG", creator, false, virtualQuote, sold), holders, bals, realQuote);
+    }
+
+    /// A migrated coin whose holders can never all be delivered (a snapshot that does not add
+    /// up for it) would block every freeze for good: the owner gives it up, what was not
+    /// delivered is burned, the coin trades, and a freeze can be announced again.
+    function test_theOwnerCanAbandonADeliveryThatCannotComplete() public {
+        LaunchpadBase.LedgerCoin memory c = _coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold);
+        _add(c, holders, bals);
+        _commit();
+        address[] memory first = new address[](1);
+        uint256[] memory firstBal = new uint256[](1);
+        first[0] = alice;
+        firstBal[0] = bals[0];
+        address token = _mt(c, first, firstBal, realQuote);
+        uint256 undelivered = bals[1] + bals[2];
+        assertEq(pad.migrationPending(token), undelivered);
+        assertEq(pad.pendingCoins(), 1);
+        vm.expectRevert(LaunchpadBase.MigrationPending.selector);
+        mig.announceFreeze(block.number + 5);
+        vm.prank(dave);
+        vm.expectRevert(LaunchpadBase.MigrationPending.selector);
+        pad.buy{value: 0.01 ether}(token, 0);
+
+        // a stranger cannot; the owner can, once
+        vm.prank(dave);
+        vm.expectRevert(_ownableError(dave));
+        mig.abandonDelivery(token);
+        uint256 burnedBefore = pad.burned(token);
+        uint256 supplyBefore = IERC20(token).totalSupply();
+        vm.expectEmit(address(pad));
+        emit LaunchpadBase.MigrationAbandoned(token, undelivered);
+        mig.abandonDelivery(token);
+        assertEq(pad.migrationPending(token), 0);
+        assertEq(pad.pendingCoins(), 0);
+        assertEq(pad.burned(token), burnedBefore + undelivered);
+        assertEq(IERC20(token).totalSupply(), supplyBefore - undelivered, "the undelivered coins are gone");
+        assertEq(IERC20(token).balanceOf(alice), bals[0], "what was delivered stays");
+        vm.expectRevert(LaunchpadBase.BadMigration.selector);
+        mig.abandonDelivery(token); // nothing left to give up
+        vm.expectRevert(LaunchpadBase.BadMigration.selector);
+        _mb(token, "LCAT", first, firstBal); // and nothing is delivered any more
+
+        // the coin trades, and the launchpad can freeze again
+        vm.prank(dave);
+        pad.buy{value: 0.01 ether}(token, 0);
+        assertGt(IERC20(token).balanceOf(dave), 0);
+        mig.announceFreeze(block.number + 5);
+        assertEq(pad.freezeBlock(), block.number + 5);
+    }
+
+    /// Two coins of one ticker in a tree (a hand-made file: the tool refuses them) cannot lend
+    /// each other holders: a holder's leaf names its coin by the coin's own leaf.
+    function test_aHolderLeafNamesItsCoinNotItsTicker() public {
+        LaunchpadBase.LedgerCoin memory a = _coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold);
+        LaunchpadBase.LedgerCoin memory b = _coin("Lite Cat", "LCAT", dave, false, virtualQuote, sold);
+        bytes32 leafA = MerkleTree.coinLeaf(a);
+        bytes32 leafB = MerkleTree.coinLeaf(b);
+        assertTrue(leafA != leafB);
+        leaves.push(leafA);
+        leaves.push(MerkleTree.holderLeaf(leafA, alice, sold / 2));
+        leaves.push(leafB);
+        leaves.push(MerkleTree.holderLeaf(leafB, carol, sold / 2));
+        _commit();
+        address[] memory one = new address[](1);
+        uint256[] memory oneBal = new uint256[](1);
+        one[0] = alice;
+        oneBal[0] = sold / 2;
+        LaunchpadBase.Delivery memory d;
+        d.holders = one;
+        d.balances = oneBal;
+        d.proofs = new bytes32[][](1);
+        d.proofs[0] = _proofOf(MerkleTree.holderLeaf(leafA, alice, sold / 2));
+        address token = mig.migrateToken{value: realQuote}(a, _proofOf(leafA), d);
+        assertEq(pad.migrationCoinLeaf(token), leafA);
+        assertEq(IERC20(token).balanceOf(alice), sold / 2);
+        assertEq(pad.migrationPending(token), sold - sold / 2);
+        // carol's balance is a leaf of the tree, of the other coin's: not for this token
+        d.holders[0] = carol;
+        d.proofs[0] = _proofOf(MerkleTree.holderLeaf(leafB, carol, sold / 2));
+        vm.expectRevert(LaunchpadBase.NotInSnapshot.selector);
+        mig.migrateBalances(token, d);
+        // the other coin itself can never be created: its ticker is taken
+        d.holders[0] = carol;
+        vm.expectRevert(LaunchpadBase.TickerMigrated.selector);
+        mig.migrateToken{value: realQuote}(b, _proofOf(leafB), d);
     }
 
     function test_aTickerMigratesOnce() public {
@@ -1241,7 +1342,7 @@ contract MigrationTest is Test {
         _mt(c, one, oneBal, realQuote);
         oneBal[0] = bals[0];
         d = _delivery("LCAT", one, oneBal);
-        d.proofs[0] = _proofOf(MerkleTree.holderLeaf(keccak256("LCAT"), bob, bals[1])); // bob's proof
+        d.proofs[0] = _proofOf(MerkleTree.holderLeaf(MerkleTree.coinLeaf(c), bob, bals[1])); // bob's proof
         vm.expectRevert(LaunchpadBase.NotInSnapshot.selector);
         mig.migrateToken{value: realQuote}(c, _proofOf(MerkleTree.coinLeaf(c)), d);
         d.proofs = new bytes32[][](0); // no proofs at all
@@ -1277,12 +1378,12 @@ contract MigrationTest is Test {
         LaunchpadBase.LedgerCoin memory c = _coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold);
         assertEq(mig.migrationLeafCoin(c), MerkleTree.coinLeaf(c));
         assertEq(
-            mig.migrationLeafHolder(keccak256("LCAT"), alice, bals[0]),
-            MerkleTree.holderLeaf(keccak256("LCAT"), alice, bals[0])
+            mig.migrationLeafHolder(MerkleTree.coinLeaf(c), alice, bals[0]),
+            MerkleTree.holderLeaf(MerkleTree.coinLeaf(c), alice, bals[0])
         );
         bytes32[] memory two = new bytes32[](2);
         two[0] = MerkleTree.coinLeaf(c);
-        two[1] = MerkleTree.holderLeaf(keccak256("LCAT"), alice, bals[0]);
+        two[1] = MerkleTree.holderLeaf(two[0], alice, bals[0]);
         bytes32 root = MerkleTree.root(two);
         bytes32 sorted =
             two[0] < two[1] ? keccak256(abi.encodePacked(two[0], two[1])) : keccak256(abi.encodePacked(two[1], two[0]));

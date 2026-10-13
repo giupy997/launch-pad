@@ -26,7 +26,7 @@ contract MigrationFixtureTest is Test {
 
         script.ensureRoot(pad, json);
         assertEq(
-            pad.migrationRoot(), bytes32(uint256(0x9bb8b9e073b6cde9632ba848277ca117db3725f2e8ee48a3d46d176d6616d433))
+            pad.migrationRoot(), bytes32(uint256(0x46c19381e8fb095571fe24d39cc68c42759b31f87aacc32c6866c3053061718e))
         );
         assertEq(pad.migrationFreezeHeight(), 3_600_090);
         address[] memory tokens = script.migrateAll(pad, coins);

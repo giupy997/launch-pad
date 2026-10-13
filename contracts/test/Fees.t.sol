@@ -487,7 +487,7 @@ contract FeesTest is Test {
         // the snapshot's tree: the coin as it arrives, and bob
         bytes32[] memory leaves = new bytes32[](2);
         leaves[0] = MerkleTree.coinLeaf(coin);
-        leaves[1] = MerkleTree.holderLeaf(keccak256("LEDG"), bob, sold - burnedThere);
+        leaves[1] = MerkleTree.holderLeaf(leaves[0], bob, sold - burnedThere);
         mig.setMigrationRoot(MerkleTree.root(leaves), 1);
         LaunchpadBase.Delivery memory d;
         d.holders = new address[](1);

@@ -408,22 +408,38 @@ and reimburse yourself from the converted cbLTC afterwards.
 
 ## 6. The coins on LitVM
 
+First the root, from the Safe: the pad commits to the snapshot (the file's
+`stateRoot`, the Merkle tree of its coins and holders, and its freeze block)
+once and for good, through the timelock, so it is public a delay before any
+coin arrives. The operator cannot set it: it only delivers what it says.
+
+```bash
+cd ~/launch-pad/contracts && ADDRESSES=verify/litvm/addresses.sh bash script/ops/timelock.sh safe-calldata set-root ../litecoin/migration/base-$FREEZE.json
+```
+
+(the Safe signs it, the delay passes, `execute` from here; the script refuses
+a dry-run file). Then the coins, from the operator's key:
+
 ```bash
 source ~/notus-litvm.env; cd ~/launch-pad/contracts && source .env
 LAUNCHPAD="$LITVM_PAD" MIGRATION_FILE=../litecoin/migration/base-$FREEZE.json forge script script/MigrateFromLedger.s.sol --rpc-url litvm --account notus --broadcast
 ```
 
-Direct mode, since the deployer is the pad's migration operator: the root is
-set (the file's `stateRoot`, the Merkle tree of its coins and holders — the
-script rebuilds the tree from the file and refuses one whose root is not its
-coins'), every coin created with its proof, every holder delivered with theirs
-(150 a transaction), the graduated ones seed their pools;
-`base-$FREEZE.json.migrated.json` is written when all is done. The pad checks
-every proof against the root it committed to, so the operator's key can
-deliver what the snapshot says and nothing else; anyone can run
+Direct mode, since the deployer is the pad's migration operator: the script
+rebuilds the tree from the file (and refuses one whose root is not its coins',
+or that the pad did not commit to), creates every coin with its proof,
+delivers every holder with theirs (150 a transaction), the graduated ones seed
+their pools; `base-$FREEZE.json.migrated.json` is written when all is done.
+The pad checks every proof against the root it committed to, and a holder's
+proof names its coin by the coin's own leaf, so the operator's key can deliver
+what the snapshot says, to the coin it says, and nothing else; anyone can run
 `snapshot-evm.mjs` on the frozen Base pad and compare the root. Then
-`closeMigration()` through the timelock. Coins the snapshot parked in the
-vault: hand them back to whom they belong from there, by hand.
+`closeMigration()` through the timelock (no operator can be named after it).
+A coin whose holders can never all be delivered (a snapshot that does not add
+up for it) would block every later freeze: `abandonDelivery(token)` through
+the timelock burns what was not delivered and lets the pad move on. Coins the
+snapshot parked in the vault: hand them back to whom they belong from there,
+by hand.
 
 ## 7. Publish
 

@@ -2,7 +2,7 @@
  "network": "test",
  "height": 3600090,
  "freezeHeight": 3600090,
- "stateRoot": "9bb8b9e073b6cde9632ba848277ca117db3725f2e8ee48a3d46d176d6616d433",
+ "stateRoot": "46c19381e8fb095571fe24d39cc68c42759b31f87aacc32c6866c3053061718e",
  "generatedAt": "2026-09-27T17:08:14.365Z",
  "totals": {
   "coins": 3,

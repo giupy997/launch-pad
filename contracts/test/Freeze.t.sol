@@ -536,8 +536,8 @@ contract FreezeTest is Test {
         // the snapshot's tree: the coin, bob's half, carol's half
         bytes32[] memory leaves = new bytes32[](3);
         leaves[0] = MerkleTree.coinLeaf(coin);
-        leaves[1] = MerkleTree.holderLeaf(keccak256("LEDG"), bob, sold / 2);
-        leaves[2] = MerkleTree.holderLeaf(keccak256("LEDG"), carol, sold / 2);
+        leaves[1] = MerkleTree.holderLeaf(leaves[0], bob, sold / 2);
+        leaves[2] = MerkleTree.holderLeaf(leaves[0], carol, sold / 2);
         mig.setMigrationRoot(MerkleTree.root(leaves), 1);
         LaunchpadBase.Delivery memory d;
         d.holders = new address[](1);

@@ -187,11 +187,15 @@ abstract contract LaunchpadBase is Ownable, ReentrancyGuard {
     /// Each holder of a migrated coin is delivered once: a batch sent twice
     /// reverts instead of paying twice and starving the holders after it.
     mapping(address token => mapping(address holder => bool)) public migrationDelivered;
-    /// May run a migration in (setMigrationRoot, migrateToken, migrateBalances)
-    /// beside the owner: the deployer, for the days of a move, named by the
-    /// owner — a timelock, so publicly ahead — and cleared when the migration
-    /// closes.
+    /// May run a migration in (migrateToken, migrateBalances) beside the
+    /// owner: the deployer, for the days of a move, named by the owner — a
+    /// timelock, so publicly ahead — and cleared when the migration closes.
+    /// The root itself is the owner's to set.
     address public migrationOperator;
+    /// The leaf of each migrated coin in the snapshot's tree: a holder's leaf
+    /// names its coin by this, so a balance proves itself for one coin only
+    /// (two coins of one ticker in a tree could not lend each other holders).
+    mapping(address token => bytes32) public migrationCoinLeaf;
 
     // ------------------------------------------- migration to another chain
     /// The block from which this launchpad stands still so that its coins can
@@ -275,6 +279,8 @@ abstract contract LaunchpadBase is Ownable, ReentrancyGuard {
         address indexed token, address indexed creator, uint256 virtualQuote, uint256 realQuote, uint256 sold
     );
     event MigrationBalances(address indexed token, uint256 holders, uint256 pending);
+    /// The owner gave up on a migrated coin's remaining deliveries: `undelivered` burned.
+    event MigrationAbandoned(address indexed token, uint256 undelivered);
     event MigrationRootSet(bytes32 root, uint256 freezeHeight);
     event MigrationClosed();
     event MigrationOperatorUpdated(address operator);

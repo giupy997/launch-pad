@@ -21,8 +21,9 @@ import {MerkleTree} from "./MerkleTree.sol";
 /// Who runs it decides how it runs:
 ///   MODE=direct    the broadcaster is the pad's owner (a rehearsal pad) or its
 ///                  migration operator (the live pad, owned by its timelock, lets
-///                  the operator named in its deploy run the migration without a
-///                  delay): everything runs now.
+///                  the operator named in its deploy deliver without a delay, once
+///                  the owner has committed the snapshot's root through the
+///                  timelock: timelock.sh safe-calldata set-root): everything runs now.
 ///   MODE=schedule  the owner is a TimelockController (TIMELOCK=0x...) and no
 ///                  operator is set: the calls still to be made are scheduled as
 ///                  batches, in the open, and can run once the delay has passed…
@@ -172,10 +173,10 @@ contract MigrateFromLedger is Script {
         bytes32[] memory leaves = new bytes32[](n);
         uint256 k;
         for (uint256 i = 0; i < coins.length; i++) {
-            leaves[k++] = MerkleTree.coinLeaf(_ledgerCoin(coins[i], quote));
-            bytes32 sym = keccak256(bytes(coins[i].symbol));
+            bytes32 leaf = MerkleTree.coinLeaf(_ledgerCoin(coins[i], quote));
+            leaves[k++] = leaf;
             for (uint256 j = 0; j < coins[i].holders.length; j++) {
-                leaves[k++] = MerkleTree.holderLeaf(sym, coins[i].holders[j], coins[i].balances[j]);
+                leaves[k++] = MerkleTree.holderLeaf(leaf, coins[i].holders[j], coins[i].balances[j]);
             }
         }
         root = MerkleTree.root(leaves);
@@ -217,6 +218,11 @@ contract MigrateFromLedger is Script {
         (bytes32 root, uint256 freeze) = rootOf(json);
         require(root == treeRoot(load(json), destQuote(json)), "the file's stateRoot is not the tree of its coins");
         if (pad.migrationRoot() == bytes32(0)) {
+            // the owner's call: on a pad owned by a timelock the Safe schedules it first
+            // (bash script/ops/timelock.sh safe-calldata set-root FILE), a delay ahead
+            console.log(
+                "setting the migration root (the owner's call; a timelock-owned pad has it set from the Safe first)"
+            );
             ILaunchpadMigration(address(pad)).setMigrationRoot(root, freeze);
             console.log("migration root set:", vm.toString(root));
         } else {

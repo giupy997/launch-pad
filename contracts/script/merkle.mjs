@@ -17,7 +17,6 @@ import {
   encodeAbiParameters,
   getAddress,
   keccak256,
-  stringToHex,
   zeroAddress,
   zeroHash,
 } from "../../web/node_modules/viem/_esm/index.js";
@@ -91,12 +90,12 @@ export function ledgerCoin(c, destQuote = zeroAddress) {
 const standardLeaf = (encoded) => keccak256(keccak256(encoded));
 /** The leaf of a coin: LaunchpadMigration.migrationLeafCoin. */
 export const coinLeaf = (coin) => standardLeaf(encodeAbiParameters([{ type: "uint8" }, LEDGER_COIN], [LEAF_COIN, coin]));
-/** The leaf of one holder's balance: LaunchpadMigration.migrationLeafHolder. */
-export const holderLeaf = (symbol, holder, amount) =>
+/** The leaf of one holder's balance, the coin named by its own leaf: LaunchpadMigration.migrationLeafHolder. */
+export const holderLeaf = (coinLeaf, holder, amount) =>
   standardLeaf(
     encodeAbiParameters(
       [{ type: "uint8" }, { type: "bytes32" }, { type: "address" }, { type: "uint256" }],
-      [LEAF_HOLDER, keccak256(stringToHex(symbol)), getAddress(holder), BigInt(amount)]
+      [LEAF_HOLDER, coinLeaf, getAddress(holder), BigInt(amount)]
     )
   );
 
@@ -132,8 +131,9 @@ export function migrationTree(coins, destQuote = zeroAddress) {
   const leaves = [];
   for (const c of coins) {
     if (c.holders.length !== c.balances.length) throw new Error(`${c.symbol}: holders and balances differ in length`);
-    leaves.push(coinLeaf(ledgerCoin(c, destQuote)));
-    for (let j = 0; j < c.holders.length; j++) leaves.push(holderLeaf(c.symbol, c.holders[j], c.balances[j]));
+    const leaf = coinLeaf(ledgerCoin(c, destQuote));
+    leaves.push(leaf);
+    for (let j = 0; j < c.holders.length; j++) leaves.push(holderLeaf(leaf, c.holders[j], c.balances[j]));
   }
   return { leaves, ...buildTree(leaves) };
 }
