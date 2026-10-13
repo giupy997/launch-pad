@@ -40,26 +40,35 @@ pass and prints instead of sending.
 ## The timelock operations (`contracts/script/ops/timelock.sh`)
 
 The owner's operations on the Base v12 timelock, each scheduled now and
-executable by anyone after the delay, from the proposer's key on the VPS:
+executable by anyone after the delay (24 h). Since the handover of 2026-10-12
+the only proposer and canceller is the Safe 2-of-3: an operation is prepared
+on the VPS as calldata, signed in the Safe (Transaction Builder → custom data,
+two signatures), and executed from the VPS once ready. The key on the VPS
+executes; it schedules only on a timelock where it still proposes (a
+rehearsal pad's).
 
 | | |
 |---|---|
-| `grant` | an address (a Safe) becomes proposer and canceller next to the deployer's key |
-| `revoke` | the deployer's key loses both roles: only after the Safe has scheduled and executed an operation of its own |
-| `handover` | `grant` and `revoke` in one operation, one delay instead of two: for a Safe whose owners and threshold were read back from the chain and that has already executed a transaction of its own with two signatures |
-| `set-treasury` | the pad pays its 0.5% to a new address from the execution on |
-| `execute ID` | once ready (anyone may) |
-| `status ID`, `cancel ID` | |
-| `safe-calldata set-treasury\|revoke` | the same operations prepared for a Safe that is proposer: the calldata to send to the timelock from the Safe's Transaction Builder; the execution stays a plain command |
+| `safe-calldata set-treasury` | the pad pays its 0.5% to a new address from the execution on (the zero address is refused) |
+| `safe-calldata set-migrator` | a migrator deployed with `migrator.sh`, before any coin graduates (a coin keeps the one it graduated through) |
+| `safe-calldata set-root FILE` | the pad commits to a migration snapshot's root and freeze block, once (a dry-run file is refused) |
+| `safe-calldata revoke` | this machine's key loses PROPOSER and CANCELLER; never the Safe's own (refused: a timelock with no proposer and no admin can never be given one again) |
+| `safe-calldata cancel ID` | a pending operation is withdrawn before it is ready: the Safe's one move against a wrong or hostile one; the watch's siren prints the same `to`/`data` |
+| `execute ID` | once ready (anyone may); the outcome is read from the transaction's receipt |
+| `status ID` | |
+| `grant`, `handover`, `revoke`, `set-treasury`, `cancel ID` | the same from this machine's key, for a timelock it proposes on (none on Base today) |
 
-Addresses are asked at the prompt and echoed back checksummed for a `yes`.
-Every scheduled operation is written to `~/notus-ops/<id>.json`, so `execute`
-and `cancel` find their arguments. The watch reports each one as it lands.
+Each `safe-calldata` prints `to` (the timelock), `value` 0 and `data` for the
+Transaction Builder, and saves the operation by its id under
+`~/notus-ops/<id>.json`, so `execute` finds its arguments. Addresses are asked
+at the prompt and echoed back checksummed for a `yes`. The scripts refuse a
+node that answers for another chain than the addresses file's, and a
+`PRIVATE_KEY` from the environment on a live chain (`ALLOW_PRIVATE_KEY=1` to
+insist); the RPC URL travels in `ETH_RPC_URL`, never on a command line. The
+watch reports each operation as it lands, and tells how to cancel one it
+flags.
 
-The order the owner planned: a Safe 2-of-3 on Base (the dev wallet, a fresh
-signing wallet, a fresh recovery wallet) made proposer with `grant`; proven
-with one operation of its own; the deployer's key then revoked with `revoke`.
-From then on only the Safe schedules and cancels; the key on the VPS schedules
-nothing on Base. With the Safe as proposer, the migration runbook's `schedule`
-steps are sent from the Safe (`safe-calldata`, or the Transaction Builder with
-the same arguments); every `execute` stays as written.
+Before signing: decode the `data` on another machine (`cast 4byte-decode`,
+or paste it into the Safe's decoder) and compare it with what the VPS
+printed. The calldata is produced on the VPS; the Safe exists so that the VPS
+alone can do nothing, which holds only if a signer reads what it signs.
