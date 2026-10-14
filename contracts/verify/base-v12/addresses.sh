@@ -3,12 +3,15 @@ CHAIN_ID=8453 # the ops scripts refuse a node that answers for another chain
 PAD=0x23231924281B34Bb28F10D854DB8D2DcBd7F78c5
 MODULE=0x0F413C63Cfeb342Bcd1ae176DE896b530e02B2a2
 FACTORY=0x2662A5433f360176E3555D5EEc81AC5aCE5F36f9
-MIGRATOR=0x6f3303c520dE1a74a664c3EB3045cfb0380d40B3
-# UniV2Migrator v4 (the harvest a slice a block on any day, the liquidity leg on the exact amounts),
-# deployed 2026-10-12 from commit 3f00326 at nonce 66 of the deployer's key, verified on Basescan;
-# setMigrator scheduled by the Safe (id 0xaca1…eb9d), executable from 2026-10-13 23:48 UTC: MIGRATOR
-# above becomes this once it executed (a coin keeps the migrator it graduated through; none had)
+# the pad's migrator: UniV2Migrator v4 (the harvest a slice a block on any day, the liquidity leg on
+# the exact amounts), deployed 2026-10-12 from commit 3f00326 at nonce 66 of the deployer's key,
+# verified on Basescan, set on the pad by the Safe through the timelock (id 0xaca1…eb9d), executed
+# 2026-10-14 at block 52573727; no coin had graduated (a coin keeps the migrator it graduated
+# through). v5 (a slice every five minutes) follows the same way before the first graduation.
+MIGRATOR=0xaB950946E55Fbe4685F293924fA83529b5fDfEf1
 MIGRATOR_V4=0xaB950946E55Fbe4685F293924fA83529b5fDfEf1
+# v3, the migrator from the deploy to 2026-10-14: sold the buckets whole under an announced freeze
+MIGRATOR_V3=0x6f3303c520dE1a74a664c3EB3045cfb0380d40B3
 ZAP=0x15045E01b6A38f40695EEa0BB31aE0342f7Ee810
 TIMELOCK=0xe28f446D3a1DB105F8F9b34A65474E1F6d256f76
 TREASURY=0x24622320D93Da2d9c626EE469ad0C2c48a1ED7F7

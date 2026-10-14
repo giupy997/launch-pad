@@ -89,10 +89,17 @@ WETH=0x4200000000000000000000000000000000000006
 verify "$PAD" Launchpad.standard-input.json "src/Launchpad.sol:Launchpad" "$(enc 'constructor(address)' "$TREASURY")"
 verify "$FACTORY" LaunchTokenFactory.standard-input.json "src/LaunchTokenFactory.sol:LaunchTokenFactory"
 verify "$MODULE" LaunchpadMigration.standard-input.json "src/LaunchpadMigration.sol:LaunchpadMigration"
-verify "$MIGRATOR" UniV2Migrator.standard-input.json "src/UniV2Migrator.sol:UniV2Migrator" "$(enc 'constructor(address,address)' "$PAD" "$UNIV2_ROUTER")"
+# every migrator the pad has had, each with the input of the commit it was compiled from (v5 and
+# later: UniV2Migrator-<address>.standard-input.json, written by script/ops/migrator.sh)
+verify "${MIGRATOR_V3:-$MIGRATOR}" UniV2Migrator.standard-input.json "src/UniV2Migrator.sol:UniV2Migrator" "$(enc 'constructor(address,address)' "$PAD" "$UNIV2_ROUTER")"
 if [ -n "${MIGRATOR_V4:-}" ]; then
   verify "$MIGRATOR_V4" UniV2Migrator-v4.standard-input.json "src/UniV2Migrator.sol:UniV2Migrator" "$(enc 'constructor(address,address)' "$PAD" "$UNIV2_ROUTER")"
 fi
+for f in "$(dirname "$0")"/UniV2Migrator-0x*.standard-input.json; do
+  [ -f "$f" ] || continue
+  a=$(basename "$f" .standard-input.json); a=${a#UniV2Migrator-}
+  verify "$a" "$(basename "$f")" "src/UniV2Migrator.sol:UniV2Migrator" "$(enc 'constructor(address,address)' "$PAD" "$UNIV2_ROUTER")"
+done
 verify "$ZAP" SlipstreamZapRouter.standard-input.json "src/SlipstreamZapRouter.sol:SlipstreamZapRouter" "$(enc 'constructor(address,address,address)' "$PAD" "$SLIPSTREAM_ROUTER" "$WETH")"
 DEPLOY_PROPOSER=${DEPLOYER:-$PROPOSER} # the constructor's proposer: the deployer's key (the Safe took the role later)
 verify "$TIMELOCK" TimelockController.standard-input.json "lib/openzeppelin-contracts/contracts/governance/TimelockController.sol:TimelockController" \
