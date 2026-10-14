@@ -7,9 +7,14 @@ FACTORY=0x2662A5433f360176E3555D5EEc81AC5aCE5F36f9
 # the exact amounts), deployed 2026-10-12 from commit 3f00326 at nonce 66 of the deployer's key,
 # verified on Basescan, set on the pad by the Safe through the timelock (id 0xaca1…eb9d), executed
 # 2026-10-14 at block 52573727; no coin had graduated (a coin keeps the migrator it graduated
-# through). v5 (a slice every five minutes) follows the same way before the first graduation.
+# through). v5 follows the same way before the first graduation: MIGRATOR becomes MIGRATOR_V5 once
+# its setMigrator executed.
 MIGRATOR=0xaB950946E55Fbe4685F293924fA83529b5fDfEf1
 MIGRATOR_V4=0xaB950946E55Fbe4685F293924fA83529b5fDfEf1
+# UniV2Migrator v5 (harvest and buyback a slice every five minutes per coin, the seeding leftover a
+# transfer), deployed 2026-10-14 from commit 9f0b102 at block 52573869 by the deployer's key, its
+# Standard JSON input UniV2Migrator-0x6007…3434.standard-input.json (verified on Basescan)
+MIGRATOR_V5=0x60070f76f885616D675305624497ed0797303434
 # v3, the migrator from the deploy to 2026-10-14: sold the buckets whole under an announced freeze
 MIGRATOR_V3=0x6f3303c520dE1a74a664c3EB3045cfb0380d40B3
 ZAP=0x15045E01b6A38f40695EEa0BB31aE0342f7Ee810

@@ -98,7 +98,7 @@ cat > ~/notus-litvm.env <<'EOF2'
 export PATH="$HOME/.foundry/bin:$PATH"
 export BASE_PAD=0x23231924281B34Bb28F10D854DB8D2DcBd7F78c5       # the v12 Launchpad on Base
 export BASE_TIMELOCK=0xe28f446D3a1DB105F8F9b34A65474E1F6d256f76  # its TimelockController (24 h)
-export BASE_MIGRATOR=0xaB950946E55Fbe4685F293924fA83529b5fDfEf1  # its UniV2Migrator today (v4; v5 to come): a coin's own is graduatedVia (step 2)
+export BASE_MIGRATOR=0x60070f76f885616D675305624497ed0797303434  # its UniV2Migrator (v5, once its setMigrator executed; v4 before): a coin's own is graduatedVia (step 2)
 export BASE_QUOTE=0xcb17C9Db87B595717C857a08468793f5bAb6445F
 export BASE_FROM_BLOCK=52397620                                   # the pad's deploy block
 export DEPLOYER=0x707f56C25e5d8cc12d08A3bf73f54dBeD0CD9A02        # the keystore notus: executes what the Safe scheduled
