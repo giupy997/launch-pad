@@ -59,7 +59,8 @@ found() {
     forge build --quiet
     node script/standard-input.mjs src/UniV2Migrator.sol:UniV2Migrator >/dev/null
     cp out/verify/UniV2Migrator.standard-input.json "$input"
-    echo "   Standard JSON input written to $input (commit it with the address)"
+    echo "   Standard JSON input written to $input (commit it with the address; on a machine that does not push,"
+    echo "   send it and move it out of the checkout before the next git pull, which brings the committed copy)"
   fi
   check "$addr"
   echo
