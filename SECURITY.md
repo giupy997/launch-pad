@@ -43,7 +43,12 @@ to (RPC providers, WalletConnect, Netlify).
   on the pads, and every deploy of the site, within a minute.
 - The deployer's key lives in a Foundry keystore on one machine with
   key-only SSH; it signs rehearsals, the daily operations of the Liteforge
-  rehearsal pad, and the execution of ready timelock operations.
+  rehearsal pad, deploys, and the execution of ready timelock operations.
+  The same key is today one of the Safe's three owners: the owner means to
+  replace it there with a key that never touches that machine, so that the
+  machine, compromised with the keystore's password, holds no signature of
+  the two; `check-base-v12.sh` reports the Safe's `isOwner` for the key until
+  then.
 
 ## Independent reviews
 
@@ -68,7 +73,7 @@ received; both are answered in full in the repository's history.
 | M-03 | A two-step token-to-token swap page could spend the wallet's own native balance beyond the sale's proceeds | Fixed 2026-10-12 by removing the page: it was never linked from the site and listed only native-quoted curves, so it showed nothing on Base (cbLTC-quoted) and worked only on the Liteforge rehearsal pad |
 | M-04 | No CI, no protected-file rules, `forge fmt --check` failing | Fixed 2026-10-12: `.github/workflows/ci.yml` (actions pinned to commits, read-only token, immutable install with no lifecycle script, registry signatures, production-dependency audit, types, lint, unit tests, build; forge fmt and the contract tests), `CODEOWNERS`, this file, the contracts formatted. Branch protection on `main` is a repository setting the owner enables |
 | L-01 | The ERC-20 buy credits the amount requested, not the amount received | Fixed in code 2026-10-12: the buy and the migration's quote pull measure the pad's balance around the transfer and revert unless the delta is the amount (a fee-on-transfer mock test on both). Lands with the next pad; on Base v12 the only quote asset is cbLTC, a standard token, and a quote asset can only be added through the timelock |
-| L-02 | The systemd units carry no sandboxing directives | Open, scheduled: `NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome=read-only` with the state directories writable, `PrivateTmp`, a restrictive `UMask` |
+| L-02 | The systemd units carry no sandboxing directives | Fixed 2026-10-14: each service runs as its own system user (`notus-watch`, `notus-points`), with `NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome=read-only` (the keystore, `.env`, the operations and `/etc/notus` hidden besides), `PrivateTmp`, `PrivateDevices`, `ProtectProc=invisible`, the kernel and cgroup protections, `RestrictAddressFamilies`, `@system-service` syscalls, no capabilities, `UMask=0077`, memory and task limits; state under `/var/lib/<service>`; installed by `ops/deploy/install-units.sh`. The internal review of 2026-10-13 had added the reason it mattered: the two shared one user, so the one service exposed to the network could read the watch's bot token from `/proc` and write the checkout both ran from |
 | L-03 | The site's Content Security Policy allows inline scripts | Open: a nonce-based policy needs a request-time nonce through Next.js middleware; planned, low priority, no HTML sink exists in the application |
 
 ## Dependency policy (`web/`)

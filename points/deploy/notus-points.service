@@ -3,14 +3,20 @@
 # a wallet's points and invite acceptances on 127.0.0.1:8789, behind Caddy
 # (see points/deploy/Caddyfile, the /points/* block).
 #
+# Runs as its own system user (notus-points, in the group `notus` to read the
+# checkout), its data in /var/lib/notus-points (JSON lines; back it up), the
+# rest of the system read-only or hidden: the one service exposed to the
+# network can reach neither the watch's token nor the keystore nor the code it
+# runs. Installed, with the watch, by ops/deploy/install-units.sh:
+#
 #   cd ~/launch-pad && git pull && (cd web && npm ci --ignore-scripts)   # viem, from the site's node_modules; the lock as it is
-#   sudo cp points/deploy/notus-points.service /etc/systemd/system/
-#   sudo systemctl daemon-reload && sudo systemctl enable --now notus-points
+#   sudo bash ops/deploy/install-units.sh
 #   journalctl -u notus-points -f
 #
-# No key, no wallet: the only writes are invite bindings signed by the
-# invitee. Data lives in points/data/<chain>/ as JSON lines; back it up with
-# the rest of the home directory.
+# Optional, /etc/notus/points.env (root-only): POINTS_TOKEN=<the same secret as
+# the site's POINTS_TOKEN on Netlify>, so the POST limit counts the visitor.
+#
+# No key, no wallet: the only writes are invite bindings signed by the invitee.
 [Unit]
 Description=Notus points (indexer + API)
 After=network-online.target
@@ -18,8 +24,13 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=notus
+User=notus-points
+Group=notus-points
+SupplementaryGroups=notus
 WorkingDirectory=/home/notus/launch-pad
+EnvironmentFile=-/etc/notus/points.env
+StateDirectory=notus-points
+StateDirectoryMode=0750
 ExecStart=/usr/bin/node points/service.ts
 Restart=always
 RestartSec=10
@@ -27,8 +38,36 @@ TimeoutStopSec=90
 KillSignal=SIGTERM
 Environment=PORT=8789
 Environment=NOTUS_POINTS_CHAINS=liteforge
-Environment=NOTUS_POINTS_DATA=/home/notus/launch-pad/points/data
+Environment=NOTUS_POINTS_DATA=/var/lib/notus-points
 Environment=NOTUS_POINTS_EVERY=10
+MemoryMax=1G
+TasksMax=64
+# --- the sandbox (SECURITY.md, L-02). Its own system user: the other service, a shell
+# as `notus`, or a hole in this process cannot read what the other holds (a bot
+# token in /proc, the keystore, the RPC keys) nor write the checkout it runs from.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+InaccessiblePaths=-/home/notus/.foundry -/home/notus/.ssh -/home/notus/notus-ops -/home/notus/launch-pad/contracts/.env -/etc/notus
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectProc=invisible
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+CapabilityBoundingSet=
+UMask=0077
 
 [Install]
 WantedBy=multi-user.target

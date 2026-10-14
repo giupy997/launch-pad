@@ -37,9 +37,10 @@ node points/service.ts                      # Node 22.18+ runs the TypeScript as
 
 Environment: `PORT` (default 8789), `NOTUS_POINTS_CHAINS` (comma-separated
 keys of `chains.ts`, default `liteforge`), `NOTUS_POINTS_DATA` (a directory,
-default `points/data`), `NOTUS_POINTS_EVERY` (seconds between passes, default
-10). Data lands in `<data>/<chain>/`; delete a chain's directory to re-index
-it from the pad's deploy block.
+default `points/data`; the unit sets `/var/lib/notus-points`),
+`NOTUS_POINTS_EVERY` (seconds between passes, default 10), `POINTS_TOKEN`
+(optional, see below). Data lands in `<data>/<chain>/`; delete a chain's
+directory to re-index it from the pad's deploy block.
 
 Tests, against fakes of the real nodes and made-up pads (no network):
 
@@ -51,12 +52,18 @@ node --test --experimental-strip-types web/lib/points/*.test.ts
 
 ```bash
 cd ~/launch-pad && git pull && (cd web && npm ci --ignore-scripts)   # the lock as it is, no lifecycle script
-sudo cp points/deploy/notus-points.service /etc/systemd/system/
-sudo systemctl daemon-reload && sudo systemctl enable --now notus-points
+sudo bash ops/deploy/install-units.sh                         # the unit, as its own user, sandboxed; data in /var/lib/notus-points
 journalctl -u notus-points -f                                 # the backfill of Season 0, then a pass every 10s
 sudo cp points/deploy/Caddyfile /etc/caddy/Caddyfile && sudo systemctl reload caddy
 curl -s https://desk.notus-pad.fun/points/health
 ```
+
+The service runs as `notus-points`, reads the checkout and nothing else of
+the home (the keystore, `.env`, the watch's token are hidden from it), and
+writes only `/var/lib/notus-points`. `POINTS_TOKEN`, when set, goes in
+`/etc/notus/points.env` (root-only), the same value as the site's on Netlify:
+the site then names the visitor's address under it and the service's POST
+limit counts visitors, not the site's egress address.
 
 Then on Netlify: `POINTS_URL=https://desk.notus-pad.fun/points`.
 

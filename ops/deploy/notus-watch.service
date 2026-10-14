@@ -4,10 +4,12 @@
 # owner-only event on the pads, a deploy of the site, the pad's address gone
 # from it, and a daily heartbeat. Read-only: no key, no wallet.
 #
+# Runs as its own system user (notus-watch, in the group `notus` to read the
+# checkout), its state in /var/lib/notus-watch, the rest of the system read-only
+# or hidden. Installed, with the points service, by ops/deploy/install-units.sh:
+#
 #   sudo install -d -m 700 /etc/notus          # once; then the env file, see ops/deploy/watch.env.example
-#   cd ~/launch-pad && git pull
-#   sudo cp ops/deploy/notus-watch.service /etc/systemd/system/
-#   sudo systemctl daemon-reload && sudo systemctl enable --now notus-watch
+#   cd ~/launch-pad && git pull && sudo bash ops/deploy/install-units.sh
 #   journalctl -u notus-watch -f
 [Unit]
 Description=Notus watch (timelocks, pads, site → Telegram)
@@ -16,15 +18,48 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=notus
+User=notus-watch
+Group=notus-watch
+SupplementaryGroups=notus
 WorkingDirectory=/home/notus/launch-pad
+# read by the service manager before the sandbox: the token never sits in a file the process can open
 EnvironmentFile=/etc/notus/watch.env
-Environment=NOTUS_WATCH_STATE=/home/notus/launch-pad/ops/state/watch.json
+StateDirectory=notus-watch
+StateDirectoryMode=0750
+Environment=NOTUS_WATCH_STATE=/var/lib/notus-watch/watch.json
 ExecStart=/usr/bin/node ops/watch.mjs
 Restart=always
 RestartSec=15
 KillSignal=SIGTERM
 TimeoutStopSec=30
+MemoryMax=512M
+TasksMax=64
+# --- the sandbox (SECURITY.md, L-02). Its own system user: the other service, a shell
+# as `notus`, or a hole in this process cannot read what the other holds (a bot
+# token in /proc, the keystore, the RPC keys) nor write the checkout it runs from.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+InaccessiblePaths=-/home/notus/.foundry -/home/notus/.ssh -/home/notus/notus-ops -/home/notus/launch-pad/contracts/.env -/etc/notus
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectProc=invisible
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+CapabilityBoundingSet=
+UMask=0077
 
 [Install]
 WantedBy=multi-user.target

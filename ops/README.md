@@ -29,13 +29,17 @@ Install, on the VPS: a Telegram bot (BotFather), its token and your chat id in
 root-only), then the unit:
 
 ```bash
-sudo cp ops/deploy/notus-watch.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now notus-watch
+cd ~/launch-pad && sudo bash ops/deploy/install-units.sh
 ```
 
-The first message lists what it watches and what is pending. State (the last
-block read, the pending operations, the site's deploy fingerprint) lives in
-`ops/state/watch.json`, gitignored. `node ops/watch.mjs --dry --once` runs one
-pass and prints instead of sending.
+(the script installs the watch and the points service together, each as its
+own system user, sandboxed: `ops/deploy/notus-watch.service`; run it again
+after a change to a unit). The first message lists what it watches and what
+is pending. State (the last block read, the pending operations, the site's
+deploy fingerprint, the messages not yet sent) lives in
+`/var/lib/notus-watch/watch.json`. `node ops/watch.mjs --dry --once` runs one
+pass and prints instead of sending (from a shell, it writes its state to
+`ops/state/watch.json`, gitignored).
 
 ## The timelock operations (`contracts/script/ops/timelock.sh`)
 

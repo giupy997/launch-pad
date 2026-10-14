@@ -91,6 +91,13 @@ expect "the deployer's key is not admin" "$(call "$TIMELOCK" 'hasRole(bytes32,ad
 expect "timelock is its own admin" "$(call "$TIMELOCK" 'hasRole(bytes32,address)(bool)' "$ADMIN_ROLE" "$TIMELOCK")" true
 expect "forge's stand-in sender is no proposer" "$(call "$TIMELOCK" 'hasRole(bytes32,address)(bool)' "$PROPOSER_ROLE" 0x1804c8AB1F12E6bbf3894d4083f33e07309d1f38)" false
 echo "      the Safe: $(call "$PROPOSER" 'getThreshold()(uint256)') of $(cast call "$PROPOSER" 'getOwners()(address[])' --rpc-url "$RPC" 2>/dev/null | tr -cd ',' | wc -c | awk '{print $1+1}') owners must sign"
+# the key on this machine must hold no signature of the Safe's two: a machine compromised with the
+# keystore's password would otherwise be halfway to every owner action (SECURITY.md, governance)
+if [ "$(call "$PROPOSER" 'isOwner(address)(bool)' "$DEPLOYER")" = true ]; then
+  printf 'WARN  %-38s %s\n' "the deployer's key is a Safe owner" "replace it in the Safe with a key that lives off this machine (Settings → Setup → Replace owner)"
+else
+  printf 'PASS  %-38s %s\n' "the deployer's key is no Safe owner" false
+fi
 
 echo "== the retired v11 timelock: nobody proposes, nothing changes there again"
 V11_TIMELOCK=0xeDCe189855E9298C3f5b937fE9Ffe8D5261B9EB2
