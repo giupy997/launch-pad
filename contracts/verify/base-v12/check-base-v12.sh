@@ -72,6 +72,7 @@ echo "      coins on the pad: $(call "$PAD" 'tokenCount()(uint256)')"
 echo "== the migrator and the zap"
 expect "migrator.launchpad" "$(call "$MIGRATOR" 'launchpad()(address)')" "$PAD"
 expect "migrator.router = Uniswap v2 Router02" "$(call "$MIGRATOR" 'router()(address)')" "$UNIV2_ROUTER"
+expect "migrator.HARVEST_COOLDOWN = 300 s (v5)" "$(call "$MIGRATOR" 'HARVEST_COOLDOWN()(uint256)')" 300
 expect "zap.launchpad" "$(call "$ZAP" 'launchpad()(address)')" "$PAD"
 expect "zap.swapRouter = Slipstream" "$(call "$ZAP" 'swapRouter()(address)')" "$SLIPSTREAM_ROUTER"
 

@@ -98,7 +98,7 @@ cat > ~/notus-litvm.env <<'EOF2'
 export PATH="$HOME/.foundry/bin:$PATH"
 export BASE_PAD=0x23231924281B34Bb28F10D854DB8D2DcBd7F78c5       # the v12 Launchpad on Base
 export BASE_TIMELOCK=0xe28f446D3a1DB105F8F9b34A65474E1F6d256f76  # its TimelockController (24 h)
-export BASE_MIGRATOR=0x60070f76f885616D675305624497ed0797303434  # its UniV2Migrator (v5, once its setMigrator executed; v4 before): a coin's own is graduatedVia (step 2)
+export BASE_MIGRATOR=0x60070f76f885616D675305624497ed0797303434  # its UniV2Migrator (v5, the pad's since 2026-10-15): a coin's own is graduatedVia (step 2)
 export BASE_QUOTE=0xcb17C9Db87B595717C857a08468793f5bAb6445F
 export BASE_FROM_BLOCK=52397620                                   # the pad's deploy block
 export DEPLOYER=0x707f56C25e5d8cc12d08A3bf73f54dBeD0CD9A02        # the keystore notus: executes what the Safe scheduled
@@ -194,10 +194,10 @@ is a slice every five minutes per coin — at most what sells for half a
 percent of the pool's quote side, which a trade wrapped around one slice
 cannot profit from, and paced so that a price moved against a run of slices
 has to be held in the open for minutes a slice — on any day, a freeze
-announced included (the Base v12 migrator v4 `0xaB95…fEf1` paces a slice a
-block instead, v3 `0x6f33…40B3` sold the buckets whole under a freeze: a coin
-keeps the migrator it graduated through, so the switch to this code's v5
-comes before the first graduation).
+announced included (the Base v12 pad has run this code's v5 since
+2026-10-15, before any coin graduated; v4 `0xaB95…fEf1` paced a slice a block,
+v3 `0x6f33…40B3` sold the buckets whole under a freeze: a coin keeps the
+migrator it graduated through, and none graduated through those).
 Anyone may call it (the site has the button; the caller is tipped a
 twentieth of the treasury's part). The keeper does it for every graduated
 coin until every bucket is empty:
