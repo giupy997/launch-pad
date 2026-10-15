@@ -16,7 +16,11 @@
 #
 # The pad comes from ADDRESSES (default verify/base-v12/addresses.sh), the
 # node from BASE_RPC or SRC_RPC in .env (else foundry's `base`), the signer
-# from the keystore ACCOUNT (default `notus`; PRIVATE_KEY for a test key).
+# from the keystore ACCOUNT (default `notus`; PRIVATE_KEY for a test key):
+# its password is asked once at the start (not for --dry), kept for every
+# send in a file only this user can read, in memory (/dev/shm) and removed
+# when the script ends, so a watch runs unattended; a wrong password is
+# refused before any pass.
 # A coin whose harvest reverts (its cooldown, a slice too small for the
 # pool to mint against) is skipped this pass and tried again on the next. A
 # read the node does not answer is said so, never taken for an empty bucket:
@@ -40,6 +44,21 @@ if [ -n "${PRIVATE_KEY:-}" ]; then
   echo "   signer: $(cast wallet address --private-key "$PRIVATE_KEY") (PRIVATE_KEY from the environment)"
 else
   SIGNER=(--account "${ACCOUNT:-notus}")
+  if [ "${1:-once}" != "--dry" ]; then
+    # asked once here: a send's own prompt would wait on a terminal nobody is reading (its stderr
+    # is dropped below), and a watch would stop at the first slice. The password goes to cast
+    # through a file (never a command line, which every process on the machine can read): in
+    # memory, readable by this user alone, gone when the script ends
+    PWDIR=$(mktemp -d "${TMPDIR_SECRET:-/dev/shm}/notus-keeper.XXXXXX") || { echo "   no private directory for the keystore password"; exit 1; }
+    chmod 700 "$PWDIR"
+    trap 'rm -rf "$PWDIR"' EXIT INT TERM
+    read -rsp "   password of the keystore ${ACCOUNT:-notus} (asked once, kept for every send): " PW; echo
+    (umask 077; printf '%s' "$PW" > "$PWDIR/password")
+    unset PW
+    SIGNER+=(--password-file "$PWDIR/password")
+    SIGNER_ADDR=$(cast wallet address "${SIGNER[@]}" 2>/dev/null) || { echo "   the keystore ${ACCOUNT:-notus} did not open: wrong password, or no such account in ~/.foundry/keystores"; exit 1; }
+    echo "   signer: $SIGNER_ADDR (keystore ${ACCOUNT:-notus})"
+  fi
 fi
 MODE=${1:-once}
 EVERY=${HARVEST_EVERY:-60}
