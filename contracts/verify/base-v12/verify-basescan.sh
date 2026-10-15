@@ -105,8 +105,10 @@ DEPLOY_PROPOSER=${DEPLOYER:-$PROPOSER} # the constructor's proposer: the deploye
 verify "$TIMELOCK" TimelockController.standard-input.json "lib/openzeppelin-contracts/contracts/governance/TimelockController.sol:TimelockController" \
   "$(enc 'constructor(uint256,address[],address[],address)' "$DELAY" "[$DEPLOY_PROPOSER]" "[$DEPLOY_PROPOSER,0x0000000000000000000000000000000000000000]" 0x0000000000000000000000000000000000000000)"
 if [ -n "${FIRST_TOKEN:-}" ]; then
-  # the coin's name and symbol, from the chain unless given
-  RPC=${BASE_RPC:-https://mainnet.base.org}
+  # the coin's name and symbol, from the chain unless given: the node of .env (BASE_RPC, or SRC_RPC
+  # as the server names it; the first of a comma-separated list), else Base's public endpoint
+  RPC=${BASE_RPC:-${SRC_RPC:-https://mainnet.base.org}}
+  RPC=${RPC%%,*}
   FIRST_NAME=${FIRST_NAME:-$(cast call "$FIRST_TOKEN" "name()(string)" --rpc-url "$RPC" | sed -e 's/^"//' -e 's/"$//')}
   FIRST_SYMBOL=${FIRST_SYMBOL:-$(cast call "$FIRST_TOKEN" "symbol()(string)" --rpc-url "$RPC" | sed -e 's/^"//' -e 's/"$//')}
   echo "== the first coin: $FIRST_NAME ($FIRST_SYMBOL) at $FIRST_TOKEN"
