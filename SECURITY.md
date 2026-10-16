@@ -76,6 +76,36 @@ received; both are answered in full in the repository's history.
 | L-02 | The systemd units carry no sandboxing directives | Fixed 2026-10-14, installed on the server the same day: each service runs as its own system user (`notus-watch`, `notus-points`), with `NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome=read-only` (the keystore, `.env`, the operations and `/etc/notus` hidden besides), `PrivateTmp`, `PrivateDevices`, `ProtectProc=invisible`, the kernel and cgroup protections, `RestrictAddressFamilies`, `@system-service` syscalls, no capabilities, `UMask=0077`, memory and task limits; state under `/var/lib/<service>`; installed by `ops/deploy/install-units.sh`. The internal review of 2026-10-13 had added the reason it mattered: the two shared one user, so the one service exposed to the network could read the watch's bot token from `/proc` and write the checkout both ran from |
 | L-03 | The site's Content Security Policy allows inline scripts | Open: a nonce-based policy needs a request-time nonce through Next.js middleware; planned, low priority, no HTML sink exists in the application |
 
+### Automated analysis (2026-10-16)
+
+Slither 0.11.6 and Mythril 0.24.8 were run on `contracts/src` at `ae57549`, the code of the
+contracts on Base (`UniV2Migrator.sol` unchanged since the v5 deploy at `9f0b102`), with the five
+fuzz tests at 3,000 runs each (15,000 cases, all passing). Nothing calls for a change to the
+deployed contracts.
+
+- **Slither** (102 detectors, 77 results): every High and Medium read against the code. The
+  eight High/High `uninitialized-state` and the twelve optimisation items are the migration
+  module's view of storage that the pad writes (the module runs by `delegatecall`; `forge inspect`
+  shows the pad's and the module's storage layouts identical, 39 slots). The four High/Medium
+  reentrancy items are calls to the pad's own token, to WETH and to Uniswap's pair and factory
+  from functions under `nonReentrant`, and `zapBuyCurve`'s refund of a caller's surplus, guarded
+  the same way. The rest are design choices (five-minute cooldowns on `block.timestamp`, partial
+  destructuring of return values) or false positives of the analysis.
+- **Mythril** (two transactions deep, 30 minutes per contract, twice: from the constructor, and
+  on the runtime code with unconstrained storage, the immutables made storage in a copy for the
+  purpose): no exploitable path. Its seven integer-underflow reports are the compiler's own
+  guarded arithmetic (the ABI decoder's calldata-size check, the reading of a storage string), its
+  "unprotected ether withdrawal" is the zap router returning its whole balance to the caller of
+  `zapBuyCurve`, a router meant to hold nothing between transactions; the reentrancy and
+  multiple-call reports are the zap's calls to the pad and the DEX under its guard. Coverage of
+  the migrator and the pad stays partial by construction: a call into a contract the engine does
+  not hold answers without data, so the cross-contract paths (harvest, graduation, buyback) are
+  covered by the Foundry tests, not by Mythril.
+- **For the next pad**, three hardenings noted, none a vulnerability: `harvest` asserting that
+  `takeTax` handed over exactly what it sells and deposits (`toSell == sellT + deepenT`), the
+  address parameters of `MigratorUpdated`, `TreasuryUpdated` and `MigrationOperatorUpdated`
+  indexed, and the zap router's `receive()` open to the launchpad alone.
+
 ## Dependency policy (`web/`)
 
 - `npm ci --ignore-scripts` everywhere: the lock is installed as it is and no
