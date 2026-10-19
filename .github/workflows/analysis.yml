@@ -1,0 +1,66 @@
+# Static analysis, continuous: CodeQL over the site and the points service
+# (JavaScript and TypeScript) and Slither over the contracts, on every push to
+# main, every pull request and once a week. The findings land in the
+# repository's Security tab (code scanning), where each is read and closed or
+# kept: Slither's eight High items on the migration module are the module's
+# view of storage the pad writes (SECURITY.md, Automated analysis), so this
+# workflow never fails a build on them; a new finding shows up there, not in a
+# red check. Every action is pinned to a commit, the token writes only the
+# security events.
+name: Analysis
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 5 * * 1" # Mondays, 05:17 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  codeql:
+    name: CodeQL (site and points service)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        with:
+          languages: javascript-typescript
+          build-mode: none
+      - uses: github/codeql-action/analyze@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        with:
+          category: /language:javascript-typescript
+
+  slither:
+    name: Slither (contracts)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
+        with:
+          version: v1.8.3
+      - uses: crytic/slither-action@b52cc1cbfee9ca3e8722dd5224299d16c9a6b80f # v0.4.2
+        id: slither
+        with:
+          target: contracts/
+          sarif: results.sarif
+          fail-on: none
+          slither-args: --filter-paths "lib/"
+      - uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        with:
+          sarif_file: ${{ steps.slither.outputs.sarif }}
+          category: slither
