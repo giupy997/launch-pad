@@ -43,18 +43,23 @@ interface IUniV2RouterSwap {
 /// at the price the curve closed at, the rest of the reserve locked in the
 /// pad, the LP locked in the migrator, nothing parked —
 /// and traded on the live router both ways; and a small ETH buy on the curve.
-/// NOTE: targets the deployed addresses — the v11 stack by default (README,
-/// Deployments). LAUNCHPAD names another pad (the v12 one, once deployed) and
-/// ZAP the zap deployed for it; the migrator is read off the pad. The pad's
-/// version is probed on the fork: a v12 pad takes the launchpad's fee on
-/// the pool too, in coins, which changes what the router trade checks.
+/// NOTE: targets the deployed addresses — the v12 stack by default (README,
+/// Deployments: the site's pad since 2026-10-09). LAUNCHPAD names another pad
+/// (the retired v11 one, left running with its coins) and ZAP the zap deployed
+/// for it; the migrator is read off the pad. The pad's version is probed on
+/// the fork: a v12 pad takes the launchpad's fee on the pool too, in coins,
+/// which changes what the router trade checks.
 /// Run with: RUN_FORK_LIVE=true [LAUNCHPAD=0x... ZAP=0x...] forge test --match-contract LiveBase -vv
 ///   (FORK_RPC overrides the Base node; the default is mainnet.base.org)
 contract LiveBaseForkTest is Test {
-    /// Base v11 (README, Deployments): the pad, its migrator and its zap — the defaults.
+    /// Base v12 (README, Deployments; contracts/verify/base-v12/addresses.sh): the pad, its
+    /// migrator (v5, set by the Safe through the timelock on 2026-10-15) and its zap — the defaults.
+    address constant V12_PAD = 0x23231924281B34Bb28F10D854DB8D2DcBd7F78c5;
+    address constant V12_MIGRATOR = 0x60070f76f885616D675305624497ed0797303434;
+    address constant V12_ZAP = 0x15045E01b6A38f40695EEa0BB31aE0342f7Ee810;
+    /// Base v11, retired and left running: LAUNCHPAD=0xEfbB…b5f4 ZAP=0x072a…5254 runs the same tests there.
     address constant V11_PAD = 0xEfbB4ebdf5130cC4fC45899EeBA727fa2F55b5f4;
     address constant V11_MIGRATOR = 0x8fB7f1D18F4b2ECC79da94aBF51f95B93E07d218;
-    address constant V11_ZAP = 0x072a77dC2a770504A1DA17e2fB6814C9cFf85254;
     /// Coinbase Wrapped LTC (8 decimals): the pad's only quote.
     IERC20 constant CBLTC = IERC20(0xcb17C9Db87B595717C857a08468793f5bAb6445F);
     /// Base's WETH (the OP-stack predeploy): the zap's way in.
@@ -79,8 +84,8 @@ contract LiveBaseForkTest is Test {
             return;
         }
         vm.createSelectFork(vm.envOr("FORK_RPC", string("https://mainnet.base.org")));
-        PAD = Launchpad(payable(vm.envOr("LAUNCHPAD", V11_PAD)));
-        ZAP = SlipstreamZapRouter(payable(vm.envOr("ZAP", V11_ZAP)));
+        PAD = Launchpad(payable(vm.envOr("LAUNCHPAD", V12_PAD)));
+        ZAP = SlipstreamZapRouter(payable(vm.envOr("ZAP", V12_ZAP)));
         MIGRATOR = UniV2Migrator(payable(address(PAD.migrator())));
         v12 = _isV12(address(PAD));
         // the zap buys on the pad it was deployed for: another pad's zap would buy on that one
@@ -128,7 +133,9 @@ contract LiveBaseForkTest is Test {
 
     function test_live_graduationSeedsTheUniswapPoolInOneTransaction() public {
         if (skipAll) return;
-        if (address(PAD) == V11_PAD) {
+        if (address(PAD) == V12_PAD) {
+            assertEq(address(MIGRATOR), V12_MIGRATOR, "the v12 pad's migrator is v5 (addresses.sh)");
+        } else if (address(PAD) == V11_PAD) {
             assertEq(address(MIGRATOR), V11_MIGRATOR, "the v11 pad's migrator is its v2 adapter");
         }
         assertEq(MIGRATOR.launchpad(), address(PAD));
