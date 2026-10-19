@@ -6,7 +6,10 @@
     "dev": "next dev --webpack",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "eslint ."
+    "typecheck": "tsc --noEmit",
+    "typecheck:points": "tsc -p ../points/tsconfig.json --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "test": "node --test --experimental-strip-types lib/points/*.test.ts lib/trades/*.test.ts lib/sanitize.test.ts lib/imageType.test.ts ../points/service.test.ts"
   },
   "dependencies": {
     "@netlify/blobs": "11.1.1",
@@ -43,5 +46,5 @@
     "axios": "1.20.0",
     "ws": "8.21.0"
   },
-  "packageManager": "npm@10.9.7"
+  "packageManager": "npm@11.21.1"
 }

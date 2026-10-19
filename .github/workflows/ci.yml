@@ -1,9 +1,12 @@
 # The checks a contributor runs before a push, run on every push and pull
 # request: the contracts (formatting, the unit tests; the fork tests need a
-# node and stay local) and the site (an immutable install with no lifecycle
-# script, the registry's signatures, the production dependencies' advisories,
-# types, lint, the unit tests, the production build). Every action is pinned
-# to a commit, the token can only read.
+# node and stay local) and the site (npm 11 pinned, so the lock's seven-day
+# release-age hold is enforced where it is installed; an immutable install
+# with no lifecycle script, the registry's signatures, the production
+# dependencies' advisories, types, lint, the unit tests, the production
+# build, each as a script of package.json: npx with a missing binary would
+# fetch the latest from the registry, a script resolves the installed one or
+# fails). Every action is pinned to a commit, the token can only read.
 name: CI
 
 on:
@@ -53,11 +56,15 @@ jobs:
           node-version-file: web/.nvmrc
           cache: npm
           cache-dependency-path: web/package-lock.json
+      # the npm the lock is installed with: 11.21.1 (package.json's packageManager), which reads
+      # min-release-age from web/.npmrc; Node 22 ships npm 10, which does not. Asserted before use
+      - run: npm install -g npm@11.21.1
+      - run: test "$(npm --version)" = "11.21.1" && test "$(npm config get min-release-age)" = "7"
       - run: npm ci --ignore-scripts
       - run: npm audit signatures
       - run: npm audit --omit=dev --audit-level=high
-      - run: npx tsc --noEmit
-      - run: npx tsc -p ../points/tsconfig.json --noEmit
-      - run: npx eslint . --max-warnings 0
-      - run: node --test --experimental-strip-types lib/points/*.test.ts lib/trades/*.test.ts lib/sanitize.test.ts lib/imageType.test.ts ../points/service.test.ts
+      - run: npm run typecheck
+      - run: npm run typecheck:points
+      - run: npm run lint
+      - run: npm test
       - run: npm run build

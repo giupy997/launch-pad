@@ -1,5 +1,8 @@
 [build]
   base = "web"
+  # the npm the lock is installed with, as in CI and package.json's packageManager: 11 reads
+  # min-release-age from web/.npmrc (a release younger than seven days is not installed), 10 does not
+  environment = { NPM_VERSION = "11.21.1" }
   # skip builds when nothing the site is made of changed (saves build
   # credits): the pages under web/, and this file, which carries the
   # redirect rules; the command runs in the base directory
