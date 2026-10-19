@@ -60,6 +60,8 @@ SystemCallFilter=@system-service
 SystemCallErrorNumber=EPERM
 CapabilityBoundingSet=
 UMask=0077
+# the service's IPC objects go with its last process: none outlives it for another user to find
+RemoveIPC=yes
 
 [Install]
 WantedBy=multi-user.target
