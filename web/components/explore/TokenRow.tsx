@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { TokenLogo } from "@/components/TokenLogo";
+import { OfficialMark } from "@/components/OfficialMark";
 import { fmtAgo } from "@/lib/format";
 import { fmtQuoteMoney, fmtQuoteMoneyNum } from "@/lib/price";
 import { Change } from "./Change";
@@ -17,8 +18,11 @@ export function TokenRow({ coin, usd, now }: { coin: Coin; usd: number | null; /
     >
       <TokenLogo uri={t.meta.logoURI} symbol={t.symbol} size={36} />
       <div className="min-w-0">
-        <div className="truncate text-sm font-semibold text-white">
-          {t.name} <span className="font-mono text-xs font-normal text-zinc-500">${t.symbol}</span>
+        <div className="flex items-center gap-2 text-sm font-semibold text-white">
+          <span className="truncate">
+            {t.name} <span className="font-mono text-xs font-normal text-zinc-500">${t.symbol}</span>
+          </span>
+          <OfficialMark token={t.address} />
         </div>
         <div className="font-mono text-[10px] tracking-widest uppercase text-zinc-600">
           {t.curve.graduated ? "graduated" : `curve ${stats.progress.toFixed(1)}%`}

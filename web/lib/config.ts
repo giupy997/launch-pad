@@ -105,6 +105,18 @@ export function isHiddenToken(chainId: number, token: string): boolean {
   return (HIDDEN_TOKENS[chainId] ?? []).some((t) => t.toLowerCase() === token.toLowerCase());
 }
 
+/** The project's own coins, by address: Notus and Lester once the owner creates
+ *  them on the pad (none on Base yet; the owner writes each address here at the
+ *  launch). The pad keeps no ticker unique, so any coin may call itself NOTUS:
+ *  the site marks these "Official" on the explore page and on the coin's page,
+ *  and marks nothing else (SECURITY.md L-06). */
+export const OFFICIAL_TOKENS: Record<number, `0x${string}`[]> = {
+  [base.id]: [],
+};
+export function isOfficialToken(chainId: number, token: string): boolean {
+  return (OFFICIAL_TOKENS[chainId] ?? []).some((t) => t.toLowerCase() === token.toLowerCase());
+}
+
 export const LAUNCHPAD_DEPLOY_BLOCK: Record<number, bigint> = {
   [base.id]: 52_397_620n, // v12
   [giwaSepolia.id]: 31_997_798n, // v7.1

@@ -10,6 +10,7 @@ import { tokenLiveReads, tokenStaticReads } from "@/lib/tokenReads";
 import { poolMarketCapOf, usePool } from "@/lib/pool";
 import { fmtNum, fmtUnits, shortAddr } from "@/lib/format";
 import { TokenLogo } from "@/components/TokenLogo";
+import { OfficialMark } from "@/components/OfficialMark";
 import { fmtQuoteMoney, fmtQuoteMoneyNum, isLtcQuote } from "@/lib/price";
 
 export function TokenCard({
@@ -57,6 +58,7 @@ export function TokenCard({
         <div className="min-w-0">
           <div className="text-lg font-semibold text-white truncate flex items-center gap-2">
             {t.name}
+            <OfficialMark token={t.address} />
             {t.meta.livestream && (
               <span className="font-mono text-[9px] tracking-widest uppercase border border-white rounded-full px-1.5 py-px shrink-0">
                 ● Live

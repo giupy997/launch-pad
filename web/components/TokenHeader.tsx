@@ -15,7 +15,8 @@ export type TokenHeaderProps = {
   logoURI: string;
   description?: string;
   disclaimer?: string | null;
-  badges: { graduated: boolean; preMarket: boolean; rewards: boolean; live: boolean; preIpoQuote: boolean };
+  /** official: the coin's address is in the site's OFFICIAL_TOKENS (lib/config.ts), the project's own coin */
+  badges: { official: boolean; graduated: boolean; preMarket: boolean; rewards: boolean; live: boolean; preIpoQuote: boolean };
   creator: `0x${string}`;
   /** when the coin was created, unix seconds; null while unknown */
   launched: number | null;
@@ -55,6 +56,11 @@ export function TokenHeader(p: TokenHeaderProps) {
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="display text-3xl leading-none text-white sm:text-4xl">${p.symbol}</h1>
+              {p.badges.official && (
+                <Badge solid title="A coin of the Notus project itself: its address is in the site's list of official coins">
+                  ★ Official
+                </Badge>
+              )}
               {p.badges.graduated && <Badge>♛ Graduated</Badge>}
               {p.badges.preMarket && (
                 <Badge solid title="Registered pair asset: new tokens can launch against it">

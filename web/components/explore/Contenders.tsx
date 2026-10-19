@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { TokenLogo } from "@/components/TokenLogo";
+import { OfficialMark } from "@/components/OfficialMark";
 import { fmtQuoteMoneyNum } from "@/lib/price";
 import { Change } from "./Change";
 import type { Coin } from "./types";
@@ -24,7 +25,10 @@ export function Contenders({ coins, usd }: { coins: Coin[]; usd: number | null }
                 <span className="w-4 font-mono text-xs text-zinc-600">{i + 1}</span>
                 <TokenLogo uri={t.meta.logoURI} symbol={t.symbol} size={28} />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium text-zinc-200 group-hover:text-white">${t.symbol}</span>
+                  <span className="flex items-center gap-1.5 text-sm font-medium text-zinc-200 group-hover:text-white">
+                    <span className="truncate">${t.symbol}</span>
+                    <OfficialMark token={t.address} />
+                  </span>
                   <span className="block font-mono text-[10px] text-zinc-600">{t.curve.graduated ? "graduated" : `curve ${stats.progress.toFixed(1)}%`}</span>
                 </span>
                 <span className="text-right">

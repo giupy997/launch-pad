@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { TokenLogo } from "@/components/TokenLogo";
+import { OfficialMark } from "@/components/OfficialMark";
 import { fmtNum } from "@/lib/format";
 import { fmtQuoteMoney, fmtQuoteMoneyNum } from "@/lib/price";
 import { Sparkline } from "./Sparkline";
@@ -41,7 +42,10 @@ export function KingOfTheHill({
           <TokenLogo uri={t.meta.logoURI} symbol={t.symbol} size={56} />
           <div className="min-w-0">
             <div className="display text-3xl sm:text-4xl leading-none text-white truncate">${t.symbol}</div>
-            <div className="mt-1.5 text-sm text-zinc-400 truncate">{t.name}</div>
+            <div className="mt-1.5 flex items-center gap-2 text-sm text-zinc-400">
+              <span className="truncate">{t.name}</span>
+              <OfficialMark token={t.address} />
+            </div>
           </div>
         </div>
         <div className="text-right shrink-0">

@@ -19,7 +19,7 @@ import {
   usePadVersion,
 } from "@/lib/hooks";
 import type { PadVersion } from "@/lib/abi";
-import { BLOCK_SECONDS, PRE_IPO_DISCLAIMER, isHiddenToken } from "@/lib/config";
+import { BLOCK_SECONDS, PRE_IPO_DISCLAIMER, isHiddenToken, isOfficialToken } from "@/lib/config";
 import { fmtUnits, fmtTokens } from "@/lib/format";
 import { TradeBox } from "@/components/TradeBox";
 import { PoolCard } from "@/components/PoolCard";
@@ -212,7 +212,7 @@ export function TokenPage({ address }: { address: string }) {
           logoURI={meta.logoURI}
           description={meta.description || undefined}
           disclaimer={q.synthetic || isPreMarket ? PRE_IPO_DISCLAIMER : null}
-          badges={{ graduated: curve.graduated, preMarket: isPreMarket, rewards: feesToHolders, live: !!meta.livestream, preIpoQuote: q.preIpo }}
+          badges={{ official: isOfficialToken(chain.id, token), graduated: curve.graduated, preMarket: isPreMarket, rewards: feesToHolders, live: !!meta.livestream, preIpoQuote: q.preIpo }}
           creator={curve.creator}
           launched={launched}
           quote={{ symbol: q.symbol, decimals: q.decimals, logo: isLtcQuote(q.symbol) ? "/chains/litecoin.svg" : undefined }}
