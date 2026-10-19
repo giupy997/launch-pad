@@ -106,6 +106,26 @@ deployed contracts.
   address parameters of `MigratorUpdated`, `TreasuryUpdated` and `MigrationOperatorUpdated`
   indexed, and the zap router's `receive()` open to the launchpad alone.
 
+### The 2026-10-19 review
+
+A fresh read of the contracts as deployed on Base (`Launchpad`, `LaunchpadBase`,
+`LaunchpadMigration`, `LaunchToken`, `LaunchTokenFactory`, `UniV2Migrator` v5, `ZapRouter`,
+`SlipstreamZapRouter`, at `d33a7ab`, unchanged since the v5 deploy), of the deploy script, the
+operations scripts, the watch, the CI and the site's chain configuration, with the chain read
+back at block 52,813,390: `check-base-v12.sh` answers `ALL PASS` through a public node, and the
+only `WARN` is the deployer's key still an owner of the Safe (governance above). No finding
+against the deployed code: the fee arithmetic, the cashback accumulator, the graduation in one
+piece, the parked reserve, the harvest's exact-amount liquidity leg and the freeze's exceptions
+read as the tests say. What the review adds is operational, around the contracts.
+
+| ID | Finding | Status |
+|---|---|---|
+| L-04 | The treasury (`0x2462…D7F7`) is an externally owned account: the launchpad's share of every curve trade and every harvest is paid straight to a single key, which then holds the fee income of the pad (1.35 cbLTC and 0.076 ETH on 2026-10-19) | Open, the owner's decision: `setTreasury` to the Safe 2-of-3 (`timelock.sh safe-calldata set-treasury`), so the income needs two signatures to move; the treasury is read, never hard-coded, by the site and the scripts |
+| L-05 | The earlier pads on Base are still open to coin creation, and the deployer's key alone drives four of them: the first v12 stack (`0x2729…C5CF`, 0 coins) has a timelock nobody can drive and stays open for ever; v10 (`0xDd48…74C1`, 0 coins), v9 (`0xcaB7…42EF`, 2 coins) and the first v9 stack (`0x0ba4…4955`, 2 coins) have the deployer's key as the only proposer of their 24-hour timelocks; the v7.7 pad (`0x2cF3…9580`, 0 coins) is owned by that key directly, with no timelock. None holds money the site points at, but each is a verified `Launchpad` that can mint coins under the project's name, and the watch reads none of their timelocks | Open, the owner's decision, no urgency: close creation where it can be closed (`announceFreeze` through the three old timelocks; every quote asset set to 0 on v7.7, which has no freeze), then revoke the deployer's key from the three timelocks (`timelock.sh revoke` with `TIMELOCK` pointed at each), so a key compromised on the VPS (governance above) can touch nothing but v12's execution; until then, their addresses go in `NOTUS_WATCH_TIMELOCKS` |
+| L-06 | A ticker is not unique on the pad: `createToken` takes any name and symbol (only a migrated ledger ticker is claimed once), and the site marks no coin as the project's own. Two third-party coins already live on v12 (`LITVMCOOL`, `MUR`, created after 2026-10-15, untraded). Anyone can create a `NOTUS` before or after the owner's, and Explore would list both alike | Open, before the launch: publish the official addresses with the launch (`LAUNCH-BASE-V12.md`, the site's About, the pinned post) and have the site flag them by address, a list beside `HIDDEN_TOKENS` in `web/lib/config.ts`, so an impostor's page reads as one |
+| I-01 | The pad on Robinhood Chain (`0x4A84…001c`, v7.4, 4 coins: the pre-markets, 1% fee) is a mainnet pad on the code before v9, owned directly by a key (`0x87D7…D825`, no timelock), holding no ETH; wired in `APP_CHAINS`, out of the menu | Open, the owner's decision: say in the README whether it is retired, and if it is, take it out of `APP_CHAINS` and off the key's keychain; nothing on it moves the project's money |
+| I-02 | For the next pad: the curve-side slice of `buybackAndBurn` (half a percent of the virtual reserve, a block) is safe against a wrapped trade because every coin pays the launchpad's fee both ways, 0.5% a side on v12, stamped at launch. A pad whose `feeBps` is lowered under 25 would let a coin taxed less than the difference be bought and sold around its own buyback at a profit, a block at a time, until the pot is gone | Noted for the next pad: size the curve slice from the coin's stamped rate (`platformBps` + the lower of its taxes), as the pool's slice is sized by Uniswap's fee |
+
 ## Dependency policy (`web/`)
 
 - `npm ci --ignore-scripts` everywhere: the lock is installed as it is and no
