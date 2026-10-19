@@ -29,6 +29,10 @@ export const TOPICS = {
 /** the topic0 filter for one eth_getLogs over the pad */
 export const PAD_TOPICS: `0x${string}`[] = [TOPICS.created, TOPICS.bought, TOPICS.sold, TOPICS.graduated, TOPICS.freeze, TOPICS.freezeCancelled];
 
+/** a coin's ERC-20 Transfer: who holds a coin is read from these, every coin of the pad at once */
+export const transferAbi = parseAbi(["event Transfer(address indexed from, address indexed to, uint256 value)"]);
+export const TRANSFER_TOPIC = encodeEventTopics({ abi: transferAbi, eventName: "Transfer" })[0];
+
 /** an eth_getLogs entry as the node returns it */
 export type RpcLog = {
   address: `0x${string}`;
@@ -54,7 +58,10 @@ export type PadEvent =
     }
   | { kind: "graduated"; block: bigint; logIndex: number; tx: `0x${string}`; token: `0x${string}`; raised: bigint }
   | { kind: "freeze"; block: bigint; logIndex: number; tx: `0x${string}`; freezeBlock: bigint }
-  | { kind: "freezeCancelled"; block: bigint; logIndex: number; tx: `0x${string}` };
+  | { kind: "freezeCancelled"; block: bigint; logIndex: number; tx: `0x${string}` }
+  /** a coin's Transfer (the coin is the log's address): the mint to the pad at birth, a buy, a
+   *  sell, a migration's delivery, a pool's swap, a burn; balances are the sum of these */
+  | { kind: "transfer"; block: bigint; logIndex: number; tx: `0x${string}`; token: `0x${string}`; from: `0x${string}`; to: `0x${string}`; value: bigint };
 
 const low = (a: string) => a.toLowerCase() as `0x${string}`;
 
@@ -94,6 +101,27 @@ export function decodePadLog(log: RpcLog): PadEvent | null {
     return null; // a log with this topic but another shape: not ours
   }
   return null;
+}
+
+/** one Transfer log of a coin into one event; null for anything else (a log of another shape, a removed one) */
+export function decodeTransferLog(log: RpcLog): PadEvent | null {
+  if (log.removed || log.topics[0] !== TRANSFER_TOPIC || log.topics.length !== 3) return null;
+  const topics = log.topics as [`0x${string}`, ...`0x${string}`[]];
+  try {
+    const d = decodeEventLog({ abi: transferAbi, eventName: "Transfer", data: log.data, topics });
+    return {
+      kind: "transfer",
+      block: BigInt(log.blockNumber),
+      logIndex: Number(BigInt(log.logIndex)),
+      tx: log.transactionHash,
+      token: low(log.address),
+      from: low(d.args.from),
+      to: low(d.args.to),
+      value: d.args.value,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export const eventOrder = (a: { block: bigint; logIndex: number }, b: { block: bigint; logIndex: number }) =>

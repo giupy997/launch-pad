@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { POINTS_CHAINS } from "@/lib/points/chains";
 import { client as rpcClient, isPadCoin } from "@/lib/holders/count";
+import { SERVICE_MS, servedTrades } from "@/lib/points/served";
+import { joinHistory } from "@/lib/trades/history";
 import { SPAN_CHUNKS, latestBlock, packTrades, scanTrades, stampTimestamps, type PoolRef, type ScanTarget, type Trade } from "@/lib/trades/scan";
 
 /** The trades of one coin (its curve and, given its pool, its swaps), or of
@@ -12,7 +14,11 @@ import { SPAN_CHUNKS, latestBlock, packTrades, scanTrades, stampTimestamps, type
  *  scanned and reads only the new blocks on the next request. The chains come
  *  from lib/points/chains.ts, the table kept free of wagmi for server code; a
  *  chain not in it, or nodes that do not answer, give an error the browser
- *  takes as "scan it yourself". */
+ *  takes as "scan it yourself". On a chain with no archive node (Liteforge),
+ *  one coin's history comes from the points service, which read it without a
+ *  time budget (lib/points/served.ts), and the nodes are asked only for the
+ *  blocks since: a function's ten seconds read minutes of that chain, not
+ *  the days a coin's life spans. */
 const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
 const POOL = /^(0x[0-9a-fA-F]{40}):(0x[0-9a-fA-F]{40}):([01])$/;
 const KEEP = { token: 1_000, all: 3_000 }; // trades an answer carries at most, the most recent
@@ -69,7 +75,19 @@ export async function GET(req: NextRequest) {
     const windowStart = latest - span + 1n > chain.deployBlock ? latest - span + 1n : chain.deployBlock;
     const held = memory.get(key);
     let out: Held;
-    if (held && held.first <= windowStart && latest - held.last <= chain.chunk * 10n) {
+    // the service's history, when the nodes could not give one and nothing is held yet
+    const served = !all && !chain.archive.length && !held ? await servedTrades(chain.key, coin!, Math.min(SERVICE_MS, deadline - Date.now())) : null;
+    if (served) {
+      const servedLast = BigInt(served.last);
+      const fresh = latest > servedLast ? await scanTrades(target, chain.pad, coin, servedLast + 1n, latest, pools, CONCURRENCY, deadline) : null;
+      const joined = joinHistory(
+        { trades: served.trades, last: servedLast, graduated: served.graduated === null ? null : BigInt(served.graduated) },
+        fresh,
+        pools.length > 0,
+        chain.deployBlock
+      );
+      out = { first: joined.first, last: joined.last, trades: joined.trades, truncated: joined.truncated };
+    } else if (held && held.first <= windowStart && latest - held.last <= chain.chunk * 10n) {
       // warm: only the blocks mined since the last answer
       if (latest > held.last) {
         const fresh = await scanTrades(target, chain.pad, coin, held.last + 1n, latest, pools, CONCURRENCY, deadline);

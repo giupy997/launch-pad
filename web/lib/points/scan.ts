@@ -49,7 +49,7 @@ export const fetchTransport: Transport = async (url, method, params) => {
 };
 
 export type Range = { lo: bigint; hi: bigint };
-export type LogFilter = { address: `0x${string}`; topics: (`0x${string}` | `0x${string}`[] | null)[] };
+export type LogFilter = { address: `0x${string}` | `0x${string}`[]; topics: (`0x${string}` | `0x${string}`[] | null)[] };
 
 export const MIN_CHUNK = 500n;
 const THROTTLE_COOLDOWN_MS = 4_000;

@@ -155,7 +155,12 @@ longer served by the site, built or run.
     `/api/trades` (the pad's events scanned once on the server, cached at the
     edge, the browser then reading only the blocks mined since into its
     localStorage cache; the browser scans by itself when the server does not
-    answer). The holders come from `/api/holders` (`web/lib/holders/count.ts`):
+    answer). On a chain with no archive node (Liteforge, where the public node
+    takes two seconds per 9,000-block `eth_getLogs` and the chain makes
+    345,000 blocks a day) the coin's history comes from the points service,
+    which read it without a time budget (`POINTS.md`, the coin routes), and
+    the nodes are asked only for the blocks since; the same for the holders
+    below. The holders come from `/api/holders` (`web/lib/holders/count.ts`):
     the coin's Transfer logs read from the chain, in one `eth_getLogs` where
     a node takes the whole span and in rounds of ranges otherwise, then every
     balance in one multicall, contracts (the pad, the pool) named rather than

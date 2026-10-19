@@ -1,7 +1,9 @@
 // A chain's indexer end to end against a fake node: logs encoded as the pad
 // emits them, passes that advance, a graduation, an invite, a restart that
 // resumes from disk, a stretch the node refuses that is read next time, a
-// crash between the events and the checkpoint that must count nothing twice.
+// crash between the events and the checkpoint that must count nothing twice,
+// the coins' transfers counted into holders and one coin's trades packed for
+// the site's feed.
 //   node --test --experimental-strip-types web/lib/points/indexer.test.ts
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
@@ -11,7 +13,7 @@ import { join } from "node:path";
 import { encodeAbiParameters, encodeEventTopics, pad as padHex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import type { PointsChain } from "./chains.ts";
-import { padEventsAbi, type RpcLog } from "./decode.ts";
+import { padEventsAbi, TRANSFER_TOPIC, type RpcLog } from "./decode.ts";
 import { ChainIndexer } from "./indexer.ts";
 import { referralMessage } from "./referral.ts";
 import { Nodes, RpcError, type Transport } from "./scan.ts";
@@ -23,6 +25,8 @@ const alice = privateKeyToAccount(`0x${"a1".repeat(32)}`);
 const bob = privateKeyToAccount(`0x${"b2".repeat(32)}`);
 const carol = privateKeyToAccount(`0x${"c3".repeat(32)}`);
 const COIN = "0x00000000000000000000000000000000000c0001" as const;
+const POOL = "0x0000000000000000000000000000000000900001" as const;
+const ZERO = "0x0000000000000000000000000000000000000000" as const;
 const hex = (n: bigint) => `0x${n.toString(16)}` as `0x${string}`;
 const addrTopic = (a: string) => padHex(a as `0x${string}`, { size: 32 });
 
@@ -43,11 +47,14 @@ const chain: PointsChain = {
   explorer: "",
 };
 
-type Emitted = { block: bigint; logIndex: number; topics: `0x${string}`[]; data: `0x${string}` };
+type Emitted = { block: bigint; logIndex: number; topics: `0x${string}`[]; data: `0x${string}`; address: `0x${string}` };
 const emitted: Emitted[] = [];
-const emit = (block: bigint, topics: `0x${string}`[], data: `0x${string}`) => {
-  emitted.push({ block, logIndex: emitted.filter((e) => e.block === block).length, topics, data });
+const emit = (block: bigint, topics: `0x${string}`[], data: `0x${string}`, address: `0x${string}` = PAD) => {
+  emitted.push({ block, logIndex: emitted.filter((e) => e.block === block).length, topics, data, address });
 };
+/** a coin's Transfer, logged by the coin itself */
+const transfer = (block: bigint, token: `0x${string}`, from: `0x${string}`, to: `0x${string}`, value: bigint) =>
+  emit(block, [TRANSFER_TOPIC, addrTopic(from), addrTopic(to)], encodeAbiParameters([{ type: "uint256" }], [value]), token);
 const created = (block: bigint, token: `0x${string}`, creator: `0x${string}`) =>
   emit(block, [encodeEventTopics({ abi: padEventsAbi, eventName: "TokenCreated" })[0], addrTopic(token), addrTopic(creator)], encodeAbiParameters([{ type: "string" }, { type: "string" }, { type: "bool" }], ["Coin", "COIN", false]));
 const bought = (block: bigint, token: `0x${string}`, buyer: `0x${string}`, ltc: number, tokens: bigint) =>
@@ -72,16 +79,22 @@ let head = 1_000n;
 let refuse: ((lo: bigint, hi: bigint) => boolean) | null = null;
 const transport: Transport = async (_url, method, params) => {
   if (method === "eth_blockNumber") return hex(head);
+  if (method === "eth_getBlockByNumber") return { timestamp: hex(1_700_000_000n + BigInt((params as [string])[0])) };
+  if (method === "eth_getCode") {
+    const a = (params as [string])[0].toLowerCase();
+    return a === PAD.toLowerCase() || a === POOL ? "0x6080" : "0x"; // the pad and the pool are contracts, the wallets are not
+  }
   if (method === "eth_getLogs") {
-    const p = (params as [{ fromBlock: string; toBlock: string; address: string }])[0];
+    const p = (params as [{ fromBlock: string; toBlock: string; address: string | string[] }])[0];
     const lo = BigInt(p.fromBlock);
     const hi = BigInt(p.toBlock);
     if (refuse?.(lo, hi)) throw new RpcError("internal error");
+    const addresses = (Array.isArray(p.address) ? p.address : [p.address]).map((a) => a.toLowerCase());
     return emitted
-      .filter((e) => e.block >= lo && e.block <= hi)
+      .filter((e) => e.block >= lo && e.block <= hi && addresses.includes(e.address.toLowerCase()))
       .map(
         (e): RpcLog => ({
-          address: PAD,
+          address: e.address,
           topics: e.topics,
           data: e.data,
           blockNumber: hex(e.block),
@@ -235,4 +248,71 @@ test("a freeze announced ends the season there; withdrawn before it lands, the s
   const again = new ChainIndexer(chain, nodes, store);
   assert.equal(again.effectiveSeason()?.end, null);
   assert.equal(again.leaderboard().find((r) => r.wallet === alice.address.toLowerCase())?.points, alicePoints());
+});
+
+test("the coins' transfers count the holders; one coin's trades come packed for the site's feed; a service that never read transfers backfills them", async () => {
+  const store = new Store(join(dir, "holders"));
+  const nodes = new Nodes(chain.rpcs, chain.chunk, { transport, sleep: async () => {} });
+  const ix = new ChainIndexer(chain, nodes, store);
+  // the coin's life as its token logs it: minted to the pad, paid out to alice and bob on
+  // their buys, half of alice's back to the pad on her sell, a slice to the pool at graduation
+  transfer(1_010n, COIN, ZERO, PAD, 1_000_000_000n * LTC);
+  transfer(1_020n, COIN, PAD, alice.address, 800_000_000n * LTC);
+  transfer(1_021n, COIN, PAD, bob.address, 10n * LTC);
+  transfer(1_030n, COIN, alice.address, PAD, 400_000_000n * LTC);
+  transfer(1_040n, COIN, PAD, POOL, 190_000_000n * LTC);
+  await ix.pass(); // the pad's events, then the coins' transfers up to the same block
+  assert.equal(ix.transfersLast, ix.last);
+
+  const h = await ix.coinHolders(COIN);
+  assert.equal(h.partial, false);
+  assert.equal(h.holders, 2); // alice and bob: the pad and the pool hold coins but are contracts
+  assert.deepEqual(
+    h.top.map((t) => [t.a, t.c]),
+    [
+      [PAD.toLowerCase(), true],
+      [alice.address.toLowerCase(), false],
+      [POOL, true],
+      [bob.address.toLowerCase(), false],
+    ]
+  );
+  assert.equal(h.top[1].b, (400_000_000n * LTC).toString());
+  assert.equal(h.created, "1010");
+  assert.equal(h.graduated, "1040");
+  assert.equal(h.launched, 1_700_000_000 + 1_010); // the creation block's time
+  assert.equal(h.last, ix.last.toString());
+
+  const t = await ix.coinTrades(COIN);
+  assert.equal(t.created, "1010");
+  assert.equal(t.graduated, "1040");
+  assert.ok(t.trades.length >= 3);
+  const [type, trader, eth, tokens, block, , timestamp, token, venue] = t.trades[0];
+  assert.deepEqual([type, trader, eth, tokens, block, timestamp, token, venue], ["buy", alice.address.toLowerCase(), (2n * LTC).toString(), (800_000_000n * LTC).toString(), "1020", 1_700_000_000 + 1_020, COIN, "curve"]);
+  for (let i = 1; i < t.trades.length; i++) assert.ok(BigInt(t.trades[i][4]) >= BigInt(t.trades[i - 1][4])); // oldest first
+
+  // a restart: the balances from disk, the transfers left where they were
+  const again = new ChainIndexer(chain, nodes, store);
+  assert.equal(again.transfersLast, ix.transfersLast);
+  assert.equal((await again.coinHolders(COIN)).holders, 2);
+
+  // a service that ran before transfers were read (no checkpoint for them): partial until its
+  // next pass, which reads them from the deploy block and counts nothing twice
+  const onDisk = store.loadEvents().length;
+  store.writeMeta({ last: ix.last, rulesVersion: 0, chunk: chain.chunk });
+  const old = new ChainIndexer(chain, nodes, store);
+  assert.equal(old.transfersLast, chain.deployBlock - 1n);
+  assert.equal((await old.coinHolders(COIN)).partial, true);
+  await old.pass(); // nothing mined since: the transfers alone
+  assert.equal(old.transfersLast, old.last);
+  assert.equal((await old.coinHolders(COIN)).partial, false);
+  assert.equal(store.loadEvents().length, onDisk);
+  assert.equal(store.loadEvents().filter((e) => e.kind === "transfer").length, 5);
+
+  // a head far ahead of what is indexed (a backfill in progress): the count is partial until the passes catch up
+  head = 10_000n;
+  await old.pass();
+  assert.ok(old.last < head - chain.lag);
+  assert.equal((await old.coinHolders(COIN)).partial, true);
+  while (old.last < head - chain.lag) await old.pass();
+  assert.equal((await old.coinHolders(COIN)).partial, false);
 });

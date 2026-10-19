@@ -159,9 +159,29 @@ chain in the path:
 GET  /:chain/season                   chain, season, the rules, what is indexed
 GET  /:chain/leaderboard?limit=100    rank, wallet, points, trades, volume, invitees
 GET  /:chain/wallet/0x…               points by kind, rank, trades, volume, inviter, invitees, bonus end
+GET  /:chain/coin/0x…/trades          the coin's curve trades from its birth, packed as the site's feed takes them
+GET  /:chain/coin/0x…/holders         who holds the coin, from its transfers: count, the top 100, contracts named
 POST /:chain/referral                 { invitee, inviter, signature } → 201; 400 bad claim; 409 already bound; 429 too many
 GET  /health
 ```
+
+The two coin routes exist for the site's own `/api/trades` and `/api/holders`
+on a chain with no archive node (Liteforge): its public node answers an
+`eth_getLogs` over 9,000 blocks in about two seconds and the chain makes
+345,000 blocks a day, so a Netlify function, with ten seconds, could read
+minutes of a coin's life and never its history, and a coin's page there
+showed no chart and "Holders ≥ 0". The service has the history already: it
+reads the pad's events without a time budget, and since 2026-10-19 every
+coin's `Transfer` as well (the coins known so far, in one filter, a stretch a
+pass; a service that never read them starts at the deploy block, and
+`transfersLast` in the health says how far it is), summing balances per
+wallet. A holders answer is `partial` while the transfers lag the pad's
+block; the contracts among the largest balances (the pad with the unsold
+supply, the pool, the migrator) are asked for their code once and named, not
+counted. Pool swaps after a graduation are not the pad's events: the site
+reads them from the chain, from the service's block on, and says when the
+pool's earlier swaps are missing. A coin the pad never created is 404, so
+the site scans nothing for it.
 
 Caddy exposes it under the desk's hostname, `desk.notus-pad.fun/points/*`,
 no new DNS (`points/deploy/Caddyfile`; the Litecoin desk it was named for is

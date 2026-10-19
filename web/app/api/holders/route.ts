@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { EXPLORER_API } from "@/lib/explorers";
 import { POINTS_CHAINS } from "@/lib/points/chains";
 import { countHolders, UnknownCoinError } from "@/lib/holders/count";
+import { SERVICE_MS, servedHolders } from "@/lib/points/served";
 import { recentScanErrors, redact } from "@/lib/trades/scan";
 
 const TOKEN = /^0x[0-9a-fA-F]{40}$/;
@@ -25,10 +26,14 @@ const answered = (r: PromiseSettledResult<Response>) => (r.status === "fulfilled
  *  `partial` while an old coin's history is still being read; else from the
  *  chain's Blockscout, its count of every address with a balance less the
  *  contracts among them (the pad, the pool), which its first page of holders
- *  — the largest, where the contracts sit — tells apart. A minute at the
- *  edge; nodes and explorer that do not answer give nulls, not an error, so
- *  the page shows a dash. `debug=1`: what the count did and the nodes' last
- *  refusals, uncached, for a look from the terminal. */
+ *  — the largest, where the contracts sit — tells apart. On a chain with no
+ *  archive node (Liteforge) the points service counts first, from every
+ *  transfer of the coin it read without a time budget (lib/points/served.ts):
+ *  the chain's own count below could never reach the end of an old coin's
+ *  history there. A minute at the edge; nodes and explorer that do not
+ *  answer give nulls, not an error, so the page shows a dash. `debug=1`:
+ *  what the count did and the nodes' last refusals, uncached, for a look
+ *  from the terminal. */
 export async function GET(req: NextRequest) {
   const started = Date.now();
   const left = () => FUNCTION_MS - (Date.now() - started);
@@ -42,6 +47,12 @@ export async function GET(req: NextRequest) {
   // challenge, Liteforge's lags by hours. The explorer stays as the fallback
   // for a count the nodes could not give.
   if (onChain) {
+    const served = !onChain.archive.length ? await servedHolders(onChain.key, token, Math.min(SERVICE_MS, left() - 1_000)) : null;
+    if (served) {
+      const body = { chain, token, holders: served.holders, launched: served.launched, partial: served.partial, top: served.top };
+      if (debug) return NextResponse.json({ ...body, debug: { service: true, last: served.last, created: served.created, graduated: served.graduated } }, { headers: NO_STORE });
+      return NextResponse.json(body, { headers: cache(served.partial ? 5 : 60) });
+    }
     try {
       const { holders, launched, partial, top, debug: did } = await countHolders(onChain, token as `0x${string}`);
       // the chain and coin answered for, so the browser can tell a stray answer apart

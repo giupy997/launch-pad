@@ -72,3 +72,18 @@ test("the reads answer, an unknown chain and route do not", async () => {
   assert.equal(route.status, 404);
   assert.equal(proc.exitCode, null);
 });
+
+test("a coin's trades and holders: a coin the pad never created is 404, a malformed address is not a route", async () => {
+  const coin = "0x00000000000000000000000000000000000c0001";
+  for (const what of ["trades", "holders"]) {
+    const r = await fetch(`${base}/liteforge/coin/${coin}/${what}`, { signal: AbortSignal.timeout(5_000) });
+    assert.equal(r.status, 404, what);
+    assert.equal((await r.json()).error, "not a coin of this launchpad");
+  }
+  const bad = await fetch(`${base}/liteforge/coin/notanaddress/trades`, { signal: AbortSignal.timeout(5_000) });
+  assert.equal(bad.status, 404);
+  assert.equal((await bad.json()).error, "not found");
+  const other = await fetch(`${base}/liteforge/coin/${coin}/other`, { signal: AbortSignal.timeout(5_000) });
+  assert.equal(other.status, 404);
+  assert.equal(proc.exitCode, null);
+});

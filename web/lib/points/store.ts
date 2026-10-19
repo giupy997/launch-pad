@@ -33,7 +33,14 @@ function unpack(v: Json): unknown {
   return v;
 }
 
-export type Meta = { last: bigint; rulesVersion?: number; chunk?: bigint };
+export type Meta = {
+  last: bigint;
+  rulesVersion?: number;
+  chunk?: bigint;
+  /** the newest block whose coin transfers are in the events (absent: none read yet, the
+   *  backfill starts at the deploy block on the next pass) */
+  transfersLast?: bigint;
+};
 
 export class Store {
   readonly dir: string;

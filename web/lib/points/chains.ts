@@ -68,7 +68,12 @@ export const POINTS_CHAINS: Record<string, PointsChain> = {
     quoteDecimals: 18,
     quoteSymbol: "zkLTC",
     blockSeconds: 0.25, // measured on the live chain: ~4 blocks a second (Orbit's 250 ms)
-    chunk: 9_000n, // the node took these whole during the backfill
+    // the node took these whole during the backfill. Measured on 2026-10-19 from a fast
+    // connection: 1.3 s for 1,000 blocks, 2.4 s for 3,000, 2.2 s for 9,000, 16 s for 27,000, a
+    // timeout past ~80,000: the time is the call's, not the span's, so a smaller window would
+    // only cost more calls. From Netlify's functions every call runs past their 4-second cap,
+    // which is why a coin's history there comes from the points service (lib/points/served.ts)
+    chunk: 9_000n,
     lag: 60n,
     hidden: [],
     season: { number: 0, name: "Season 0", start: 57_741_789n, end: null, rehearsal: true },

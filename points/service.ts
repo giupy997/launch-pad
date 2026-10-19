@@ -12,7 +12,12 @@
 // Environment: PORT (default 8789), NOTUS_POINTS_CHAINS (comma-separated keys
 // of web/lib/points/chains.ts, default "liteforge"), NOTUS_POINTS_DATA (a
 // directory, default points/data), NOTUS_POINTS_EVERY (seconds between
-// passes, default 10).
+// passes, default 10). Besides the season, the leaderboard and a wallet, it
+// answers one coin's trades and holders (/:chain/coin/0x…/trades, …/holders)
+// for the site's own routes: on a chain whose public node is too slow for a
+// function to read a coin's history (Liteforge: 4 blocks a second, 2 seconds
+// per 9,000-block eth_getLogs), the service has the history already, read
+// without a time budget.
 //
 // The logic lives in web/lib/points/, so it resolves viem from the site's
 // node_modules and the site reuses the same rules and the same referral
@@ -134,7 +139,7 @@ function readBody(req: IncomingMessage, limit = 4_096): Promise<string | null> {
   });
 }
 
-const ROUTE = /^\/([a-z0-9-]+)\/(season|leaderboard|referral|wallet\/(0x[0-9a-fA-F]{40}))\/?$/;
+const ROUTE = /^\/([a-z0-9-]+)\/(season|leaderboard|referral|wallet\/(0x[0-9a-fA-F]{40})|coin\/(0x[0-9a-fA-F]{40})\/(trades|holders))\/?$/;
 
 // one request: a throw anywhere in here is answered 500 and logged, never left to
 // take the process down (an unhandled rejection exits Node)
@@ -166,7 +171,17 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
       const age = ix.updatedAt ? Math.floor(Date.now() / 1000) - ix.updatedAt : null;
       const fresh = ix.passes > 0 && ix.lastError === null;
       ok &&= fresh;
-      chains[key] = { last: ix.last.toString(), head: ix.head.toString(), ageSeconds: age, trades: ix.trades.length, wallets: ix.totals.size, referrals: ix.referrals.size, lastError: ix.lastError };
+      chains[key] = {
+        last: ix.last.toString(),
+        head: ix.head.toString(),
+        ageSeconds: age,
+        trades: ix.trades.length,
+        wallets: ix.totals.size,
+        referrals: ix.referrals.size,
+        transfersLast: ix.transfersLast.toString(),
+        transfersError: ix.transfersError,
+        lastError: ix.lastError,
+      };
     }
     json(res, ok ? 200 : 503, { ok, chains, stopping });
     return;
@@ -230,6 +245,15 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   }
   if (what.startsWith("wallet/")) {
     json(res, 200, ix.wallet(m[3]), true, head);
+    return;
+  }
+  if (what.startsWith("coin/")) {
+    // a coin the pad never created is answered 404, so the site's route knows to scan nothing
+    if (!ix.coins.has(m[4].toLowerCase())) {
+      json(res, 404, { error: "not a coin of this launchpad" });
+      return;
+    }
+    json(res, 200, m[5] === "trades" ? await ix.coinTrades(m[4]) : await ix.coinHolders(m[4]), true, head);
     return;
   }
   json(res, 404, { error: "not found" });

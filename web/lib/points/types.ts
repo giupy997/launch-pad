@@ -2,6 +2,7 @@
 // by the service (web/lib/points/indexer.ts) and the browser (client.ts).
 
 import type { LedgerKind } from "./rules.ts";
+import type { PackedTrade } from "../trades/scan.ts";
 
 export type SeasonView = {
   chain: string;
@@ -20,7 +21,18 @@ export type SeasonView = {
     inviteePct: number;
     inviteeDays: number;
   };
-  indexed: { last: string; head: string; lagBlocks: number; trades: number; coins: number; graduations: number; wallets: number; referrals: number };
+  indexed: {
+    last: string;
+    head: string;
+    lagBlocks: number;
+    trades: number;
+    coins: number;
+    graduations: number;
+    wallets: number;
+    referrals: number;
+    /** the newest block whose coin transfers are counted: behind `last` while they are backfilled */
+    transfersLast: string;
+  };
   updatedAt: number | null;
   lastError: string | null;
 };
@@ -39,6 +51,45 @@ export type LeaderboardResponse = {
   season: SeasonView["season"];
   updatedAt: number | null;
   rows: LeaderboardRow[];
+};
+
+/** one coin's trades on the pad's curve, as the site's feed packs them
+ *  (lib/trades/scan.ts): oldest first, the block's time where the service
+ *  has read it, 0 otherwise. Pool swaps after a graduation are not the pad's
+ *  events: the site reads them from the chain, from `last` on. */
+export type CoinTradesView = {
+  chain: string;
+  chainId: number;
+  token: `0x${string}`;
+  /** the newest block whose events are in the answer */
+  last: string;
+  /** the block the coin was created at; null for a coin the service does not know */
+  created: string | null;
+  /** the block it graduated at; null while on its curve */
+  graduated: string | null;
+  trades: PackedTrade[];
+  updatedAt: number | null;
+};
+
+/** who holds one coin, from every Transfer of it the service has read: the
+ *  wallets with a balance, the largest first, contracts among the largest
+ *  (the pad, the pool) named and not counted. `partial` while the coins'
+ *  transfers are still being read up to the pad's own block. */
+export type CoinHoldersView = {
+  chain: string;
+  chainId: number;
+  token: `0x${string}`;
+  /** the newest block whose transfers are counted */
+  last: string;
+  created: string | null;
+  graduated: string | null;
+  /** the coin's birth, unix seconds; null while unknown */
+  launched: number | null;
+  holders: number;
+  partial: boolean;
+  /** address, balance in wei as a decimal string, whether it is a contract */
+  top: { a: string; b: string; c: boolean }[];
+  updatedAt: number | null;
 };
 
 export type WalletView = {

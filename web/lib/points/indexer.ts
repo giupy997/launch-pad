@@ -4,7 +4,7 @@
 // wallet's view from memory.
 
 import { type PointsChain } from "./chains.ts";
-import { decodePadLog, eventOrder, PAD_TOPICS, type PadEvent } from "./decode.ts";
+import { decodePadLog, decodeTransferLog, eventOrder, PAD_TOPICS, TRANSFER_TOPIC, type PadEvent } from "./decode.ts";
 import { verifyReferral } from "./referral.ts";
 import {
   computeLedger,
@@ -24,7 +24,18 @@ import {
 } from "./rules.ts";
 import { stretches, type Nodes } from "./scan.ts";
 import type { Store } from "./store.ts";
-import type { LeaderboardRow, SeasonView, WalletView } from "./types.ts";
+import type { CoinHoldersView, CoinTradesView, LeaderboardRow, SeasonView, WalletView } from "./types.ts";
+import type { PackedTrade } from "../trades/scan.ts";
+
+const ZERO = "0x0000000000000000000000000000000000000000";
+const DEAD = "0x000000000000000000000000000000000000dead";
+/** holders an answer names, largest first */
+const TOP = 100;
+/** the largest balances checked for code (where the pad, the pool and the migrator sit) */
+const PROBE = 8;
+/** block times read from the chain per answer: the rest come with the next */
+const STAMPS_PER_CALL = 60;
+const low = (a: string) => a.toLowerCase() as `0x${string}`;
 
 export type IndexerOptions = {
   /** ranges per pass, so a backfill proceeds in passes while the API answers */
@@ -39,8 +50,16 @@ export class ChainIndexer {
   readonly trades: Trade[] = [];
   readonly coins = new Map<string, Coin>();
   readonly referrals = new Map<string, Referral>();
+  /** every coin's balances by wallet, the sum of its transfers (the pad's own and the pool's among them) */
+  readonly balances = new Map<`0x${string}`, Map<`0x${string}`, bigint>>();
   /** the newest block fully indexed */
   last: bigint;
+  /** the newest block whose coin transfers are indexed: behind `last` while they are backfilled
+   *  (a service that never read them starts at the deploy block, a stretch a pass) */
+  transfersLast: bigint;
+  transfersError: string | null = null;
+  private readonly blockTimes = new Map<bigint, number>();
+  private readonly isContract = new Map<string, boolean>();
   head = 0n;
   /** a FreezeAnnounced on the pad: the season ends there */
   freezeBlock: bigint | null = null;
@@ -70,7 +89,12 @@ export class ChainIndexer {
     for (const ev of store.loadEvents()) this.apply(ev);
     for (const r of store.loadReferrals()) this.referrals.set(r.invitee.toLowerCase(), r);
     this.last = meta?.last ?? chain.deployBlock - 1n;
+    this.transfersLast = meta?.transfersLast ?? chain.deployBlock - 1n;
     this.recompute();
+  }
+
+  private meta() {
+    return { last: this.last, rulesVersion: RULES_VERSION, chunk: this.nodes.chunk, transfersLast: this.transfersLast };
   }
 
   private apply(ev: PadEvent) {
@@ -106,6 +130,16 @@ export class ChainIndexer {
       case "freezeCancelled":
         this.freezeBlock = null; // withdrawn before it landed: the season runs on
         break;
+      case "transfer": {
+        let b = this.balances.get(ev.token);
+        if (!b) {
+          b = new Map();
+          this.balances.set(ev.token, b);
+        }
+        if (ev.from !== ZERO) b.set(ev.from, (b.get(ev.from) ?? 0n) - ev.value); // a mint comes from nowhere
+        if (ev.to !== ZERO) b.set(ev.to, (b.get(ev.to) ?? 0n) + ev.value); // a burn goes nowhere
+        break;
+      }
     }
   }
 
@@ -154,7 +188,9 @@ export class ChainIndexer {
       this.head = await this.nodes.blockNumber();
       const target = this.head - this.chain.lag;
       if (target <= this.last) {
-        // nothing mined since (a quiet chain makes no blocks): a pass all the same
+        // nothing mined since (a quiet chain makes no blocks): a pass all the same, and the
+        // coins' transfers read on if they are behind
+        await this.readTransfers();
         this.lastError = null;
         this.passes++;
         this.updatedAt = Math.floor(this.now() / 1000);
@@ -177,7 +213,8 @@ export class ChainIndexer {
       this.store.appendEvents(events);
       for (const ev of events) this.apply(ev);
       this.last = upTo;
-      this.store.writeMeta({ last: upTo, rulesVersion: RULES_VERSION, chunk: this.nodes.chunk });
+      this.store.writeMeta(this.meta());
+      await this.readTransfers();
       this.recompute();
       this.passes++;
       this.updatedAt = Math.floor(this.now() / 1000);
@@ -187,6 +224,125 @@ export class ChainIndexer {
       this.lastError = (e as Error).message.split("\n")[0];
       throw e;
     }
+  }
+
+  /** The coins' transfers from where they were left up to the pad's own block, a stretch a
+   *  pass (the coins known by then, in one filter): a failure is noted, never thrown, so the
+   *  pad's pass stands and a holder count stays partial until the next pass reads on. */
+  private async readTransfers() {
+    if (this.transfersLast >= this.last) return;
+    const from = this.transfersLast + 1n;
+    const cap = from + this.nodes.chunk * BigInt(this.maxChunksPerPass) - 1n;
+    const to = this.last < cap ? this.last : cap;
+    const coins = [...this.coins.values()].filter((c) => c.createdBlock <= to).map((c) => c.token);
+    try {
+      if (coins.length) {
+        const { logs, ok, failed } = await this.nodes.getLogs({ address: coins, topics: [TRANSFER_TOPIC] }, from, to);
+        const first = stretches(ok).find((s) => s.lo === from);
+        if (!first) throw new Error(`no node served the coins' transfers ${from}…${to}` + (failed.length ? ` (${failed.length} ranges refused)` : ""));
+        const known = new Set<string>(coins);
+        const events = logs
+          .filter((l) => known.has(l.address.toLowerCase())) // the node was asked for the coins' logs; another's is not believed
+          .map(decodeTransferLog)
+          .filter((e): e is PadEvent => e !== null && e.block >= from && e.block <= first.hi && !this.seen.has(`${e.tx}:${e.logIndex}`))
+          .sort(eventOrder);
+        this.store.appendEvents(events);
+        for (const ev of events) this.apply(ev);
+        this.transfersLast = first.hi;
+      } else {
+        this.transfersLast = to; // no coin yet: nothing to read there
+      }
+      this.store.writeMeta(this.meta());
+      this.transfersError = null;
+    } catch (e) {
+      this.transfersError = (e as Error).message.split("\n")[0];
+    }
+  }
+
+  /** the times of these blocks, read from the chain and kept; a few a call, the newest first */
+  private async stampBlocks(blocks: bigint[]) {
+    const need = [...new Set(blocks)].filter((b) => !this.blockTimes.has(b)).slice(-STAMPS_PER_CALL);
+    let next = 0;
+    await Promise.all(
+      Array.from({ length: Math.min(4, need.length) }, async () => {
+        while (next < need.length) {
+          const b = need[next++];
+          try {
+            this.blockTimes.set(b, await this.nodes.blockTime(b));
+          } catch {
+            /* the next call */
+          }
+        }
+      })
+    );
+  }
+
+  /** one coin's trades on the pad's curve, oldest first, as the site's feed packs them */
+  async coinTrades(address: string): Promise<CoinTradesView> {
+    const token = low(address);
+    const coin = this.coins.get(token) ?? null;
+    const trades = this.trades.filter((t) => t.token === token).sort(eventOrder);
+    await this.stampBlocks(trades.map((t) => t.block));
+    return {
+      chain: this.chain.key,
+      chainId: this.chain.chainId,
+      token,
+      last: this.last.toString(),
+      created: coin ? coin.createdBlock.toString() : null,
+      graduated: coin?.graduatedBlock?.toString() ?? null,
+      trades: trades.map(
+        (t): PackedTrade => [t.side, t.wallet, t.quote.toString(), t.tokens.toString(), t.block.toString(), t.tx, this.blockTimes.get(t.block) ?? 0, t.token, "curve", ""]
+      ),
+      updatedAt: this.updatedAt,
+    };
+  }
+
+  /** whether what the service holds is behind the chain: the coins' transfers behind the pad's
+   *  block, or the pad's own block more than one window behind the head (a backfill in progress) */
+  private behind(): boolean {
+    return this.transfersLast < this.last || this.head - this.last > this.nodes.chunk;
+  }
+
+  /** who holds one coin, from its transfers: wallets with a balance, the largest first; the
+   *  contracts among the largest (the pad with the unsold supply, the pool, the migrator) are
+   *  named, not counted, their code asked for once */
+  async coinHolders(address: string): Promise<CoinHoldersView> {
+    const token = low(address);
+    const coin = this.coins.get(token) ?? null;
+    const pad = low(this.chain.pad);
+    const held = [...(this.balances.get(token) ?? new Map<`0x${string}`, bigint>()).entries()]
+      .filter(([a, b]) => b > 0n && a !== ZERO && a !== DEAD)
+      .sort((x, y) => (y[1] > x[1] ? 1 : y[1] < x[1] ? -1 : 0));
+    await Promise.all(
+      held.slice(0, PROBE).map(async ([a]) => {
+        if (a === pad || this.isContract.has(a)) return;
+        try {
+          const code = await this.nodes.call<string>("eth_getCode", [a, "latest"]);
+          this.isContract.set(a, typeof code === "string" && code.length > 2);
+        } catch {
+          /* unknown: a wallet until known */
+        }
+      })
+    );
+    const contract = (a: string) => a === pad || this.isContract.get(a) === true;
+    let launched: number | null = null;
+    if (coin) {
+      await this.stampBlocks([coin.createdBlock]);
+      launched = this.blockTimes.get(coin.createdBlock) ?? null;
+    }
+    return {
+      chain: this.chain.key,
+      chainId: this.chain.chainId,
+      token,
+      last: this.transfersLast.toString(),
+      created: coin ? coin.createdBlock.toString() : null,
+      graduated: coin?.graduatedBlock?.toString() ?? null,
+      launched,
+      holders: held.filter(([a]) => !contract(a)).length,
+      partial: this.behind(),
+      top: held.slice(0, TOP).map(([a, b]) => ({ a, b: b.toString(), c: contract(a) })),
+      updatedAt: this.updatedAt,
+    };
   }
 
   season(): SeasonView {
@@ -219,6 +375,7 @@ export class ChainIndexer {
         graduations,
         wallets: this.totals.size,
         referrals: this.referrals.size,
+        transfersLast: this.transfersLast.toString(),
       },
       updatedAt: this.updatedAt,
       lastError: this.lastError,
