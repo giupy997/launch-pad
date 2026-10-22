@@ -11,7 +11,7 @@ import {
   useWaitForTransactionReceipt,
   useWriteContract,
 } from "wagmi";
-import { launchpadAbi, launchTokenAbi } from "@/lib/abi";
+import { launchpadAbi, launchTokenAbi, quoterAbi, zapRouterAbi } from "@/lib/abi";
 import {
   useLaunchpadAddress,
   usePadAbi,
@@ -31,53 +31,9 @@ import { PoolCard } from "@/components/PoolCard";
 import { QUOTE_ASSETS, ZAP_ROUTER, UNISWAP_QUOTER, WETH9, USDG } from "@/lib/config";
 import { fmtPoints, pointsFor, usePointsChain, useSeason } from "@/lib/points/client";
 
-const zapRouterAbi = [
-  {
-    type: "function",
-    name: "zapBuy",
-    stateMutability: "payable",
-    inputs: [
-      { name: "token", type: "address" },
-      { name: "path", type: "bytes" },
-      { name: "minQuoteOut", type: "uint256" },
-      { name: "minTokensOut", type: "uint256" },
-    ],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "zapBuyCurve",
-    stateMutability: "payable",
-    inputs: [
-      { name: "token", type: "address" },
-      { name: "minQuoteOut", type: "uint256" },
-      { name: "minTokensOut", type: "uint256" },
-    ],
-    outputs: [],
-  },
-] as const;
-
 /** what "Max" keeps back when the side being spent is the chain's own coin: gas for the trade */
 const GAS_RESERVE = 300_000_000_000_000n; // 0.0003 ETH
 const PICKS = [25, 50, 75, 100] as const;
-
-const quoterAbi = [
-  {
-    type: "function",
-    name: "quoteExactInput",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "path", type: "bytes" },
-      { name: "amountIn", type: "uint256" },
-    ],
-    outputs: [
-      { name: "amountOut", type: "uint256" },
-      { name: "sqrtPriceX96AfterList", type: "uint160[]" },
-      { name: "initializedTicksCrossedList", type: "uint32[]" },
-      { name: "gasEstimate", type: "uint256" },
-    ],
-  },
-] as const;
 
 export function TradeBox({
   token,

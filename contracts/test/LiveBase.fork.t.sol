@@ -333,6 +333,55 @@ contract LiveBaseForkTest is Test {
         return CBLTC.balanceOf(whale) - before;
     }
 
+    /// The launch with its dev buy as the site batches it (web/lib/launch.ts, a wallet that
+    /// batches calls): the coin's address foretold from the factory's nonce, the launch, the
+    /// guard on that address (setFeeRecipient, the creator's alone), the buy, in cbLTC on the
+    /// pad or in ETH through the live zap. A coin somebody else creates in between moves the
+    /// address on: the guard then names their coin and reverts, and the batch with it, so the
+    /// buy never lands on the wrong coin. v12: v11 has no fee recipient to guard with.
+    function test_live_aLaunchWithItsDevBuyIsOneBatch() public {
+        if (skipAll || !v12) return;
+        address factory = address(PAD.tokenFactory());
+        LaunchpadBase.TokenMetadata memory meta = LaunchpadBase.TokenMetadata("", "", "", "", "", "");
+        LaunchpadBase.FeeConfig memory fees = LaunchpadBase.FeeConfig(100, 100, 2500, 0, 5000, 2500, 0);
+
+        // the batch, call by call, from the creator (an EIP-7702 account runs them as itself)
+        address foretold = vm.computeCreateAddress(factory, vm.getNonce(factory));
+        deal(address(CBLTC), creator, 1e8);
+        vm.startPrank(creator);
+        address token = PAD.createTokenWithFees("Batch", "BATCH", 0, meta, address(CBLTC), fees);
+        assertEq(token, foretold, "the factory's next coin is its CREATE address at its nonce");
+        PAD.setFeeRecipient(foretold, address(0)); // the guard: the creator's own coin, so it passes
+        CBLTC.approve(address(PAD), 1e8);
+        PAD.buyWithQuote(foretold, 1e8, 0);
+        vm.stopPrank();
+        assertGt(LaunchToken(token).balanceOf(creator), 0, "the creator is the first holder");
+        (,,,,, address who,) = PAD.curves(token);
+        assertEq(who, creator);
+
+        // the race: somebody creates first, the foretold address is theirs, the guard refuses
+        address foretold2 = vm.computeCreateAddress(factory, vm.getNonce(factory));
+        vm.prank(trader);
+        address theirs = PAD.createTokenWithFees("Theirs", "THEIRS", 0, meta, address(CBLTC), fees);
+        assertEq(theirs, foretold2);
+        vm.startPrank(creator);
+        address mine = PAD.createTokenWithFees("Mine", "MINE", 0, meta, address(CBLTC), fees);
+        assertTrue(mine != foretold2, "the address moved on by one");
+        vm.expectRevert(LaunchpadBase.NotCreator.selector);
+        PAD.setFeeRecipient(foretold2, address(0)); // their coin: reverts, and the batch with it
+        vm.stopPrank();
+
+        // the dev buy in ETH through the live zap, on a foretold address, the same guard before it
+        address foretold3 = vm.computeCreateAddress(factory, vm.getNonce(factory));
+        vm.startPrank(whale);
+        address zapped = PAD.createTokenWithFees("Zapped", "ZAPD", 0, meta, address(CBLTC), fees);
+        assertEq(zapped, foretold3);
+        PAD.setFeeRecipient(foretold3, address(0));
+        ZAP.zapBuy{value: 0.01 ether}(foretold3, _path(), 0, 0);
+        vm.stopPrank();
+        assertGt(LaunchToken(zapped).balanceOf(whale), 0, "bought with ETH in the same breath");
+    }
+
     function test_live_smallEthBuyOnTheCurveThroughTheZap() public {
         if (skipAll) return;
         address token = _create();

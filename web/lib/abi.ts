@@ -5309,3 +5309,50 @@ export type PadVersion = 11 | 12;
 export function padAbiFor(version: PadVersion) {
   return version === 12 ? launchpadAbi : launchpadV11Abi;
 }
+
+/** The zap routers (ZapRouter, SlipstreamZapRouter): one-transaction ETH buys on an
+ *  asset-quoted curve, and on a pre-market's own curve. */
+export const zapRouterAbi = [
+  {
+    type: "function",
+    name: "zapBuy",
+    stateMutability: "payable",
+    inputs: [
+      { name: "token", type: "address" },
+      { name: "path", type: "bytes" },
+      { name: "minQuoteOut", type: "uint256" },
+      { name: "minTokensOut", type: "uint256" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "zapBuyCurve",
+    stateMutability: "payable",
+    inputs: [
+      { name: "token", type: "address" },
+      { name: "minQuoteOut", type: "uint256" },
+      { name: "minTokensOut", type: "uint256" },
+    ],
+    outputs: [],
+  },
+] as const;
+
+/** Uniswap v3's QuoterV2 (and Aerodrome Slipstream's, whose paths carry tick spacings). */
+export const quoterAbi = [
+  {
+    type: "function",
+    name: "quoteExactInput",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "path", type: "bytes" },
+      { name: "amountIn", type: "uint256" },
+    ],
+    outputs: [
+      { name: "amountOut", type: "uint256" },
+      { name: "sqrtPriceX96AfterList", type: "uint160[]" },
+      { name: "initializedTicksCrossedList", type: "uint32[]" },
+      { name: "gasEstimate", type: "uint256" },
+    ],
+  },
+] as const;

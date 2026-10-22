@@ -145,7 +145,13 @@ longer served by the site, built or run.
     formatted in its own quote
   - `/create`: token creation with logo (1:1) and social links, a searchable
     pair picker over all 64 quote assets (grouped Pre-IPO / ETFs & commodities
-    / Stocks, with official logos) and the irrevocable fee-destination choice
+    / Stocks, with official logos) and the irrevocable fee-destination choice;
+    on a cbLTC curve the dev buy, paid in ETH through the zap or in cbLTC, goes
+    out with the launch as one atomic batch where the wallet batches calls
+    (EIP-5792): the launch, a guard on the coin's foretold address
+    (`setFeeRecipient`, the creator's alone, so a coin somebody created in
+    between reverts the whole batch) and the buy (`web/lib/launch.ts`); any
+    other wallet sends the launch, then the buy right after it confirms
   - `/token/[address]`: a header with the contract address first (copied
     in a tap), the creator, when the coin was launched, its buy and sell tax,
     the pool fee once graduated and the day's volume, with the market cap and

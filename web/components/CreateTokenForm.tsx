@@ -1,11 +1,22 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { formatEther, parseEther, parseEventLogs, type Abi } from "viem";
+import { erc20Abi, formatEther, parseEther, parseEventLogs, parseUnits, type Abi, type Log } from "viem";
 import Link from "next/link";
-import { useAccount, useReadContract, useReadContracts, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
-import { launchpadAbi, launchpadV11Abi } from "@/lib/abi";
-import { useLaunchpadAddress, useExplorer, useAppChain, usePadAbi, usePadVersion, RETRY_MS, chainAnswered, ZERO_ADDRESS } from "@/lib/hooks";
+import {
+  useAccount,
+  useCapabilities,
+  useReadContract,
+  useReadContracts,
+  useSendCalls,
+  useSimulateContract,
+  useTransactionCount,
+  useWaitForCallsStatus,
+  useWaitForTransactionReceipt,
+  useWriteContract,
+} from "wagmi";
+import { launchpadAbi, launchpadV11Abi, quoterAbi, zapRouterAbi } from "@/lib/abi";
+import { useLaunchpadAddress, useExplorer, useAppChain, usePadAbi, usePadVersion, RETRY_MS, chainAnswered, ZERO_ADDRESS, useDebounced } from "@/lib/hooks";
 import {
   robinhood,
   QUOTE_ASSETS,
@@ -13,12 +24,16 @@ import {
   rwaLogo,
   type QuoteAssetInfo,
   MIGRATION_TARGET,
+  ZAP_ROUTER,
+  UNISWAP_QUOTER,
+  WETH9,
 } from "@/lib/config";
 import { TokenLogo } from "@/components/TokenLogo";
 import { processLogoFile, dataUriBytes } from "@/lib/image";
 import { fmtTokens, fmtUnits } from "@/lib/format";
 import { FeeSplitEditor, splitTotal, type SplitPct } from "@/components/FeeSplitEditor";
 import { feesLine, treasuryPct, treasuryPctV11 } from "@/lib/curve";
+import { freshCurveBuy, launchCalls, lessSlippage, predictedToken, zapPath, type DevBuy } from "@/lib/launch";
 
 const inputCls =
   "w-full rounded-lg input px-3 py-2 text-sm focus:border-white outline-none placeholder:text-zinc-600";
@@ -31,6 +46,16 @@ function estimateTokens(ethIn: number, feeBps: number, vEth: number): number {
   if (ethIn <= 0) return 0;
   const e = ethIn * 1e18 * (1 - feeBps / 10_000); // the platform fee and the coin's tax off first
   return (V_TOK - (vEth * V_TOK) / (vEth + e)) / 1e18;
+}
+
+/** the dev buy's amount in the unit it is paid in; 0 for an empty or malformed field */
+function parseAmount(value: string, decimals: number): bigint {
+  if (!value) return 0n;
+  try {
+    return parseUnits(value, decimals);
+  } catch {
+    return 0n;
+  }
 }
 
 function prefixed(value: string, base: string): string {
@@ -157,6 +182,9 @@ export function CreateTokenForm() {
   const { writeContract, data: hash, isPending, error, reset } = useWriteContract();
   const { data: receipt, isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash, chainId: chain.id });
   const [copied, setCopied] = useState(false);
+  // the dev buy sent after the launch, where the wallet could not batch the two
+  const { writeContract: writeDevBuy, data: devBuyHash, isPending: devBuyPending, error: devBuyError, reset: resetDevBuy } = useWriteContract();
+  const { isLoading: devBuyConfirming, isSuccess: devBuyDone } = useWaitForTransactionReceipt({ hash: devBuyHash, chainId: chain.id });
 
   // the new token's address, from the TokenCreated event in the receipt
   const newToken = useMemo(() => {
@@ -203,9 +231,112 @@ export function CreateTokenForm() {
   const virtualReserve = (virtualRaw as bigint | undefined) ?? 0n;
   const isEthQuote = quote.address === null;
 
-  function submit(e: React.FormEvent) {
+  // ---- the dev buy on an asset curve (v12). The pad takes a dev buy with the launch only as
+  // native value, so on a cbLTC curve the buy is a call of its own: paid in ETH through the zap
+  // (the DEX leg, then the curve) or in the quote itself. A wallet that batches calls (EIP-5792,
+  // atomic) sends launch and buy as one transaction, with a guard on the coin's foretold address
+  // in between (lib/launch.ts); any other wallet sends the launch, then the buy right after.
+  const { address: account } = useAccount();
+  const quoteAddr = quote.address ?? undefined;
+  const assetDevBuy = version === 12 && !isEthQuote && !!quoteAddr;
+  const [devPay, setDevPay] = useState<"eth" | "quote">("eth");
+  const zapAddr = ZAP_ROUTER[chain.id];
+  const quoterAddr = UNISWAP_QUOTER[chain.id];
+  const wethAddr = WETH9[chain.id];
+  // the ETH leg needs a one-hop route to the quote (cbLTC: the Slipstream pool at tick spacing 200)
+  const path = assetDevBuy && wethAddr && quoteAddr && quote.zapFees?.length === 1 ? zapPath(wethAddr, quote.zapFees[0], quoteAddr) : undefined;
+  const ethDevBuyPossible = !!path && !!zapAddr && !!quoterAddr;
+  const ethDevBuy = devPay === "eth" && ethDevBuyPossible;
+  const devAmount = parseAmount(assetDevBuy ? initialBuy : "", ethDevBuy ? 18 : quote.decimals);
+  const { data: caps } = useCapabilities({ account, query: { enabled: !!account && assetDevBuy, retry: false } });
+  const chainCaps = (caps as Record<number, { atomic?: { status?: string }; atomicBatch?: { supported?: boolean } }> | undefined)?.[chain.id];
+  const atomic = chainCaps?.atomic?.status === "supported" || chainCaps?.atomic?.status === "ready" || chainCaps?.atomicBatch?.supported === true;
+  const { data: factoryRaw } = useReadContract({
+    address: pad,
+    abi: launchpadAbi,
+    functionName: "tokenFactory",
+    chainId: chain.id,
+    query: { enabled: deployed && assetDevBuy, staleTime: Infinity },
+  });
+  const factory = factoryRaw as `0x${string}` | undefined;
+  // the factory's nonce names the next coin's address: read again right before the batch goes
+  const { refetch: refetchNonce } = useTransactionCount({ address: factory, chainId: chain.id, query: { enabled: !!factory && assetDevBuy } });
+  // ETH -> quote through the quoter, once typing has paused
+  const debouncedEth = useDebounced(ethDevBuy ? devAmount : 0n, 250);
+  const { data: quoterSim, error: quoterError } = useSimulateContract({
+    address: quoterAddr,
+    abi: quoterAbi,
+    functionName: "quoteExactInput",
+    args: path ? [path, debouncedEth] : undefined,
+    chainId: chain.id,
+    query: { enabled: ethDevBuy && debouncedEth > 0n, refetchInterval: 10_000, retry: 1, staleTime: 8_000 },
+  });
+  const quoteOut: bigint | undefined = !assetDevBuy || devAmount === 0n
+    ? undefined
+    : ethDevBuy
+      ? debouncedEth === devAmount
+        ? (quoterSim?.result?.[0] as bigint | undefined)
+        : undefined
+      : devAmount;
+  const { data: allowanceRaw } = useReadContract({
+    address: quoteAddr,
+    abi: erc20Abi,
+    functionName: "allowance",
+    args: account ? [account, pad] : undefined,
+    chainId: chain.id,
+    query: { enabled: assetDevBuy && !ethDevBuy && !!account, refetchInterval: 15_000 },
+  });
+  const allowance = (allowanceRaw as bigint | undefined) ?? 0n;
+  const devRateBps = platformFeeBps === undefined ? undefined : platformFeeBps + BigInt(buyTaxBps);
+  const devTokens = quoteOut !== undefined && devRateBps !== undefined && virtualReserve > 0n ? freshCurveBuy(virtualReserve, quoteOut, devRateBps) : undefined;
+  // a dev buy waits for its figures: sent on nothing, its minimums would be nothing
+  const devBuyWaiting = assetDevBuy && devAmount > 0n && devTokens === undefined;
+  const wantsDevBuy = assetDevBuy && devAmount > 0n;
+  const { sendCalls, data: callsSent, isPending: callsPending, error: callsError, reset: resetCalls } = useSendCalls();
+  const { data: callsStatus, isLoading: callsConfirming } = useWaitForCallsStatus({ id: callsSent?.id, query: { enabled: !!callsSent?.id } });
+  // the launch as one batch: the coin and the transaction, from the bundle's receipts
+  const batchResult = useMemo(() => {
+    if (callsStatus?.status !== "success" || !callsStatus.receipts?.length) return null;
+    try {
+      // the bundle's receipts carry the logs' address, data and topics: what parseEventLogs reads
+      const logs = callsStatus.receipts.flatMap((r) => r.logs) as unknown as Log[];
+      const events = parseEventLogs({ abi: launchpadAbi, logs, eventName: "TokenCreated" });
+      const token = (events[0]?.args as { token?: `0x${string}` } | undefined)?.token ?? null;
+      return token ? { token, hash: callsStatus.receipts[0].transactionHash } : null;
+    } catch {
+      return null;
+    }
+  }, [callsStatus]);
+  // what was created, by either road
+  const created = batchResult ?? (isSuccess && hash ? { token: newToken, hash } : null);
+  const [pendingDevBuy, setPendingDevBuy] = useState<DevBuy | null>(null);
+  const devBuyMinimums = (): { minTokensOut: bigint } | null =>
+    devTokens === undefined ? null : { minTokensOut: lessSlippage(devTokens) };
+
+  /** the dev buy as the batch (or the follow-up) sends it, on `token` */
+  function devBuyFor(): DevBuy | null {
+    const m = devBuyMinimums();
+    if (!wantsDevBuy || !m || quoteOut === undefined) return null;
+    if (ethDevBuy && zapAddr && path) return { kind: "eth", zap: zapAddr, path, value: devAmount, minQuoteOut: lessSlippage(quoteOut), minTokensOut: m.minTokensOut };
+    if (!quoteAddr) return null;
+    return { kind: "quote", quote: quoteAddr, amount: devAmount, minTokensOut: m.minTokensOut, approve: allowance < devAmount };
+  }
+
+  /** the follow-up dev buy, where the launch went alone: the approval first when the quote needs one */
+  function sendDevBuy(token: `0x${string}`, d: DevBuy) {
+    resetDevBuy();
+    if (d.kind === "eth") {
+      writeDevBuy({ address: d.zap, abi: zapRouterAbi, functionName: "zapBuy", chainId: chain.id, args: [token, d.path, d.minQuoteOut, d.minTokensOut], value: d.value });
+    } else if (allowance < d.amount) {
+      writeDevBuy({ address: d.quote, abi: erc20Abi, functionName: "approve", chainId: chain.id, args: [pad, d.amount] });
+    } else {
+      writeDevBuy({ address: pad, abi: launchpadAbi, functionName: "buyWithQuote", chainId: chain.id, args: [token, d.amount, d.minTokensOut] });
+    }
+  }
+
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (closed || !splitOk) return;
+    if (closed || !splitOk || devBuyWaiting) return;
     const meta = {
       logoURI: logoURI.trim(),
       website: website.trim(),
@@ -215,6 +346,42 @@ export function CreateTokenForm() {
       description: description.trim(),
     };
     const value = isEthQuote && initialBuy ? parseEther(initialBuy) : 0n;
+    const devBuy = devBuyFor();
+    setPendingDevBuy(null);
+    if (devBuy && atomic && factory && customFees) {
+      // one batch: the launch, the guard on the foretold address, the buy. The factory's nonce is
+      // read now, not from a cache: a coin created in the meantime would move the address on, and
+      // the guard would refuse the batch rather than buy that coin
+      reset();
+      resetCalls();
+      const { data: nonce } = await refetchNonce();
+      if (nonce === undefined) return;
+      const token = predictedToken(factory, nonce);
+      sendCalls({
+        calls: launchCalls({
+          pad,
+          token,
+          name: name.trim(),
+          symbol: symbol.trim().toUpperCase(),
+          meta,
+          quoteAsset: quoteAddr ?? ZERO_ADDRESS,
+          fees: {
+            buyTaxBps,
+            sellTaxBps,
+            creatorBps: split.creator * 100,
+            holdersBps: split.holders * 100,
+            burnBps: split.burn * 100,
+            liquidityBps: split.liquidity * 100,
+            platformBps: 0,
+          },
+          devBuy,
+        }),
+        chainId: chain.id,
+        forceAtomic: true,
+      });
+      return;
+    }
+    if (devBuy) setPendingDevBuy(devBuy); // offered as soon as the launch confirms
     if (customFees) {
       writeContract({
         address: pad,
@@ -251,7 +418,7 @@ export function CreateTokenForm() {
     }
   }
 
-  // a dev buy rides the launch only on a native curve: on an asset curve the value sent is 0, so none is taken
+  // a dev buy rides the launch as value only on a native curve; on an asset curve it is a call of its own (above)
   const devBuyNum = isEthQuote ? parseFloat(initialBuy) || 0 : 0;
   const estTokens =
     platformFeeBps === undefined || virtualReserve === 0n
@@ -429,8 +596,72 @@ export function CreateTokenForm() {
           {isEthQuote && devBuyNum > 0 && estTokens !== undefined && (
             <Hint>≈ {fmtTokens(BigInt(Math.floor(estTokens)) * 10n ** 18n)} ${ticker || "TOKENS"} at launch price</Hint>
           )}
-          {!isEthQuote && (
-            <Hint>Dev buy in {quote.symbol} is done right after launch from the token page.</Hint>
+          {assetDevBuy && (
+            <div className="space-y-2">
+              {ethDevBuyPossible && (
+                <div className="flex gap-2 items-center flex-wrap">
+                  <span className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">Pay with</span>
+                  {(["eth", "quote"] as const).map((k) => (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => {
+                        setDevPay(k);
+                        setInitialBuy("");
+                      }}
+                      className={`rounded-full px-3 py-1 text-xs font-mono ${
+                        devPay === k ? "bg-white text-black" : "border border-white/15 text-zinc-400 hover:border-white hover:text-white"
+                      }`}
+                    >
+                      {k === "eth" ? native : quote.symbol}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="flex gap-2 items-center flex-wrap">
+                {(ethDevBuy ? ["0", "0.01", "0.05", "0.1"] : ["0", "0.5", "1", "2"]).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setInitialBuy(v === "0" ? "" : v)}
+                    className={`rounded-full px-3 py-1.5 text-xs font-mono ${
+                      (v === "0" && !initialBuy) || initialBuy === v
+                        ? "bg-white text-black"
+                        : "border border-white/15 text-zinc-400 hover:border-white hover:text-white"
+                    }`}
+                  >
+                    {v === "0" ? "Off" : `${v} ${ethDevBuy ? native : quote.symbol}`}
+                  </button>
+                ))}
+                <input
+                  value={initialBuy}
+                  onChange={(e) => setInitialBuy(e.target.value)}
+                  placeholder="custom"
+                  type="number"
+                  step="any"
+                  min="0"
+                  className="w-24 rounded-full input px-3 py-1.5 text-xs font-mono focus:border-white outline-none text-right"
+                />
+              </div>
+              {devAmount > 0n && (
+                <Hint>
+                  {devTokens === undefined
+                    ? ethDevBuy && !account
+                      ? `Connect your wallet to quote the ${native} leg.`
+                      : quoterError
+                        ? `No quote for the ${native} leg: ${(quoterError as { shortMessage?: string }).shortMessage ?? quoterError.message}`
+                        : "Quoting…"
+                    : `≈ ${fmtTokens(devTokens)} $${ticker || "TOKENS"} at launch price${ethDevBuy && quoteOut !== undefined ? ` · via ${fmtUnits(quoteOut, quote.decimals)} ${quote.symbol}` : ""}`}
+                </Hint>
+              )}
+              <Hint>
+                {!account
+                  ? `Paid in ${ethDevBuyPossible ? `${native} or ` : ""}${quote.symbol}, sent with the launch.`
+                  : atomic
+                    ? "Launch and dev buy go out as one transaction: nobody gets in between."
+                    : "Your wallet sends the launch first, then the dev buy right after it confirms."}
+              </Hint>
+            </div>
           )}
         </div>
 
@@ -448,7 +679,9 @@ export function CreateTokenForm() {
 
         <button
           type="submit"
-          disabled={!deployed || closed || !feeUiReady || !splitOk || !isConnected || isPending || isConfirming}
+          disabled={
+            !deployed || closed || !feeUiReady || !splitOk || !isConnected || isPending || isConfirming || callsPending || callsConfirming || devBuyWaiting
+          }
           className="btn-primary w-full py-3"
         >
           {!deployed
@@ -459,11 +692,15 @@ export function CreateTokenForm() {
               ? `Split must total 100% (${splitTotal(split)}% now)`
             : !isConnected
               ? "Connect wallet to launch"
-              : isPending
+              : isPending || callsPending
                 ? "Sign in wallet…"
-                : isConfirming
+                : isConfirming || callsConfirming
                   ? "Confirming…"
-                  : "Launch token"}
+                  : devBuyWaiting
+                    ? "Quoting the dev buy…"
+                    : wantsDevBuy && atomic
+                      ? "Launch token + dev buy"
+                      : "Launch token"}
         </button>
         {closed && (
           <p className="text-xs text-zinc-500">
@@ -472,17 +709,17 @@ export function CreateTokenForm() {
           </p>
         )}
 
-        {isSuccess && hash && (
+        {created && (
           <div className="card p-4 space-y-3">
-            <p className="text-sm text-white font-semibold">🎉 Token created!</p>
-            {newToken && (
+            <p className="text-sm text-white font-semibold">{batchResult ? "🎉 Token created and bought!" : "🎉 Token created!"}</p>
+            {created.token && (
               <>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <code className="font-mono text-xs text-zinc-300 break-all">{newToken}</code>
+                  <code className="font-mono text-xs text-zinc-300 break-all">{created.token}</code>
                   <button
                     type="button"
                     onClick={() => {
-                      navigator.clipboard.writeText(newToken);
+                      navigator.clipboard.writeText(created.token!);
                       setCopied(true);
                       setTimeout(() => setCopied(false), 1500);
                     }}
@@ -491,8 +728,26 @@ export function CreateTokenForm() {
                     {copied ? "Copied ✓" : "Copy CA"}
                   </button>
                 </div>
+                {/* the launch went alone: the dev buy now, on the coin as it is (its approval first when the quote needs one) */}
+                {pendingDevBuy && !devBuyDone && (
+                  <button
+                    type="button"
+                    disabled={devBuyPending || devBuyConfirming}
+                    onClick={() => sendDevBuy(created.token!, pendingDevBuy)}
+                    className="btn-primary w-full py-2"
+                  >
+                    {devBuyPending
+                      ? "Sign in wallet…"
+                      : devBuyConfirming
+                        ? "Confirming…"
+                        : pendingDevBuy.kind === "quote" && allowance < pendingDevBuy.amount
+                          ? `Approve ${quote.symbol} for the dev buy`
+                          : `Dev buy ${initialBuy} ${pendingDevBuy.kind === "eth" ? native : quote.symbol} now`}
+                  </button>
+                )}
+                {devBuyDone && <p className="text-xs text-zinc-400">Dev buy done.</p>}
                 <Link
-                  href={`/token/${newToken}`}
+                  href={`/token/${created.token}`}
                   className="block w-full rounded-full bg-white py-2 text-center text-sm font-semibold text-black hover:bg-zinc-100 transition-colors"
                 >
                   Open trading page →
@@ -500,18 +755,27 @@ export function CreateTokenForm() {
               </>
             )}
             <p className="text-xs text-zinc-500">
-              <a href={`${explorer}/tx/${hash}`} target="_blank" className="underline">
+              <a href={`${explorer}/tx/${created.hash}`} target="_blank" className="underline">
                 View transaction
               </a>
-              <button type="button" onClick={() => reset()} className="text-zinc-600 underline ml-3">
+              <button
+                type="button"
+                onClick={() => {
+                  reset();
+                  resetCalls();
+                  resetDevBuy();
+                  setPendingDevBuy(null);
+                }}
+                className="text-zinc-600 underline ml-3"
+              >
                 dismiss
               </button>
             </p>
           </div>
         )}
-        {error && (
+        {(error ?? callsError ?? devBuyError) && (
           <p className="text-sm text-zinc-400 break-all border border-white/15 rounded-lg p-2">
-            ⚠ {(error as { shortMessage?: string }).shortMessage ?? error.message}
+            ⚠ {((error ?? callsError ?? devBuyError) as { shortMessage?: string }).shortMessage ?? (error ?? callsError ?? devBuyError)!.message}
           </p>
         )}
       </form>
@@ -581,6 +845,12 @@ export function CreateTokenForm() {
               <Row
                 k="Dev buy"
                 v={devBuyNum > 0 ? `${formatEther(parseEtherSafe(initialBuy))} ${native}` : `0 ${native}`}
+              />
+            )}
+            {assetDevBuy && (
+              <Row
+                k="Dev buy"
+                v={devAmount > 0n ? `${initialBuy} ${ethDevBuy ? native : quote.symbol}${atomic ? " · same transaction" : ""}` : "—"}
               />
             )}
           </div>
