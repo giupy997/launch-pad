@@ -1,9 +1,11 @@
 [build]
   base = "web"
-  # Netlify installs with the npm its image ships (10 on Node 22): a pinned npm 11 here
-  # (NPM_VERSION, 2026-10-19 to 2026-10-22) failed every build, and the site stayed on the
-  # build before it. The seven-day release-age hold is enforced by CI, which installs this
-  # same lock with npm 11 and asserts the setting before every push lands here
+  # Netlify installs with the npm its image ships (10 on Node 22), and the lock is written by
+  # npm 10 for that reason: a lock npm 11 writes leaves out the nested optional peers npm 10
+  # expects, and npm 10's `npm ci` refuses it as out of sync (every build from 2026-10-19 to
+  # 2026-10-22 failed so, and the site stayed on the build before). npm 11 installs an npm 10
+  # lock as it is, so CI, which installs this same lock with npm 11, still enforces the
+  # seven-day release-age hold before every push lands here
   # skip builds when nothing the site is made of changed (saves build
   # credits): the pages under web/, and this file, which carries the
   # redirect rules; the command runs in the base directory
