@@ -100,11 +100,11 @@ export const LAUNCHPAD_ADDRESS: Record<number, `0x${string}` | undefined> = {
  *  reachable by link with a notice, holders can still sell on the curve. */
 export const HIDDEN_TOKENS: Record<number, `0x${string}`[]> = {
   [base.id]: [
-    // Notus as first created on the v12 pad on 2026-10-24 (block 53,034,881) and the
-    // coin the pad creates next (the factory's nonce 9, the address its CREATE gives):
-    // the owner's two candidates, traded by the team alone until one of them is listed
+    // Notus as created twice on the v12 pad on 2026-10-24 (blocks 53,034,881 and
+    // 53,043,585): the owner's two candidates, traded by the team alone until one of
+    // them is listed
     "0xf679e4b6058e2C8678BCDee9e17292907250132e",
-    "0x8989c1437c28062051a56236D86D19989C666Bc0",
+    "0x4CFCDd76DF7F00F7f7d911263947a9B5Ed0b0fE5",
   ],
 };
 export function isHiddenToken(chainId: number, token: string): boolean {
