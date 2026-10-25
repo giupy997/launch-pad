@@ -288,6 +288,13 @@ export const ZAP_ROUTER: Record<number, `0x${string}` | undefined> = {
   [base.id]: "0x15045E01b6A38f40695EEa0BB31aE0342f7Ee810", // SlipstreamZapRouter → Aerodrome, for the v12 pad (the v11 pad's was 0x072a…5254)
   [robinhood.id]: "0xfd0C942E3DB34672715B862A8e19838bC9EDa7B5", // v7.4
 };
+/** The zap whose pool legs the site uses (zapPoolBuy, zapPoolSell: an ETH buy
+ *  in a graduated coin's pool, a sale paid in ETH): the v2 zap, once deployed
+ *  (`contracts/script/ops/zap.sh deploy`), the same address as ZAP_ROUTER then.
+ *  Empty, the pool trades in the quote alone. */
+export const POOL_ZAP: Record<number, `0x${string}` | undefined> = {
+  [base.id]: undefined,
+};
 export const UNISWAP_QUOTER: Record<number, `0x${string}` | undefined> = {
   [base.id]: "0x254cF9E1E6e233aa1AC962CB9B05b2cfeAaE15b0", // Aerodrome Slipstream QuoterV2 (paths carry tick spacings)
   [robinhood.id]: "0x33e885ed0ec9bf04ecfb19341582aadcb4c8a9e7",

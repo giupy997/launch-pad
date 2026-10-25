@@ -75,6 +75,7 @@ expect "migrator.router = Uniswap v2 Router02" "$(call "$MIGRATOR" 'router()(add
 expect "migrator.HARVEST_COOLDOWN = 300 s (v5)" "$(call "$MIGRATOR" 'HARVEST_COOLDOWN()(uint256)')" 300
 expect "zap.launchpad" "$(call "$ZAP" 'launchpad()(address)')" "$PAD"
 expect "zap.swapRouter = Slipstream" "$(call "$ZAP" 'swapRouter()(address)')" "$SLIPSTREAM_ROUTER"
+expect "zap.weth" "$(call "$ZAP" 'weth()(address)')" 0x4200000000000000000000000000000000000006
 
 echo "== the timelock"
 PROPOSER_ROLE=$(cast keccak "PROPOSER_ROLE")

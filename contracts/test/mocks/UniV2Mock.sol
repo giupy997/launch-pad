@@ -168,7 +168,10 @@ contract MockV2Factory {
     }
 }
 
-/// Only what the migrator asks a router for: where the factory and the wrapped coin are.
+/// What the migrator asks a router for — where the factory and the wrapped
+/// coin are — and the one swap the zap sends it: exact input on a two-token
+/// path, the output sized from what the pair really received (a coin that
+/// keeps a share on the way in), the minimum checked on what `to` really got.
 contract MockV2Router {
     address public immutable factory;
     address public immutable WETH;
@@ -176,5 +179,27 @@ contract MockV2Router {
     constructor(address factory_, address weth_) {
         factory = factory_;
         WETH = weth_;
+    }
+
+    function swapExactTokensForTokensSupportingFeeOnTransferTokens(
+        uint256 amountIn,
+        uint256 amountOutMin,
+        address[] calldata path,
+        address to,
+        uint256 deadline
+    ) external {
+        require(deadline >= block.timestamp, "UniswapV2Router: EXPIRED");
+        require(path.length == 2, "two tokens only here");
+        MockV2Pair pair = MockV2Pair(MockV2Factory(factory).getPair(path[0], path[1]));
+        require(address(pair) != address(0), "no pair");
+        require(IERC20(path[0]).transferFrom(msg.sender, address(pair), amountIn), "TRANSFER_FROM_FAILED");
+        uint256 before = IERC20(path[1]).balanceOf(to);
+        (uint112 r0, uint112 r1,) = pair.getReserves();
+        bool inIsZero = path[0] == pair.token0();
+        (uint256 rIn, uint256 rOut) = inIsZero ? (r0, r1) : (r1, r0);
+        uint256 got = IERC20(path[0]).balanceOf(address(pair)) - rIn;
+        uint256 out = (got * 997 * rOut) / (rIn * 1000 + got * 997);
+        pair.swap(inIsZero ? 0 : out, inIsZero ? out : 0, to, "");
+        require(IERC20(path[1]).balanceOf(to) - before >= amountOutMin, "UniswapV2Router: INSUFFICIENT_OUTPUT_AMOUNT");
     }
 }

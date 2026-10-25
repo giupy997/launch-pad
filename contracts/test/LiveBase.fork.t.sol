@@ -403,4 +403,79 @@ contract LiveBaseForkTest is Test {
         vm.stopPrank();
         assertGt(CBLTC.balanceOf(trader), before, "sold back for cbLTC");
     }
+
+    /// The zap's pool legs against the live pool of a coin graduated here: a
+    /// zap of this repository's code is deployed on the fork (the live one,
+    /// ZAP, predates them), the trader buys in ETH — Aerodrome's cbLTC, then
+    /// the pair's coins less the coin's charge, straight to the trader — and
+    /// sells everything back for ETH, the charge taken on the way in; the pad's
+    /// bucket holds both legs' take, the zap holds nothing. Both minimums are
+    /// enforced on the live DEXes. The live Notus pool, when it is there, takes
+    /// a small buy the same way.
+    function test_live_poolBuyAndSellInEthThroughTheZap() public {
+        if (skipAll) return;
+        if (!v12) return; // graduatedVia and the pool charge are v12's
+        SlipstreamZapRouter zap2 = new SlipstreamZapRouter(address(PAD), address(ZAP.swapRouter()), WETH);
+        address token = _create();
+        _graduateWithEth(token);
+        uint256 got = _zapBuyLive(zap2, token);
+        _zapSellLive(zap2, token, got);
+        _zapKeepsNothing(zap2, token);
+
+        // the live Notus pool, if this fork has it
+        address notus = 0x4CFCDd76DF7F00F7f7d911263947a9B5Ed0b0fE5;
+        if (notus.code.length > 0 && address(PAD.graduatedVia(notus)) != address(0)) {
+            vm.prank(trader);
+            uint256 gotNotus = zap2.zapPoolBuy{value: 0.01 ether}(notus, _path(), 0, 0);
+            assertGt(gotNotus, 0, "bought Notus in its live pool with ETH");
+        }
+    }
+
+    /// The buy: what the pair pays for the cbLTC the ETH bought, less the coin's charge, on the trader.
+    function _zapBuyLive(SlipstreamZapRouter zap2, address token) internal returns (uint256 got) {
+        uint256 bucket0 = PAD.taxTreasury(token);
+        uint256 ethBefore = trader.balance;
+        vm.prank(trader);
+        got = zap2.zapPoolBuy{value: 0.05 ether}(token, _path(), 0, 0);
+        assertGt(got, 0, "bought in the pool with ETH");
+        assertEq(LaunchToken(token).balanceOf(trader), got, "the call returns what the trader received");
+        assertEq(ethBefore - trader.balance, 0.05 ether, "the ETH spent, nothing more");
+        assertGt(PAD.taxTreasury(token), bucket0, "the buy's charge is in the pad's bucket");
+    }
+
+    /// The sale of everything bought: the pair prices the net, the cbLTC becomes ETH on Aerodrome;
+    /// each leg's minimum is enforced by the live DEX it guards.
+    function _zapSellLive(SlipstreamZapRouter zap2, address token, uint256 got) internal {
+        (, uint16 sellTax,,,,, uint16 platformBps) = PAD.feeConfig(token);
+        (uint256 rToken, uint256 rQuote) = _reserves(token, MIGRATOR.pairOf(token));
+        uint256 net = got - (got * (uint256(platformBps) + sellTax)) / 10_000;
+        uint256 quoteOut = (net * 997 * rQuote) / (rToken * 1000 + net * 997);
+        uint256 bucket1 = PAD.taxTreasury(token);
+        vm.startPrank(trader);
+        LaunchToken(token).approve(address(zap2), got);
+        vm.expectRevert(); // asks more cbLTC of the pair than it pays
+        zap2.zapPoolSell(token, got, _back(), quoteOut + 1, 0);
+        vm.expectRevert(); // asks more ETH of Aerodrome than the cbLTC buys
+        zap2.zapPoolSell(token, got, _back(), quoteOut, type(uint256).max);
+        uint256 ethBefore = trader.balance;
+        uint256 ethOut = zap2.zapPoolSell(token, got, _back(), quoteOut, 0);
+        vm.stopPrank();
+        assertEq(trader.balance - ethBefore, ethOut, "the ETH is the trader's");
+        assertEq(LaunchToken(token).balanceOf(trader), 0, "every coin sold");
+        assertGt(ethOut, 0.045 ether, "a round trip costs the charges, the pools' fees and the moves: a few percent");
+        assertLt(ethOut, 0.05 ether);
+        assertGt(PAD.taxTreasury(token), bucket1, "the sale's charge is in the pad's bucket");
+    }
+
+    function _zapKeepsNothing(SlipstreamZapRouter zap2, address token) internal view {
+        assertEq(LaunchToken(token).balanceOf(address(zap2)), 0, "the zap keeps nothing");
+        assertEq(CBLTC.balanceOf(address(zap2)), 0);
+        assertEq(IERC20(WETH).balanceOf(address(zap2)), 0);
+        assertEq(address(zap2).balance, 0);
+    }
+
+    /// the route the site uses out: cbLTC → WETH on the same pool
+    function _back() internal pure returns (bytes memory) {
+        return abi.encodePacked(address(CBLTC), uint24(200), WETH);
+    }
 }

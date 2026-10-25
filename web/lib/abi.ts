@@ -5336,6 +5336,32 @@ export const zapRouterAbi = [
     ],
     outputs: [],
   },
+  // the pool legs (zap v2): an ETH buy in a graduated coin's pool, a sale paid in ETH
+  {
+    type: "function",
+    name: "zapPoolBuy",
+    stateMutability: "payable",
+    inputs: [
+      { name: "token", type: "address" },
+      { name: "path", type: "bytes" },
+      { name: "minQuoteOut", type: "uint256" },
+      { name: "minTokensOut", type: "uint256" },
+    ],
+    outputs: [{ name: "tokensOut", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "zapPoolSell",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "token", type: "address" },
+      { name: "amountIn", type: "uint256" },
+      { name: "path", type: "bytes" },
+      { name: "minQuoteOut", type: "uint256" },
+      { name: "minEthOut", type: "uint256" },
+    ],
+    outputs: [{ name: "ethOut", type: "uint256" }],
+  },
 ] as const;
 
 /** Uniswap v3's QuoterV2 (and Aerodrome Slipstream's, whose paths carry tick spacings). */

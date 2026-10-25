@@ -14,9 +14,12 @@ import {SlipstreamZapRouter} from "../src/SlipstreamZapRouter.sol";
 ///   LAUNCHPAD=0x... forge script script/DeployZapSlipstream.s.sol --rpc-url base \
 ///     --account notus --broadcast
 ///
-/// Then in web/lib/config.ts: ZAP_ROUTER = this address, UNISWAP_QUOTER = the
-/// Slipstream QuoterV2 0x254cF9E1E6e233aa1AC962CB9B05b2cfeAaE15b0 (QuoterV2's
-/// ABI, paths with tick spacings), cbLTC's zapFees = [200].
+/// For the v12 pad, `script/ops/zap.sh deploy` does the same and goes on to
+/// the Standard JSON input, the checks and the Basescan verification.
+/// Then in web/lib/config.ts: ZAP_ROUTER and POOL_ZAP = this address,
+/// UNISWAP_QUOTER = the Slipstream QuoterV2
+/// 0x254cF9E1E6e233aa1AC962CB9B05b2cfeAaE15b0 (QuoterV2's ABI, paths with
+/// tick spacings), cbLTC's zapFees = [200].
 contract DeployZapSlipstream is Script {
     /// Aerodrome Slipstream SwapRouter (initial deployment, CL factory 0x5e7BB104…).
     address constant SWAP_ROUTER = 0xBE6D8f0d05cC4be24d5167a3eF062215bE6D18a5;

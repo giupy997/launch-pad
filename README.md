@@ -61,9 +61,16 @@ longer served by the site, built or run.
     launchpad, in coins, and tells it (`onTax`); `MAX_RATE` 15% caps what
     the launchpad can ever answer
   - `src/interfaces/IDexMigrator.sol` — pluggable DEX adapter (one per chain)
-  - `src/ZapRouter.sol` — one-transaction ETH buys on asset-quoted curves:
-    through Uniswap for RWA pairs, or straight through the pre-market's own
-    curve for Notus Pre-Markets (no pool needed)
+  - `src/ZapRouter.sol` — one-transaction ETH trades on asset-quoted coins:
+    on the curve, through Uniswap for RWA pairs or straight through the
+    pre-market's own curve for Notus Pre-Markets (no pool needed); and, since
+    v2, in a graduated coin's pool — `zapPoolBuy` (ETH → the quote on the
+    DEX, the quote → the coin in its pool, the pair paying the caller) and
+    `zapPoolSell` (the coin → the quote in its pool, the quote → ETH, sent
+    to the caller), the coin's charge taken on the pool leg as on any pool
+    trade, every minimum checked on the leg it guards, nothing kept between
+    two transactions. `SlipstreamZapRouter` is the one for Base (Aerodrome
+    Slipstream's router shape)
   - `script/enable-rwa-quotes.sh` — enables the whole RWA catalogue as quote
     assets in one `setQuoteAssets` transaction
   - `script/create-pre-markets.sh` — creates the Notus Pre-Markets and
@@ -303,7 +310,10 @@ coin's pool fees a slice every five minutes until the buckets are empty
 (`--watch` for the notice before a freeze); `contracts/script/ops/migrator.sh`, a new
 `UniV2Migrator` for the pad: deployed, its Standard JSON input for Basescan
 written, verified, read back (the pad takes it through the timelock, from
-the Safe: `timelock.sh safe-calldata set-migrator`); `contracts/script/ops/timelock.sh`, the owner's timelock operations (a Safe
+the Safe: `timelock.sh safe-calldata set-migrator`); `contracts/script/ops/zap.sh`,
+the same for a `SlipstreamZapRouter` (no timelock: the pad does not know its
+zap, the site points at the new one in `web/lib/config.ts`, `ZAP_ROUTER` and
+`POOL_ZAP`); `contracts/script/ops/timelock.sh`, the owner's timelock operations (a Safe
 made proposer, the deployer's key revoked, a new treasury), each scheduled
 now and executable by anyone after the delay.
 
