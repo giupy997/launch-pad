@@ -96,7 +96,7 @@ export const POINTS_CHAINS: Record<string, PointsChain> = {
     // a keyed node takes 10,000 blocks a call; the public ones name their own cap, learned per node
     chunk: KEYED_BASE.length ? 9_999n : 1_999n,
     lag: 60n,
-    hidden: ["0x4cfcdd76df7f00f7f7d911263947a9b5ed0b0fe5"], // the owner's second Notus, not taken (lib/config.ts HIDDEN_TOKENS)
+    hidden: ["0xf679e4b6058e2c8678bcdee9e17292907250132e"], // the owner's first Notus, not taken (lib/config.ts HIDDEN_TOKENS)
     season: null,
     explorer: "https://base.blockscout.com",
   },
