@@ -28,4 +28,4 @@ DELAY=86400
 # the first coin launched on the pad, to verify its LaunchToken (every later coin shows as a
 # similar match); set it here once a coin exists, or pass it in the environment
 # (FIRST_TOKEN=0x... bash verify-basescan.sh); its name and symbol are read from the chain
-FIRST_TOKEN=${FIRST_TOKEN:-}
+FIRST_TOKEN=${FIRST_TOKEN:-0x4CFCDd76DF7F00F7f7d911263947a9B5Ed0b0fE5} # Notus, verified on Basescan 2026-10-26
