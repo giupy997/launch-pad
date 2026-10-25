@@ -100,10 +100,8 @@ export const LAUNCHPAD_ADDRESS: Record<number, `0x${string}` | undefined> = {
  *  reachable by link with a notice, holders can still sell on the curve. */
 export const HIDDEN_TOKENS: Record<number, `0x${string}`[]> = {
   [base.id]: [
-    // Notus as created twice on the v12 pad on 2026-10-24 (blocks 53,034,881 and
-    // 53,043,585): the owner's two candidates, traded by the team alone until one of
-    // them is listed
-    "0xf679e4b6058e2C8678BCDee9e17292907250132e",
+    // the second Notus of 2026-10-24 (block 53,043,585), the owner's candidate not
+    // taken; the first one (0xf679…132e, block 53,034,881) is listed since 2026-10-25
     "0x4CFCDd76DF7F00F7f7d911263947a9B5Ed0b0fE5",
   ],
 };
