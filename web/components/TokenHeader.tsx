@@ -30,12 +30,6 @@ export type TokenHeaderProps = {
   /** the coin's tax each way; undefined while it is not read yet */
   buyTaxBps: number | undefined;
   sellTaxBps: number | undefined;
-  /** the pool's fee once graduated (Uniswap v2: 30 bps); null on the curve */
-  poolFeeBps: number | null;
-  /** the launchpad's rate on the pool, basis points: on v12 the coin's platformBps, taken in coins with
-   *  its tax on every swap there; null while it is not read yet; 0 or absent where the pool pays the
-   *  pad nothing (v11) */
-  poolPlatformBps?: number | null;
   explorer: string;
   links: { label: string; href: string }[];
 };
@@ -128,23 +122,6 @@ export function TokenHeader(p: TokenHeaderProps) {
         <Fact label="Sell tax">
           <span className="text-zinc-200">{p.sellTaxBps === undefined ? "…" : pct(p.sellTaxBps)}</span>
         </Fact>
-        {p.poolFeeBps !== null && (
-          <Fact label="Pool fee">
-            <span className="text-zinc-200">{pct(p.poolFeeBps)}</span>
-            {p.poolPlatformBps === null ? (
-              <span className="text-zinc-500">+ … launchpad + tax</span>
-            ) : (
-              !!p.poolPlatformBps && (
-                <span
-                  className="text-zinc-500"
-                  title={`The pool's ${pct(p.poolFeeBps)} stays with its liquidity; the launchpad's ${pct(p.poolPlatformBps)} and the coin's tax are taken in coins on every swap there`}
-                >
-                  + {pct(p.poolPlatformBps)} launchpad + tax
-                </span>
-              )
-            )}
-          </Fact>
-        )}
         <Fact label="24h volume">
           <span className="text-zinc-200">
             {p.volume24h === undefined ? "…" : p.volume24h === 0n ? "—" : fmtQuoteMoney(p.volume24h, p.quote.decimals, p.quote.symbol, p.usd)}

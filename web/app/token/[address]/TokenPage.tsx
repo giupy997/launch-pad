@@ -223,8 +223,6 @@ export function TokenPage({ address }: { address: string }) {
           volume24h={volume24h}
           buyTaxBps={taxKnown ? fees.buyTaxBps : undefined}
           sellTaxBps={taxKnown ? fees.sellTaxBps : undefined}
-          poolFeeBps={curve.graduated ? 30 : null}
-          poolPlatformBps={version !== 12 ? 0 : feesKnown ? fees.platformBps : null}
           explorer={explorer}
           links={links}
         />
