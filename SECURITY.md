@@ -127,6 +127,29 @@ read as the tests say. What the review adds is operational, around the contracts
 | I-01 | The pad on Robinhood Chain (`0x4A84…001c`, v7.4, 4 coins: the pre-markets, 1% fee) is a mainnet pad on the code before v9, owned directly by a key (`0x87D7…D825`, no timelock), holding no ETH; wired in `APP_CHAINS`, out of the menu | Open, the owner's decision: say in the README whether it is retired, and if it is, take it out of `APP_CHAINS` and off the key's keychain; nothing on it moves the project's money |
 | I-02 | For the next pad: the curve-side slice of `buybackAndBurn` (half a percent of the virtual reserve, a block) is safe against a wrapped trade because every coin pays the launchpad's fee both ways, 0.5% a side on v12, stamped at launch. A pad whose `feeBps` is lowered under 25 would let a coin taxed less than the difference be bought and sold around its own buyback at a profit, a block at a time, until the pot is gone | Noted for the next pad: size the curve slice from the coin's stamped rate (`platformBps` + the lower of its taxes), as the pool's slice is sized by Uniswap's fee |
 
+### The first live graduation (2026-10-25)
+
+Notus (`0x4CFC…0fE5`) graduated on the v12 pad at block 53,079,599, in the transaction of the
+buy that closed its curve (`0x26e5…efb9`, 3.33M gas): `Graduated(160 cbLTC)`, the migrator's
+`PoolSeeded` and the pair's `Mint` in one piece, 190.96M coins against 160.406 cbLTC (the raise
+and the coin's liquidity pot), the pool open at the curve's closing price to the digit and
+9.04M coins locked in the pad for good. The pool (`0xf940…7133`) was then read as a custody
+question: the migrator holds every LP token but the 1,000 wei Uniswap burns at the first mint,
+and nothing can move them but `unlock`, which the launchpad alone may call, from `migrateOut`,
+which is the timelock's (24 hours, the Safe 2-of-3 proposing) and needs the pad frozen first
+(`announceFreeze`, the watch's alert). The migrator has no owner, no `selfdestruct`, no
+`delegatecall`, no approval; its runtime code on Base is the repository's `UniV2Migrator.sol`
+byte for byte, the four immutables apart (the pad, Uniswap's v2 router `0x4752…aD24` and factory
+`0x8909…8eC6`, WETH `0x4200…0006`). Its public entry points are `seed`, which only moves a
+reserve parked at graduation (none here), and `harvest`, capped at half a percent of the pool's
+quote side every five minutes and paying the treasury, the creator, the holders and the burn pot
+through the pad, the caller's tip a twentieth of the treasury's part. The token taxes every
+pool trade and exempts the pad's and the migrator's own moves; no pool trade can skim the pair,
+since the migrator's transfers to it are consumed by its own swap in the same call. Sniping was
+there (four buys in the block after graduation, through outside routers) and changed nothing.
+No finding. One operational note: twenty minutes after the graduation no `harvest` had run
+(`nextHarvestAt` 0), the keeper on the VPS was not running; the buckets wait, nothing is lost.
+
 ## Dependency policy (`web/`)
 
 - `npm ci --ignore-scripts` everywhere: the lock is installed as it is and no
