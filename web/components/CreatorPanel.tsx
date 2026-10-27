@@ -11,12 +11,16 @@ import {
 import { launchpadAbi } from "@/lib/abi";
 import { useAppChain, useLaunchpadAddress, type TokenMeta } from "@/lib/hooks";
 import { shortAddr } from "@/lib/format";
+import { handleOf, prefixed } from "@/lib/sanitize";
+import { PrefixInput } from "@/components/PrefixInput";
 
 const inputCls =
   "w-full rounded-lg input px-3 py-2 text-sm focus:border-white outline-none placeholder:text-zinc-600";
 
-/** Creator-only controls on the token page: go live / stop the stream and
- *  redirect the creator fee share to another wallet (pump.fun-style). */
+/** Creator-only controls on the token page: the coin's website, X and
+ *  Telegram links, go live / stop the stream, and redirect the creator fee
+ *  share to another wallet (pump.fun-style). updateMetadata rewrites the
+ *  whole record, so every save sends the fields it does not change as read. */
 export function CreatorPanel({
   token,
   meta,
@@ -29,6 +33,9 @@ export function CreatorPanel({
   const { address: user } = useAccount();
   const [streamUrl, setStreamUrl] = useState(meta.livestream);
   const [recipient, setRecipient] = useState("");
+  const [website, setWebsite] = useState(meta.website);
+  const [twitter, setTwitter] = useState(handleOf(meta.twitter, "x.com"));
+  const [telegram, setTelegram] = useState(handleOf(meta.telegram, "t.me"));
 
   const { data: currentRecipient } = useReadContract({
     address: pad,
@@ -49,7 +56,7 @@ export function CreatorPanel({
   const redirected =
     currentRecipient !== undefined && (currentRecipient as string) !== zeroAddress;
 
-  function setLivestream(url: string) {
+  function saveMeta(patch: Partial<Pick<TokenMeta, "website" | "twitter" | "telegram" | "livestream">>) {
     if (!pad) return;
     reset();
     writeContract({
@@ -64,12 +71,25 @@ export function CreatorPanel({
           website: meta.website,
           twitter: meta.twitter,
           telegram: meta.telegram,
-          livestream: url.trim(),
+          livestream: meta.livestream,
           description: meta.description,
+          ...patch,
         },
       ],
     });
   }
+
+  function setLivestream(url: string) {
+    saveMeta({ livestream: url.trim() });
+  }
+
+  const links = {
+    website: website.trim(),
+    twitter: prefixed(twitter, "x.com"),
+    telegram: prefixed(telegram, "t.me"),
+  };
+  const linksChanged =
+    links.website !== meta.website || links.twitter !== meta.twitter || links.telegram !== meta.telegram;
 
   function saveRecipient(addr: string) {
     if (!pad) return;
@@ -89,8 +109,23 @@ export function CreatorPanel({
         Creator controls
       </div>
 
-      {/* livestream */}
+      {/* links */}
       <div className="space-y-2">
+        <div className="text-sm text-zinc-300">Links</div>
+        <input value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="Website" type="text" className={inputCls} />
+        <PrefixInput base="x.com/" value={twitter} onChange={setTwitter} />
+        <PrefixInput base="t.me/" value={telegram} onChange={setTelegram} />
+        <button
+          onClick={() => saveMeta(links)}
+          disabled={busy || !linksChanged}
+          className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-zinc-100 transition-colors disabled:opacity-40"
+        >
+          Save links
+        </button>
+      </div>
+
+      {/* livestream */}
+      <div className="space-y-2 border-t border-white/[0.06] pt-4">
         <div className="text-sm text-zinc-300">
           {live ? "You are live." : "Go live — paste your stream URL (YouTube / Twitch)."}
         </div>

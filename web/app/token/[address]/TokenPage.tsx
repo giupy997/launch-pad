@@ -317,8 +317,15 @@ export function TokenPage({ address }: { address: string }) {
         {feesToHolders && (
           <CashbackCard token={token} quoteSymbol={q.symbol} quoteDecimals={q.decimals} />
         )}
-        {user && user.toLowerCase() === curve.creator.toLowerCase() && (
-          <CreatorPanel token={token} meta={meta} />
+        {/* only on metadata read from the chain: updateMetadata rewrites the whole record, and the empty
+            stand-in used when the read fails would erase the logo and description; keyed on the links so
+            the fields start again from the chain after a save */}
+        {user && user.toLowerCase() === curve.creator.toLowerCase() && metaR.status === "success" && (
+          <CreatorPanel
+            key={[meta.website, meta.twitter, meta.telegram, meta.livestream].join("|")}
+            token={token}
+            meta={meta}
+          />
         )}
       </div>
     </div>

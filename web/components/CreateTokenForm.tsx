@@ -30,6 +30,8 @@ import {
 } from "@/lib/config";
 import { TokenLogo } from "@/components/TokenLogo";
 import { processLogoFile, dataUriBytes } from "@/lib/image";
+import { prefixed } from "@/lib/sanitize";
+import { PrefixInput } from "@/components/PrefixInput";
 import { fmtTokens, fmtUnits } from "@/lib/format";
 import { FeeSplitEditor, splitTotal, type SplitPct } from "@/components/FeeSplitEditor";
 import { feesLine, treasuryPct, treasuryPctV11 } from "@/lib/curve";
@@ -56,13 +58,6 @@ function parseAmount(value: string, decimals: number): bigint {
   } catch {
     return 0n;
   }
-}
-
-function prefixed(value: string, base: string): string {
-  const v = value.trim();
-  if (!v) return "";
-  if (v.startsWith("http://") || v.startsWith("https://")) return v;
-  return `https://${base}/${v.replace(/^@/, "")}`;
 }
 
 export function CreateTokenForm() {
@@ -1074,28 +1069,6 @@ function Row({ k, v, strong }: { k: string; v: string; strong?: boolean }) {
     <div className="flex justify-between gap-3 py-2">
       <span className="text-zinc-500">{k}</span>
       <span className={strong ? "text-white text-right" : "text-zinc-300 text-right"}>{v}</span>
-    </div>
-  );
-}
-
-function PrefixInput({
-  base,
-  value,
-  onChange,
-}: {
-  base: string;
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <div className="flex items-center rounded-lg input focus-within:border-white">
-      <span className="pl-3 text-zinc-600 text-sm whitespace-nowrap">{base}</span>
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder="handle"
-        className="w-full bg-transparent px-1.5 py-2 text-sm outline-none placeholder:text-zinc-700 min-w-0"
-      />
     </div>
   );
 }

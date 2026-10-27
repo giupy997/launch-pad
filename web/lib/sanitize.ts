@@ -45,3 +45,22 @@ export function safeLogo(url: string): string | null {
   // http hosts cannot be fetched from a page served over https either way
   return `/api/img?u=${encodeURIComponent(origin.replace(/^http:/, "https:"))}`;
 }
+
+/** What a creator types for a social link, stored as a full URL: a handle
+ *  (with or without @) becomes https://<base>/<handle>, a URL stays as
+ *  typed, an empty field stays empty. The create form and the creator's
+ *  panel store links the same way. */
+export function prefixed(value: string, base: string): string {
+  const v = value.trim();
+  if (!v) return "";
+  if (v.startsWith("http://") || v.startsWith("https://")) return v;
+  return `https://${base}/${v.replace(/^@/, "")}`;
+}
+
+/** The handle a stored link shows in a field prefixed with <base>/: the
+ *  part after https://<base>/ when the link is on that host, else the whole
+ *  link, which prefixed() then keeps as typed. */
+export function handleOf(url: string, base: string): string {
+  const m = url.trim().match(new RegExp(`^https?://(www\\.)?${base.replace(/\./g, "\\.")}/(.+)$`, "i"));
+  return m ? m[2] : url.trim();
+}

@@ -187,7 +187,7 @@ longer served by the site, built or run.
     after a route that did not answer. `&debug=1` for what a count did and
     the nodes' last refusals. Embedded
     livestream player (YouTube/Twitch allowlist) with LIVE badges in Explore;
-    creator panel to go live and redirect fees
+    creator panel to edit the website, X and Telegram links, go live and redirect fees
   - `/api/*` routes and Netlify's CDN: the CDN leaves the query string out of
     its cache key unless a response says otherwise, so every route whose
     answer depends on the query (`holders`, `trades`, `img`, `points`) sends

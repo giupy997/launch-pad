@@ -2,7 +2,7 @@
 //   node --test --experimental-strip-types lib/sanitize.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { logoOrigin, safeLink, safeLogo } from "./sanitize.ts";
+import { handleOf, logoOrigin, prefixed, safeLink, safeLogo } from "./sanitize.ts";
 import { siteLogoId } from "./site.ts";
 
 test("a logo the site stored is served from the current origin, whichever hostname the ledger recorded", () => {
@@ -28,4 +28,20 @@ test("every other logo keeps its rules", () => {
   assert.equal(safeLogo(""), null);
   assert.equal(safeLink("notus-pad.fun/about"), "https://notus-pad.fun/about");
   assert.equal(safeLink("javascript:alert(1)"), null);
+});
+
+test("a social link is stored as a full URL and shown back as its handle", () => {
+  assert.equal(prefixed("litecoinmascot", "x.com"), "https://x.com/litecoinmascot");
+  assert.equal(prefixed(" @litecoinmascot ", "x.com"), "https://x.com/litecoinmascot");
+  assert.equal(prefixed("https://twitter.com/litecoinmascot", "x.com"), "https://twitter.com/litecoinmascot");
+  assert.equal(prefixed("   ", "t.me"), "");
+  assert.equal(handleOf("https://x.com/litecoinmascot", "x.com"), "litecoinmascot");
+  assert.equal(handleOf("https://www.x.com/litecoinmascot", "x.com"), "litecoinmascot");
+  assert.equal(handleOf("https://t.me/lesterltc", "t.me"), "lesterltc");
+  assert.equal(handleOf("https://twitter.com/litecoinmascot", "x.com"), "https://twitter.com/litecoinmascot");
+  assert.equal(handleOf("https://xxcom/a", "x.com"), "https://xxcom/a", "the dot in the host is literal");
+  assert.equal(handleOf("", "t.me"), "");
+  for (const [v, base] of [["litecoinmascot", "x.com"], ["https://t.me/lesterltc", "t.me"], ["https://twitter.com/a", "x.com"]]) {
+    assert.equal(prefixed(handleOf(prefixed(v, base), base), base), prefixed(v, base), "a field saved untouched keeps its link");
+  }
 });
