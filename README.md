@@ -6,15 +6,10 @@ public proof of reserves. What it is, how keys are handled and how to reach
 us: [notus-pad.fun/about](https://notus-pad.fun/about); email notuspad@gmail.com.
 
 The same Solidity contracts run on LitVM's Liteforge testnet (Litecoin's EVM
-layer; its mainnet is expected later in 2026) and have run on GIWA Sepolia and
-Robinhood Chain; those integrations stay in the repository. Notus started as
-an OP_RETURN ledger on Litecoin itself — one desk address, instructions in the
-memos of ordinary transactions, balances anyone recomputes from the chain —
-which is winding down: its only buyer was its operator, and a key kept in the
-browser plus LTC that has to arrive from another chain proved more than a user
-takes on. The ledger, its desk and its tooling are parked, with the Zcash
-testnet ledger, in [`parked/`](parked/README.md): kept for the record, no
-longer served by the site, built or run.
+layer 2; its mainnet is expected later in 2026), where the move of the Base
+pad's coins to LitVM is rehearsed and the points' season 0 runs. Where the
+contracts ran before Base, and what the project was before the contracts:
+[Earlier deployments](#earlier-deployments).
 
 ## Structure
 
@@ -62,8 +57,8 @@ longer served by the site, built or run.
     the launchpad can ever answer
   - `src/interfaces/IDexMigrator.sol` — pluggable DEX adapter (one per chain)
   - `src/ZapRouter.sol` — one-transaction ETH trades on asset-quoted coins:
-    on the curve, through Uniswap for RWA pairs or straight through the
-    pre-market's own curve for Notus Pre-Markets (no pool needed); and, since
+    on the curve, ETH swapped for the quote asset on the DEX (a pre-market
+    leg from the Robinhood pad stays in the code, unused on Base); and, since
     v2, in a graduated coin's pool — `zapPoolBuy` (ETH → the quote on the
     DEX, the quote → the coin in its pool, the pair paying the caller) and
     `zapPoolSell` (the coin → the quote in its pool, the quote → ETH, sent
@@ -71,22 +66,9 @@ longer served by the site, built or run.
     trade, every minimum checked on the leg it guards, nothing kept between
     two transactions. `SlipstreamZapRouter` is the one for Base (Aerodrome
     Slipstream's router shape)
-  - `script/enable-rwa-quotes.sh` — enables the whole RWA catalogue as quote
-    assets in one `setQuoteAssets` transaction
-  - `script/create-pre-markets.sh` — creates the Notus Pre-Markets and
-    whitelists SPCX
-  - `src/NotusV4Hook.sol` — graduation adapter and Uniswap v4 hook in one
-    contract, for the v7.4 pad on Robinhood Chain (the current Launchpad no
-    longer takes pool fees: its fees end with the curve): seeds a full-range v4 pool in native ETH (or
-    the quote asset) with the DEX reserve, locks the position forever, and
-    charges the launchpad's 1% fee on every swap in the pool — in the quote
-    asset, for exact-input and exact-output trades alike — depositing it with
-    the launchpad, which splits it exactly like a curve fee. Tokens launched
-    in holders mode keep paying their holders after graduation, for as long
-    as the pool trades. The pool itself charges 0%; only this contract can
-    create pools bound to the hook. Fork-tested against the live PoolManager,
-    V4Quoter and Universal Router, including a real Robinhood NVDA pair.
-  - `src/UniV3Migrator.sol` — legacy v3 graduation adapter (v7.3 and earlier)
+  - `legacy/` — the graduation adapters of the earlier chains, `NotusV4Hook`
+    (a Uniswap v4 hook that also took a pool fee, for the v7.4 pad) and
+    `UniV3Migrator` (v7.3 and earlier), with their tests: parked, not built
   - `src/UniV2Migrator.sol` — v3: graduation adapter for chains whose DEX is
     Uniswap v2 (Base, LitVM): seeds the pool at the curve's final price,
     keeps the LP tokens forever and registers the pair with the pad as the
@@ -205,11 +187,8 @@ longer served by the site, built or run.
     testnet's nodes and the points service are reported, not decisive)
   - `/swap`: ETH ↔ token swaps on the curve; token → token routed
     through ETH in two transactions
-  - `/bridge`: chain-aware — on GIWA, in-app ETH deposits Ethereum
-    Sepolia → GIWA via the OP Stack Standard Bridge (L1StandardBridge
-    `0x77b2ffc0F57598cAe1DB76cb398059cF5d10A7E7`); on Robinhood Chain,
-    live Ethereum/Robinhood balances and a link to the Arbitrum
-    canonical bridge (the official route per Robinhood docs)
+  - `/bridge`: "Get cbLTC" on Base (where cbLTC comes from, both balances;
+    the buy box swaps ETH for it), the faucet and bridge notes on Liteforge
   - `/profile`: connected wallet holdings and created tokens
 
 ## Curve parameters
@@ -263,10 +242,6 @@ longer served by the site, built or run.
 | Base (8453) | v11 TimelockController | [`0xeDCe189855E9298C3f5b937fE9Ffe8D5261B9EB2`](https://base.blockscout.com/address/0xeDCe189855E9298C3f5b937fE9Ffe8D5261B9EB2) — the v11 pad's only owner, 24-hour delay; its proposer (`0x707f…9A02`) revoked on 2026-10-12 and nobody named since, so the pad keeps its settings for good (its coins trade on, cashback and creator fees stay claimable, its fees go to the treasury `0x24622320D93Da2d9c626EE469ad0C2c48a1ED7F7`) |
 | Base (8453) | v11 SlipstreamZapRouter | [`0x072a77dC2a770504A1DA17e2fB6814C9cFf85254`](https://base.blockscout.com/address/0x072a77dC2a770504A1DA17e2fB6814C9cFf85254) — one-transaction ETH buys for the v11 pad, swapping on Aerodrome Slipstream's cbLTC/WETH pool (tick spacing 200) |
 | Base (8453) | earlier stacks, unused | the first v9 stack at 30 cbLTC virtual (Launchpad [`0x0ba4…4955`](https://base.blockscout.com/address/0x0ba4dD0782e10a1D3946531dACC12F3797b74955), timelock `0xb97a…d92c`, `UniV2Migrator` `0x4D3C…4025`, zap `0xd740…3C55`), whose one coin its creator sold out of and relaunched here; Launchpad v7.7 [`0x2cF3…9580`](https://base.blockscout.com/address/0x2cF3e6281dddD13f4351781c584C3585e08d9580) with `UniV2Migrator` `0xcdF1…6725` and `SlipstreamZapRouter` `0x549D…9f8E`, never used, no way out for a migration; the first ZapRouter `0x07b2…b91b` on PancakeSwap v3, which found no cbLTC liquidity |
-| GIWA Sepolia (91342) | Launchpad | [`0x8E1a1308E3b176528Ee9278d7a531F185F9fBeFD`](https://sepolia-explorer.giwa.io/address/0x8E1a1308E3b176528Ee9278d7a531F185F9fBeFD) — v7.1 (v7.4 redeploy pending) |
-| Robinhood Chain (4663) | Launchpad | [`0x4A84c7B0dc45a473eA67f56617BC5903CA2c001c`](https://robinhoodchain.blockscout.com/address/0x4A84c7B0dc45a473eA67f56617BC5903CA2c001c) — v7.4, 64 quote assets |
-| Robinhood Chain (4663) | NotusV4Hook | [`0x11E98A9d691B8730990d9bE1da9CD012f4e320cC`](https://robinhoodchain.blockscout.com/address/0x11E98A9d691B8730990d9bE1da9CD012f4e320cC) — v4 graduation + pool fees |
-| Robinhood Chain (4663) | ZapRouter | [`0xfd0C942E3DB34672715B862A8e19838bC9EDa7B5`](https://robinhoodchain.blockscout.com/address/0xfd0C942E3DB34672715B862A8e19838bC9EDa7B5) — ETH zap buys |
 | LitVM Liteforge (4441) | Launchpad | [`0x39D104b3258B6A18c5d5d967CDA182Ded20Bef7F`](https://liteforge.explorer.caldera.xyz/address/0x39D104b3258B6A18c5d5d967CDA182Ded20Bef7F) — **v11** rehearsal pad, deployed 2026-10-04 at block 57,741,789 with `script/DeployLitVM.s.sol`: quoted in native zkLTC, opened with a 0.05 zkLTC virtual reserve (a curve raised 0.16 zkLTC to graduate, so graduations could be rehearsed on faucet money); from 2026-10-10 a coin created on it opens with **0.9375 zkLTC** of virtual reserve and raises **3 zkLTC** to graduate (`setQuoteAsset(0, 9.375e17)`, the deployer's call; the coins created before keep their 0.05; the mainnet pad will open with its own figure), owned by the deployer (a rehearsal pad); `UniV2Migrator` v2 [`0xD45e4011Dae718aAF95DB5BdCA8e7Ee3ca8F413F`](https://liteforge.explorer.caldera.xyz/address/0xD45e4011Dae718aAF95DB5BdCA8e7Ee3ca8F413F) on Lester Labs' Uniswap v2 (router `0xD56a623890b083d876D47c3b1c5343b7f983FA62`); both verified on the Caldera Blockscout on 2026-10-06 (`contracts/verify/liteforge-v11/`). Season 0 of the points runs on it, and the Base → LitVM migration was rehearsed into it on 2026-10-05 (`rehearse-liteforge.sh`, scale 1:1000, ALL PASS): Notus's twin [`0x616e…3e99`](https://liteforge.explorer.caldera.xyz/address/0x616e01ca4370433aE7690d0A5EF891ddbb553e99) and Lester's [`0x0d81…aC09`](https://liteforge.explorer.caldera.xyz/address/0x0d8144Ac2Fb62132786fe9671446e583385aaC09), same holders, same price. Rehearsed again on 2026-10-09, with Notus graduated on Base, into a second v11 rehearsal pad [`0x0CF2207D3260BF737671a6855769358701E7873f`](https://liteforge.explorer.caldera.xyz/address/0x0CF2207D3260BF737671a6855769358701E7873f) (deploy block 59,320,583; `UniV2Migrator` v2 [`0x072a…5254`](https://liteforge.explorer.caldera.xyz/address/0x072a77dC2a770504A1DA17e2fB6814C9cFf85254)): ALL PASS, 64 Notus holders with their pool at the frozen price, 10 Lester holders on the curve — twins [`0x0fFe…05BD`](https://liteforge.explorer.caldera.xyz/address/0x0fFe2C4E267b679f0d42292a5168a1e8507305BD) and [`0x24c5…A7C3`](https://liteforge.explorer.caldera.xyz/address/0x24c57dF9802285a148E7074278C00ce1ddA3A7C3). Each pad holds the root of the snapshot it took, so the next rehearsal takes a fresh pad (run the script without `TARGET`). Parked: the v9 rehearsal pad [`0xcaB7…42EF`](https://liteforge.explorer.caldera.xyz/address/0xcaB79e85BfC71C30E5BA65d35e1a2e2D909C42EF) (deploy block 56,991,201, Notus's twin [`0xFe23…eCdF`](https://liteforge.explorer.caldera.xyz/address/0xFe236B0F050b93E3679fD96a659Adf53CF64eCdF) migrated from Base at scale 1:100 with the v1 migrator `0x9232…db1b`), the v7.7 pad [`0x4D3C…4025`](https://liteforge.explorer.caldera.xyz/address/0x4D3C63F873bc2aC79E529C8003321d60643a4025) (litecat and zass, the Litecoin ledger rehearsal, `UniV2Migrator` `0xE34b…1776`), the v7.6 pad `0xcdF1…6725`, the v7.5 pad `0x2cF3…9580` |
 | LitVM Liteforge (4441) | TimelockController | [`0xFaFc00D9f9cD8A82874D05dFd17D6230dB320C87`](https://liteforge.explorer.caldera.xyz/address/0xFaFc00D9f9cD8A82874D05dFd17D6230dB320C87) — owns an older, parked pad: the v7.7 `0x4D3C…4025` (listed above), since block 56,260,690; not the v11 rehearsal pad above, which the deployer owns. A 10-minute delay for rehearsals on the testnet (a LitVM mainnet pad's timelock takes `DeployTimelock.s.sol`'s 48-hour default); proposer `0x707f…9A02`, anyone executes what is ready |
 
@@ -323,39 +298,13 @@ graduations, invite links), come with LitVM and are rehearsed on its Liteforge
 testnet first; the design, and the other features that come with LitVM, are in
 [`POINTS.md`](POINTS.md).
 
-### Pair assets (Robinhood Chain)
-
-64 quote assets: 55 tokenized stocks, 7 ETFs and commodities (SPY, QQQ,
-XLK, GLD gold, SLV silver, USO oil, SGOV treasuries), USDG, SPCX
-(SpaceX, pre-IPO) and the four Notus Pre-Markets below. Every RWA
-address is verified on-chain (symbol, 18 decimals, official
-`... - Robinhood Token` name); virtual reserves are sized from live
-prices for a ~$14k raise, and 57 of them have a measured Uniswap route
-for one-transaction ETH buys.
-
-Notus Pre-Markets — synthetic pre-IPO markets created with
-`createPreMarket`: transferable from day one, holder-rewards fee mode,
-whitelisted as quote assets on creation. Price discovery only: no
-equity, no backing, no affiliation with the companies.
-
-| Pre-market | Address |
-|---|---|
-| OPENAI | [`0x87F5D45737bb5A80Cb6cdcA6732d42c5991156e9`](https://robinhoodchain.blockscout.com/address/0x87F5D45737bb5A80Cb6cdcA6732d42c5991156e9) |
-| ANTHRO | [`0xb9DbeEB586e246919f16d322F53b64c60f1d31F3`](https://robinhoodchain.blockscout.com/address/0xb9DbeEB586e246919f16d322F53b64c60f1d31F3) |
-| XAI | [`0x771d56D235c0dE30c81503406cDd0f1d409B645c`](https://robinhoodchain.blockscout.com/address/0x771d56D235c0dE30c81503406cDd0f1d409B645c) |
-| STRIPE | [`0xa4a6877e02AD9A773DCF58d702B3c773139F788b`](https://robinhoodchain.blockscout.com/address/0xa4a6877e02AD9A773DCF58d702B3c773139F788b) |
-
-(previous GIWA deployments: `0x1f3F...fC73` no creator fees, `0xf71b...9cC1` no metadata)
-
 ## Multichain
 
 The app has a chain switcher in the header. It offers **Base** (chain 8453,
 RPC `https://mainnet.base.org`, explorer `https://base.blockscout.com`, gas in
-ETH), where every coin is quoted in cbLTC, and LitVM Liteforge; GIWA Sepolia
-and Robinhood Chain stay wired — addresses, assets, pages — but out of the
-menu (`VISIBLE_CHAINS` in `web/lib/config.ts` lists what the menu shows; Base
-is the default chain). The Litecoin ledger and Zcash Testnet are parked
-(`parked/`): their old `/litecoin` and `/zcash` links go home.
+ETH), where every coin is quoted in cbLTC, and LitVM Liteforge
+(`VISIBLE_CHAINS` in `web/lib/config.ts` lists what the menu shows; Base is
+the default chain; the two earlier chains stay defined there, out of the menu).
 LitVM (chain 4441, RPC `https://liteforge.rpc.caldera.xyz/infra-partner-http`,
 explorer `https://liteforge.explorer.caldera.xyz`, gas in zkLTC) is Litecoin's
 EVM layer 2: when LitVM mainnet goes live, the Base pad's coins migrate
@@ -366,21 +315,10 @@ cbLTC ones — 50 from v12 on (160 zkLTC raised to graduate; v11 opened with
 60, decided 2026-10-05, 192 to graduate); the Liteforge rehearsal pad runs
 at 0.05 so that graduations can be tried on faucet money.
 Per-chain launchpad addresses live in `web/lib/config.ts` (`LAUNCHPAD_ADDRESS`);
-chains without a deployment show a notice and disable trading. Robinhood
-Chain (Arbitrum Orbit, chain ID 4663, RPC `https://rpc.mainnet.chain.robinhood.com`,
-explorer `https://robinhoodchain.blockscout.com`) is a mainnet: using it
-costs real ETH, and the contracts have had no formal audit (two independent
-security reviews and their findings' status: [`SECURITY.md`](SECURITY.md)) — trade accordingly.
-
-## Network: GIWA Sepolia (testnet)
-
-| Parameter | Value |
-|---|---|
-| Chain ID | 91342 |
-| RPC | https://sepolia-rpc.giwa.io/ |
-| Explorer | https://sepolia-explorer.giwa.io |
-| Gas token | ETH (test) |
-| Faucet | see https://docs.giwa.io/get-started/faucets |
+chains without a deployment show a notice and disable trading. Base is a
+mainnet: using it costs real ETH, and the contracts have had no formal audit
+(two independent security reviews and their findings' status:
+[`SECURITY.md`](SECURITY.md)) — trade accordingly.
 
 ## Commands
 
@@ -400,23 +338,30 @@ cd web && npm ci --ignore-scripts && npm run dev   # frontend at http://localhos
 Signing: the deployer key lives in a Foundry keystore encrypted with a password
 (`cast wallet import notus --interactive`, once per machine), never in a file in
 clear: every `forge script` and `cast send` takes `--account notus` and asks for
-the password. Deploy to GIWA Sepolia:
+the password. A Base deploy, step by step, is in
+[`LAUNCH-BASE-V12.md`](LAUNCH-BASE-V12.md):
 
 ```bash
-cd contracts && source .env && forge script script/Deploy.s.sol --rpc-url giwa_sepolia --account notus --broadcast
+cd contracts && source .env && forge script script/DeployBase.s.sol --rpc-url base --account notus --broadcast
 ```
 
-## TODO
+## Earlier deployments
 
-- [x] Deploy to GIWA Sepolia (Jul 27, 2026) and read-only smoke test
-- [x] On-chain smoke test: test token [`TEST` 0x7Fc8...1305](https://sepolia-explorer.giwa.io/address/0x7Fc8d6f3AD8b93F771Cd0Dadd458A495c42F1305) created with initial buy, curve and pricing verified
-- [x] Next.js + wagmi frontend (create, list, buy, sell)
-- [x] Source verification on Blockscout (Launchpad and TEST token)
-- [ ] `IDexMigrator` adapter for a DEX on GIWA (to pick once the mainnet
-      ecosystem is live)
-- [x] Trade feed + price chart from on-chain events (client-side getLogs)
-- [x] Robinhood v5 + UniV3Migrator deployed, verified and wired: graduation
-      now auto-migrates to a locked full-range Uniswap v3 pool (1% tier)
-- [ ] End-to-end frontend test with a wallet (MetaMask) on GIWA Sepolia
-- [ ] Verify permissionless deploy policy on GIWA mainnet
-- [ ] Legal review (MiCA) before public launch
+Before Base the same contracts ran on two other chains, with `Deploy.s.sol`
+and the adapters now in `contracts/legacy/`; the site no longer offers either,
+but `web/lib/config.ts` still defines them and the contracts are where they
+were. GIWA Sepolia (testnet, chain 91342): Launchpad v7.1
+[`0x8E1a…fBeFD`](https://sepolia-explorer.giwa.io/address/0x8E1a1308E3b176528Ee9278d7a531F185F9fBeFD),
+the first deploy, 2026-07-27. Robinhood Chain (mainnet, chain 4663):
+Launchpad v7.4
+[`0x4A84…001c`](https://robinhoodchain.blockscout.com/address/0x4A84c7B0dc45a473eA67f56617BC5903CA2c001c)
+with 64 quote assets (tokenized stocks and ETFs, and four synthetic
+pre-markets created with `createPreMarket`), `NotusV4Hook`
+[`0x11E9…20cC`](https://robinhoodchain.blockscout.com/address/0x11E98A9d691B8730990d9bE1da9CD012f4e320cC)
+and `ZapRouter`
+[`0xfd0C…a7B5`](https://robinhoodchain.blockscout.com/address/0xfd0C942E3DB34672715B862A8e19838bC9EDa7B5).
+
+Before the contracts, Notus was a ledger without them: on Litecoin itself,
+one desk address with the instructions in OP_RETURN memos, and on Zcash
+testnet, the same idea in encrypted memos. Both are parked in
+[`parked/`](parked/README.md), kept for the record, not served, built or run.
