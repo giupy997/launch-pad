@@ -98,7 +98,28 @@ export default function RootLayout({
                   <a className="underline hover:text-zinc-200" href="mailto:notuspad@gmail.com">
                     Email
                   </a>
+                  <a
+                    className="underline hover:text-zinc-200"
+                    href="/security/security-assessment-2026-10-12.pdf"
+                    target="_blank"
+                    rel="noreferrer"
+                    title="Independent technical security assessment of 12 October 2026: 11 findings, every one answered; all that applies to the Base pad is fixed"
+                  >
+                    Security review
+                  </a>
                 </div>
+                <p className="text-xs leading-relaxed text-zinc-500">
+                  Independent security review, October 2026: 11 findings, every one answered; everything that applies to the
+                  Base pad is fixed, the rest waits for the LitVM pad.{" "}
+                  {SOURCE_URL ? (
+                    <a className="underline hover:text-zinc-200" href={`${SOURCE_URL}/blob/main/SECURITY.md`} target="_blank" rel="noreferrer">
+                      Status of each finding
+                    </a>
+                  ) : (
+                    "The status of each finding is in SECURITY.md"
+                  )}
+                  .
+                </p>
               </div>
               <p className="text-xs leading-relaxed text-zinc-500">
                 Notus is an independent token launchpad{SOURCE_URL ? ", open source" : "; its code is published at launch"}. It is not

@@ -318,7 +318,8 @@ Per-chain launchpad addresses live in `web/lib/config.ts` (`LAUNCHPAD_ADDRESS`);
 chains without a deployment show a notice and disable trading. Base is a
 mainnet: using it costs real ETH, and the contracts have had no formal audit
 (two independent security reviews and their findings' status:
-[`SECURITY.md`](SECURITY.md)) — trade accordingly.
+[`SECURITY.md`](SECURITY.md); the report of 2026-10-12 is served by the site
+from `web/public/security/`) — trade accordingly.
 
 ## Commands
 

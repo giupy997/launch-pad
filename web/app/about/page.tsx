@@ -124,8 +124,14 @@ export default function AboutPage() {
           operator holds the reserves, for hours, announced a day ahead and visible on the chain at every step.
         </li>
         <li>
-          The contracts are open source and tested, not audited. Nothing on this site is financial advice. Notus does not sell
-          coins and cannot reverse a transaction.
+          The contracts are open source and tested. No formal audit has been commissioned; two independent security reviews
+          were received in October 2026 and answered in full, the second one published here:{" "}
+          <a href="/security/security-assessment-2026-10-12.pdf" target="_blank" rel="noreferrer" className="underline">
+            security assessment of 12 October 2026
+          </a>{" "}
+          (11 findings; everything that applies to the Base pad is fixed, the status of each finding is in the
+          repository&apos;s SECURITY.md). Nothing on this site is financial advice. Notus does not sell coins and cannot reverse
+          a transaction.
         </li>
       </Section>
 
