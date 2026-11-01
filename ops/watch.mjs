@@ -24,7 +24,8 @@
 //
 // Environment (ops/deploy/watch.env.example): TG_BOT_TOKEN and TG_CHAT_ID
 // (Telegram; required unless --dry), NOTUS_WATCH_RPC (Base nodes, comma-
-// separated, a keyed one first), NOTUS_WATCH_TIMELOCKS / NOTUS_WATCH_PADS
+// separated, a keyed one first; the public nodes below are always kept after
+// them, so a key that dies does not blind the watch), NOTUS_WATCH_TIMELOCKS / NOTUS_WATCH_PADS
 // ("0xaddr=label,…", default the Base v12 and v11 stacks),
 // NOTUS_WATCH_SITE (default https://notus-pad.fun; empty skips the site),
 // NOTUS_WATCH_SITE_PAD (the address the site must carry), NOTUS_WATCH_STATE
@@ -70,10 +71,21 @@ const list = (raw) =>
       return { address: getAddress(addr), label: label.join("=") || addr };
     });
 
-const RPCS = env("NOTUS_WATCH_RPC", "https://mainnet.base.org,https://base-rpc.publicnode.com,https://base.drpc.org")
-  .split(",")
-  .map((s) => s.trim())
-  .filter(Boolean);
+// The public nodes are the last resort behind whatever NOTUS_WATCH_RPC names:
+// on 2026-11-01 the keyed node's key was refused ("Must be authenticated") and
+// the one public node after it answered 429 to an hour of retries, and the
+// watch read nothing for an hour with two working public nodes left out of
+// its list.
+const PUBLIC_RPCS = ["https://mainnet.base.org", "https://base-rpc.publicnode.com", "https://base.drpc.org"];
+const RPCS = [
+  ...new Set([
+    ...env("NOTUS_WATCH_RPC", "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+    ...PUBLIC_RPCS,
+  ]),
+];
 const TIMELOCKS = list(env("NOTUS_WATCH_TIMELOCKS", "0xe28f446D3a1DB105F8F9b34A65474E1F6d256f76=timelock v12,0xeDCe189855E9298C3f5b937fE9Ffe8D5261B9EB2=timelock v11"));
 const PADS = list(env("NOTUS_WATCH_PADS", "0x23231924281B34Bb28F10D854DB8D2DcBd7F78c5=Launchpad v12,0xEfbB4ebdf5130cC4fC45899EeBA727fa2F55b5f4=Launchpad v11"));
 // names for the addresses that show up in operations, so a message reads "treasury", not a hash
@@ -309,7 +321,9 @@ async function readLogs(from, to) {
       ]);
     } catch (e) {
       const msg = String(e.shortMessage ?? e.message ?? e);
-      if (chunk > 100n && /range|too many|limit|exceed|large/i.test(msg)) {
+      // a node refusing the range is told by halving it; a node refusing the
+      // caller ("request limit reached", a 429) is not, the next node answers
+      if (chunk > 100n && /range|too many|exceed|large|limit/i.test(msg) && !/request limit|rate limit/i.test(msg)) {
         chunk /= 2n;
         log(`getLogs refused ${a}–${b}: ${chunk} blocks a call from now on`);
       }

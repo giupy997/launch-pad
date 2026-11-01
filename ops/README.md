@@ -37,7 +37,11 @@ own system user, sandboxed: `ops/deploy/notus-watch.service`; run it again
 after a change to a unit). The first message lists what it watches and what
 is pending. State (the last block read, the pending operations, the site's
 deploy fingerprint, the messages not yet sent) lives in
-`/var/lib/notus-watch/watch.json`. `node ops/watch.mjs --dry --once` runs one
+`/var/lib/notus-watch/watch.json`. The Base nodes come from `NOTUS_WATCH_RPC`
+(a keyed one first), and the three public nodes are always kept after them:
+when a key is refused and one public node rate-limits the server, the watch
+reads from the next one instead of going blind (as it did on 2026-11-01 for
+an hour). `node ops/watch.mjs --dry --once` runs one
 pass and prints instead of sending (from a shell, it writes its state to
 `ops/state/watch.json`, gitignored).
 
