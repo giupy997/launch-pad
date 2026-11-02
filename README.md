@@ -147,8 +147,10 @@ contracts ran before Base, and what the project was before the contracts:
     the 24h change on the right; curve stats and progress bar; buy/sell box
     with on-chain quotes, automatic approve and 1% slippage guard; price
     chart; under it two tabs, Trades and Holders. The trades come from
-    `/api/trades` (the pad's events scanned once on the server, cached at the
-    edge, the browser then reading only the blocks mined since into its
+    `/api/trades` (the pad's events scanned once on the server, cached in
+    Netlify's durable cache, one entry for every edge node, twenty seconds
+    fresh and served stale while the next scan runs; the browser then reading
+    only the blocks mined since into its
     localStorage cache; the browser scans by itself when the server does not
     answer). On a chain with no archive node (Liteforge, where the public node
     takes two seconds per 9,000-block `eth_getLogs` and the chain makes

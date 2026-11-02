@@ -337,11 +337,14 @@ export const L1_STANDARD_BRIDGE: `0x${string}` =
 // parallel requests come back in a fraction of the time.
 const transport = () => http(undefined, { batch: { batchSize: 30, wait: 16 } });
 
-/** Chains with more than one RPC: the chain's own first, public ones behind
- *  it, so a rate-limited or stalled endpoint costs a retry, not the page.
- *  Every host here is also in the CSP (next.config.mjs). */
+/** Chains with more than one RPC: public nodes in turn, so a rate-limited or
+ *  stalled endpoint costs a retry, not the page. publicnode first: the home's
+ *  opening burst of reads (a few batches of thirty calls) got 429 from
+ *  mainnet.base.org on a third of them, each a retry with a wait, where
+ *  publicnode answered all of them. Every host here is also in the CSP
+ *  (next.config.mjs). */
 export const RPC_URLS: Record<number, string[]> = {
-  [base.id]: ["https://mainnet.base.org", "https://base-rpc.publicnode.com", "https://base.drpc.org", "https://1rpc.io/base"],
+  [base.id]: ["https://base-rpc.publicnode.com", "https://mainnet.base.org", "https://base.drpc.org", "https://1rpc.io/base"],
 };
 
 /** The block range one eth_getLogs may cover on the chain's public nodes

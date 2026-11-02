@@ -14,7 +14,10 @@ const FUNCTION_MS = 9_000; // what a request may spend in all, under the hosting
 // count on the nodes).
 const cache = (seconds: number) => ({
   "cache-control": `public, max-age=${seconds}, s-maxage=${seconds}, stale-while-revalidate=${seconds * 4}`,
-  "netlify-cdn-cache-control": `public, s-maxage=${seconds}, stale-while-revalidate=${seconds * 4}`,
+  // durable: one entry shared by every edge node, so one scan serves everyone and a
+  // stale answer goes out at once while the next scan runs behind it (without it the
+  // entry lived on the one node that stored it, and almost every request scanned anew)
+  "netlify-cdn-cache-control": `public, durable, s-maxage=${seconds}, stale-while-revalidate=${seconds * 4}`,
   "netlify-vary": "query=chain|token",
 });
 const NO_STORE = { "cache-control": "no-store" };
