@@ -46,8 +46,9 @@
     "axios": "1.20.0",
     "ws": "8.21.0",
     "brace-expansion@1": "1.1.21",
-    "follow-redirects": "1.16.1",
-    "zod": "4.6.7"
+    "follow-redirects": "1.16.2",
+    "zod": "4.6.7",
+    "decode-uri-component": "0.5.1"
   },
   "packageManager": "npm@11.21.1"
 }
