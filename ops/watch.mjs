@@ -72,10 +72,10 @@ const list = (raw) =>
     });
 
 // The public nodes are the last resort behind whatever NOTUS_WATCH_RPC names:
-// on 2026-11-01 the keyed node's key was refused ("Must be authenticated") and
-// the one public node after it answered 429 to an hour of retries, and the
-// watch read nothing for an hour with two working public nodes left out of
-// its list.
+// on 2026-11-01 the keyed node refused every call (its account was out of
+// credit until the next day) and the one public node after it answered 429
+// to an hour of retries, and the watch read nothing for an hour with two
+// working public nodes left out of its list.
 const PUBLIC_RPCS = ["https://mainnet.base.org", "https://base-rpc.publicnode.com", "https://base.drpc.org"];
 const RPCS = [
   ...new Set([
