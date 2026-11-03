@@ -9,7 +9,7 @@ import type { Config, Context } from "https://edge.netlify.com";
 export default async (_request: Request, context: Context) => context.next();
 
 export const config: Config = {
-  path: ["/api/trades", "/api/holders", "/api/health", "/api/points/*"],
+  path: ["/api/trades", "/api/holders", "/api/health", "/api/points/*", "/api/launchpad/*"],
   rateLimit: {
     windowLimit: 240,
     windowSize: 60,

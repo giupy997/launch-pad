@@ -187,6 +187,13 @@ contracts ran before Base, and what the project was before the contracts:
   - `/api/health`: one answer for an uptime monitor, 200 while Base's nodes
     and the Blobs store answer, 503 otherwise, with every check's result (the
     testnet's nodes and the points service are reported, not decisive)
+  - `/api/launchpad/tokens?orderId=0&limit=100`: the token sync feed for
+    GoPlus (the shape its launchpad partnership form asks for, 2026-11-04):
+    every coin the Base pad created, in the pad's own order (`allTokens`,
+    the position being the `orderId`), with the time of its creation block
+    in milliseconds; the creation events read on the archive node only,
+    since a public node answers an empty list for blocks it no longer keeps;
+    503 without one. Cached durably for five minutes
   - `/swap`: ETH ↔ token swaps on the curve; token → token routed
     through ETH in two transactions
   - `/bridge`: "Get cbLTC" on Base (where cbLTC comes from, both balances;
