@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
+import { useCallback, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useConfig } from "wagmi";
 import { readContractsQueryOptions } from "wagmi/query";
@@ -34,9 +34,15 @@ export function TokenCard({
   // The coin's page opens on two multicalls (lib/tokenReads.ts): ask for them
   // now, so a tap finds them in the cache and the page shows at once. Same
   // contracts and chain id as the page's hooks, hence the same query keys.
+  // Asked when the pointer reaches the card or it takes focus, once: a page of
+  // 340 cards that asked on mount sent the node 8,500 calls a visitor would
+  // never use, where a visitor opens one coin or two.
   const config = useConfig();
   const queryClient = useQueryClient();
-  useEffect(() => {
+  const prefetched = useRef(false);
+  const prefetch = useCallback(() => {
+    if (prefetched.current) return;
+    prefetched.current = true;
     void queryClient.prefetchQuery({
       ...readContractsQueryOptions(config, { contracts: tokenStaticReads(pad, t.address, chain.id, version), chainId: chain.id }),
       staleTime: Infinity,
@@ -52,6 +58,8 @@ export function TokenCard({
     <Link
       href={`/token/${t.address}`}
       className="card card-hover group block p-5"
+      onPointerEnter={prefetch}
+      onFocus={prefetch}
     >
       <div className="flex items-center gap-3">
         <TokenLogo uri={t.meta.logoURI} symbol={t.symbol} size={52} />

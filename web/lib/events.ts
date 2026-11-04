@@ -243,16 +243,18 @@ export function useVolumes(pools: PoolRef[] = [], ready = true) {
         return { byToken, days, trades: trades.length, partial };
       };
 
-      let latest: bigint | null = cached ? await latestBlock(t) : null;
-      if (farBehind(t, cached, latest)) {
-        const served = await fetchServed(chain.id, "all", pools);
-        if (served) {
-          // the server's answer is the day itself: what it says is what there is
-          saveCache(key, { last: served.last, trades: served.trades, truncated: false }, VOLUME_MAX_TRADES);
-          return sum(served.trades, served.truncated, served.last);
-        }
+      // the server's day first, every time: one cached JSON (durable at the edge, a
+      // scan shared by everyone, or the points service's record on a chain whose node
+      // cannot scan a day); the browser reads the blocks since by itself only when the
+      // server does not answer. Reading the tail itself every minute cost a Liteforge
+      // visitor 26 eth_getLogs a minute, one per pool, on a node answering in seconds.
+      const served = await fetchServed(chain.id, "all", pools);
+      if (served) {
+        // the server's answer is the day itself: what it says is what there is
+        saveCache(key, { last: served.last, trades: served.trades, truncated: false }, VOLUME_MAX_TRADES);
+        return sum(served.trades, served.truncated, served.last);
       }
-
+      let latest: bigint | null = cached ? await latestBlock(t) : null;
       if (latest === null) latest = await latestBlock(t);
       const dayStart = latest > deployBlock + perDay ? latest - perDay : deployBlock;
       let trades = cached?.trades ?? [];

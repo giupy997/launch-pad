@@ -116,6 +116,11 @@ const transferableAbi = parseAbi(["function transferable() view returns (bool)"]
 // minutes: a list opened after an hour elsewhere still shows at once.
 const DAY = 24 * 60 * 60 * 1000;
 const REFETCH = { refetchInterval: 5_000, gcTime: DAY } as const;
+// a list this long (Liteforge: 340 coins on the rehearsal pad) reads its curves four
+// times a minute, not twelve: at five seconds that was 340 calls every five seconds
+// to a node answering in one to ten, most of a cold visit's load
+const BIG_LIST = 100;
+const BIG_LIST_REFETCH = 20_000;
 // name/symbol never change — fetch once per session, keep forever.
 export const IMMUTABLE = { staleTime: Infinity, gcTime: Infinity } as const;
 // metadata (logo, links, livestream) changes rarely — poll gently.
@@ -347,7 +352,12 @@ export function useTokens(chainIdOverride?: number, opts: { warm?: boolean } = {
       args: [t] as const,
       chainId,
     })),
-    query: { enabled: tokenAddrs.length > 0, ...poll, placeholderData: sameChainPlaceholder(chainId) },
+    query: {
+      enabled: tokenAddrs.length > 0,
+      ...poll,
+      ...(!warm && tokenAddrs.length > BIG_LIST ? { refetchInterval: BIG_LIST_REFETCH } : {}),
+      placeholderData: sameChainPlaceholder(chainId),
+    },
   });
 
   const tokens: TokenInfo[] = useMemo(() => {
