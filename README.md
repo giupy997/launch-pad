@@ -157,7 +157,8 @@ contracts ran before Base, and what the project was before the contracts:
     345,000 blocks a day) the coin's history comes from the points service,
     which read it without a time budget (`POINTS.md`, the coin routes), and
     the nodes are asked only for the blocks since; the same for the holders
-    below. The holders come from `/api/holders` (`web/lib/holders/count.ts`):
+    below, and for the day of volumes the explore cards rank by (`token=all`),
+    which the service answers from its record of the pad's trades. The holders come from `/api/holders` (`web/lib/holders/count.ts`):
     the coin's Transfer logs read from the chain, in one `eth_getLogs` where
     a node takes the whole span and in rounds of ranges otherwise, then every
     balance in one multicall, contracts (the pad, the pool) named rather than

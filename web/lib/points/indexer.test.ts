@@ -290,6 +290,16 @@ test("the coins' transfers count the holders; one coin's trades come packed for 
   assert.deepEqual([type, trader, eth, tokens, block, timestamp, token, venue], ["buy", alice.address.toLowerCase(), (2n * LTC).toString(), (800_000_000n * LTC).toString(), "1020", 1_700_000_000 + 1_020, COIN, "curve"]);
   for (let i = 1; i < t.trades.length; i++) assert.ok(BigInt(t.trades[i][4]) >= BigInt(t.trades[i - 1][4])); // oldest first
 
+  // the pad's trades from a block on, every coin together: the cards' day of volumes
+  const whole = await ix.padTrades(0n);
+  assert.equal(whole.token, "all");
+  assert.equal(whole.last, ix.last.toString());
+  assert.ok(whole.trades.length >= t.trades.length);
+  const since = await ix.padTrades(1_025n);
+  assert.equal(since.from, "1025");
+  assert.ok(since.trades.length > 0 && since.trades.length < whole.trades.length);
+  for (const x of since.trades) assert.ok(BigInt(x[4]) >= 1_025n);
+
   // a restart: the balances from disk, the transfers left where they were
   const again = new ChainIndexer(chain, nodes, store);
   assert.equal(again.transfersLast, ix.transfersLast);

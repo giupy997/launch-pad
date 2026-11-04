@@ -160,6 +160,7 @@ GET  /:chain/season                   chain, season, the rules, what is indexed
 GET  /:chain/leaderboard?limit=100    rank, wallet, points, trades, volume, invitees
 GET  /:chain/wallet/0x…               points by kind, rank, trades, volume, inviter, invitees, bonus end
 GET  /:chain/coin/0x…/trades          the coin's curve trades from its birth, packed as the site's feed takes them
+GET  /:chain/trades                   the pad's last day of curve trades, every coin together (the explore cards' volumes where the chain's node cannot scan a day)
 GET  /:chain/coin/0x…/holders         who holds the coin, from its transfers: count, the top 100, contracts named
 POST /:chain/referral                 { invitee, inviter, signature } → 201; 400 bad claim; 409 already bound; 429 too many
 GET  /health

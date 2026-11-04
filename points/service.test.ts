@@ -66,6 +66,11 @@ test("the reads answer, an unknown chain and route do not", async () => {
   const board = await fetch(base + "/liteforge/leaderboard?limit=5", { signal: AbortSignal.timeout(5_000) });
   assert.equal(board.status, 200);
   assert.ok(Array.isArray((await board.json()).rows));
+  const pad = await fetch(base + "/liteforge/trades", { signal: AbortSignal.timeout(5_000) });
+  assert.equal(pad.status, 200);
+  const padBody = await pad.json();
+  assert.equal(padBody.token, "all");
+  assert.ok(Array.isArray(padBody.trades));
   const chain = await fetch(base + "/nowhere/season", { signal: AbortSignal.timeout(5_000) });
   assert.equal(chain.status, 404);
   const route = await fetch(base + "/liteforge/other", { signal: AbortSignal.timeout(5_000) });

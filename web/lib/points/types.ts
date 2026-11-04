@@ -71,6 +71,21 @@ export type CoinTradesView = {
   updatedAt: number | null;
 };
 
+/** the pad's curve trades from block `from` on, every coin together, as the
+ *  site's feed packs them: what the explore cards' day of volumes is made of
+ *  on a chain whose public node cannot scan a day of logs in time
+ *  (Liteforge). Pool swaps after a graduation are not the pad's events: the
+ *  site reads them from the chain, from `last` on. `token` is "all". */
+export type PadTradesView = {
+  chain: string;
+  chainId: number;
+  token: "all";
+  from: string;
+  last: string;
+  trades: PackedTrade[];
+  updatedAt: number | null;
+};
+
 /** who holds one coin, from every Transfer of it the service has read: the
  *  wallets with a balance, the largest first, contracts among the largest
  *  (the pad, the pool) named and not counted. `partial` while the coins'

@@ -24,7 +24,7 @@ import {
 } from "./rules.ts";
 import { stretches, type Nodes } from "./scan.ts";
 import type { Store } from "./store.ts";
-import type { CoinHoldersView, CoinTradesView, LeaderboardRow, SeasonView, WalletView } from "./types.ts";
+import type { CoinHoldersView, CoinTradesView, LeaderboardRow, PadTradesView, SeasonView, WalletView } from "./types.ts";
 import type { PackedTrade } from "../trades/scan.ts";
 
 const ZERO = "0x0000000000000000000000000000000000000000";
@@ -290,6 +290,24 @@ export class ChainIndexer {
       last: this.last.toString(),
       created: coin ? coin.createdBlock.toString() : null,
       graduated: coin?.graduatedBlock?.toString() ?? null,
+      trades: trades.map(
+        (t): PackedTrade => [t.side, t.wallet, t.quote.toString(), t.tokens.toString(), t.block.toString(), t.tx, this.blockTimes.get(t.block) ?? 0, t.token, "curve", ""]
+      ),
+      updatedAt: this.updatedAt,
+    };
+  }
+
+  /** the pad's curve trades from block `from` on, every coin together, oldest first, as the
+   *  site's feed packs them (the explore cards' day of volumes) */
+  async padTrades(from: bigint): Promise<PadTradesView> {
+    const trades = this.trades.filter((t) => t.block >= from).sort(eventOrder);
+    await this.stampBlocks(trades.map((t) => t.block));
+    return {
+      chain: this.chain.key,
+      chainId: this.chain.chainId,
+      token: "all",
+      from: from.toString(),
+      last: this.last.toString(),
       trades: trades.map(
         (t): PackedTrade => [t.side, t.wallet, t.quote.toString(), t.tokens.toString(), t.block.toString(), t.tx, this.blockTimes.get(t.block) ?? 0, t.token, "curve", ""]
       ),

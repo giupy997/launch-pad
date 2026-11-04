@@ -1,5 +1,5 @@
 import "server-only";
-import type { CoinHoldersView, CoinTradesView } from "./types.ts";
+import type { CoinHoldersView, CoinTradesView, PadTradesView } from "./types.ts";
 
 // The site's own routes (app/api/trades, app/api/holders) asking the points
 // service for what it read without a time budget: a coin's trades and holders
@@ -35,3 +35,19 @@ async function get<T extends { chain: string; token: string }>(chainKey: string,
 export const servedTrades = (chainKey: string, token: string, ms = SERVICE_MS) => get<CoinTradesView>(chainKey, token, "trades", ms);
 /** who holds a coin by the service's count, or null */
 export const servedHolders = (chainKey: string, token: string, ms = SERVICE_MS) => get<CoinHoldersView>(chainKey, token, "holders", ms);
+
+/** the pad's last day of curve trades, every coin together, from the service, or null */
+export async function servedPadTrades(chainKey: string, ms = SERVICE_MS): Promise<PadTradesView | null> {
+  if (!BASE || ms < 300) return null;
+  try {
+    const headers: Record<string, string> = { accept: "application/json" };
+    if (TOKEN) headers["x-points-token"] = TOKEN;
+    const r = await fetch(`${BASE}/${chainKey}/trades`, { headers, cache: "no-store", signal: AbortSignal.timeout(ms) });
+    if (!r.ok) return null;
+    const j = (await r.json()) as PadTradesView;
+    if (j.chain !== chainKey || j.token !== "all") return null;
+    return j;
+  } catch {
+    return null;
+  }
+}

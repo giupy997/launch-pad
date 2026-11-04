@@ -139,7 +139,7 @@ function readBody(req: IncomingMessage, limit = 4_096): Promise<string | null> {
   });
 }
 
-const ROUTE = /^\/([a-z0-9-]+)\/(season|leaderboard|referral|wallet\/(0x[0-9a-fA-F]{40})|coin\/(0x[0-9a-fA-F]{40})\/(trades|holders))\/?$/;
+const ROUTE = /^\/([a-z0-9-]+)\/(season|leaderboard|referral|trades|wallet\/(0x[0-9a-fA-F]{40})|coin\/(0x[0-9a-fA-F]{40})\/(trades|holders))\/?$/;
 
 // one request: a throw anywhere in here is answered 500 and logged, never left to
 // take the process down (an unhandled rejection exits Node)
@@ -234,6 +234,14 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     return;
   }
   const head = req.method === "HEAD";
+  if (what === "trades") {
+    // the pad's last day of curve trades, for the explore cards' volumes on a chain whose
+    // public node cannot scan a day of logs in time; a day in the chain's blocks, from the
+    // block the service has read up to
+    const day = BigInt(Math.round(86_400 / ix.chain.blockSeconds));
+    json(res, 200, await ix.padTrades(ix.last > day ? ix.last - day : 0n), true, head);
+    return;
+  }
   if (what === "season") {
     json(res, 200, ix.season(), true, head);
     return;

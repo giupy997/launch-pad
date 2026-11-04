@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { POINTS_CHAINS } from "@/lib/points/chains";
 import { client as rpcClient, isPadCoin } from "@/lib/holders/count";
-import { SERVICE_MS, servedTrades } from "@/lib/points/served";
+import { SERVICE_MS, servedPadTrades, servedTrades } from "@/lib/points/served";
 import { joinHistory } from "@/lib/trades/history";
 import { SPAN_CHUNKS, latestBlock, packTrades, scanTrades, stampTimestamps, type PoolRef, type ScanTarget, type Trade } from "@/lib/trades/scan";
 
@@ -78,17 +78,19 @@ export async function GET(req: NextRequest) {
     const windowStart = latest - span + 1n > chain.deployBlock ? latest - span + 1n : chain.deployBlock;
     const held = memory.get(key);
     let out: Held;
-    // the service's history, when the nodes could not give one and nothing is held yet
-    const served = !all && !chain.archive.length && !held ? await servedTrades(chain.key, coin!, Math.min(SERVICE_MS, deadline - Date.now())) : null;
-    if (served) {
-      const servedLast = BigInt(served.last);
-      const fresh = latest > servedLast ? await scanTrades(target, chain.pad, coin, servedLast + 1n, latest, pools, CONCURRENCY, deadline) : null;
-      const joined = joinHistory(
-        { trades: served.trades, last: servedLast, graduated: served.graduated === null ? null : BigInt(served.graduated) },
-        fresh,
-        pools.length > 0,
-        chain.deployBlock
-      );
+    // the service's history, when the nodes could not give one and nothing is held yet: one
+    // coin's trades from its birth, or the whole pad's last day (the cards' volumes; on
+    // Liteforge a day is 345,000 blocks, more than its public node scans in time, so the
+    // service's own record is the only source of a day there; the pools' swaps are read
+    // from the chain from the service's block on, as for one coin)
+    const served = all || chain.archive.length || held ? null : await servedTrades(chain.key, coin!, Math.min(SERVICE_MS, deadline - Date.now()));
+    const servedPad = !all || chain.archive.length || held ? null : await servedPadTrades(chain.key, Math.min(SERVICE_MS, deadline - Date.now()));
+    if (served || servedPad) {
+      const history = served
+        ? { trades: served.trades, last: BigInt(served.last), graduated: served.graduated === null ? null : BigInt(served.graduated) }
+        : { trades: servedPad!.trades, last: BigInt(servedPad!.last), graduated: null };
+      const fresh = latest > history.last ? await scanTrades(target, chain.pad, coin, history.last + 1n, latest, pools, CONCURRENCY, deadline) : null;
+      const joined = joinHistory(history, fresh, served !== null && pools.length > 0, all ? BigInt(servedPad!.from) : chain.deployBlock);
       out = { first: joined.first, last: joined.last, trades: joined.trades, truncated: joined.truncated };
     } else if (held && held.first <= windowStart && latest - held.last <= chain.chunk * 10n) {
       // warm: only the blocks mined since the last answer
