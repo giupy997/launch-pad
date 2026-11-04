@@ -85,6 +85,9 @@ export default function RootLayout({
                   <Link className="underline hover:text-zinc-200" href="/about">
                     About
                   </Link>
+                  <Link className="underline hover:text-zinc-200" href="/developers">
+                    API
+                  </Link>
                   {SOURCE_URL ? (
                     <a className="underline hover:text-zinc-200" href={SOURCE_URL} target="_blank">
                       Source

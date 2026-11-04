@@ -187,6 +187,11 @@ contracts ran before Base, and what the project was before the contracts:
   - `/api/health`: one answer for an uptime monitor, 200 while Base's nodes
     and the Blobs store answer, 503 otherwise, with every check's result (the
     testnet's nodes and the points service are reported, not decisive)
+  - `/developers`: how to read Notus without the site, for bots, terminals
+    and monitors: the contracts and the events to follow on Base, and the
+    two API routes the site keeps stable (`/api/launchpad/tokens` and
+    `/api/health`) with their fields, caching and the 240-a-minute limit;
+    the other `/api/` routes are named as the site's own, free to change
   - `/api/launchpad/tokens?orderId=0&limit=100`: the token sync feed for
     GoPlus (the shape its launchpad partnership form asks for, 2026-11-04):
     every coin the Base pad created, in the pad's own order (`allTokens`,
