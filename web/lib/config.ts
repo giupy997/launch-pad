@@ -357,6 +357,14 @@ export const RPC_URLS: Record<number, string[]> = {
  *  (mainnet.base.org: "limited to a 2,000 range"). The scan learns a smaller
  *  one from a refusal; chains missing here start from a guess. */
 export const GETLOGS_CHUNK: Record<number, bigint> = { [base.id]: 1_999n };
+/** Liteforge's node answers one request after another and slowly (a single
+ *  eth_call took 5.8 s on 2026-11-06): thirty aggregates in one HTTP request
+ *  took it 14 s for the pad's 340 coins, past viem's ten-second timeout, and
+ *  the explore page sat on its placeholders for minutes. Five a request, in
+ *  parallel requests, took 5.5 s on the same node the same minute; and the
+ *  timeout is thirty seconds, since a request that is slow there is not a
+ *  request that failed. */
+const slowNodeTransport = () => http(undefined, { batch: { batchSize: 5, wait: 16 }, timeout: 30_000 });
 const chainTransport = (chainId: number) => {
   const urls = RPC_URLS[chainId];
   return urls ? fallback(urls.map((u) => http(u, { batch: { batchSize: 30, wait: 16 } }))) : transport();
@@ -386,12 +394,14 @@ export const config = createConfig({
         ]
       : []),
   ],
-  batch: { multicall: { wait: 16 } },
+  // an aggregate carries 4 KB of calls (two dozen reads), not viem's 1 KB (half a dozen):
+  // fewer, fuller eth_call, which is what a slow node serves best (below)
+  batch: { multicall: { batchSize: 4_096, wait: 16 } },
   transports: {
     [base.id]: chainTransport(base.id),
     [giwaSepolia.id]: transport(),
     [robinhood.id]: transport(),
-    [litvmTestnet.id]: transport(),
+    [litvmTestnet.id]: slowNodeTransport(),
     [sepolia.id]: transport(),
     [mainnet.id]: transport(),
   },
