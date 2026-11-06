@@ -44,3 +44,28 @@
   to = "/retired.html"
   status = 404
   force = true
+
+# The site's own art, chain marks, logo and fonts (web/public) are plain files
+# with no hash in their names, and Netlify served them "max-age=0,
+# must-revalidate": a round trip to the CDN for each of them on every page of
+# every visit. A day in the browser, and a week more during which the copy is
+# shown while a fresh one is fetched behind it.
+[[headers]]
+  for = "/art/*"
+  [headers.values]
+    Cache-Control = "public, max-age=86400, stale-while-revalidate=604800"
+
+[[headers]]
+  for = "/chains/*"
+  [headers.values]
+    Cache-Control = "public, max-age=86400, stale-while-revalidate=604800"
+
+[[headers]]
+  for = "/fonts/*"
+  [headers.values]
+    Cache-Control = "public, max-age=86400, stale-while-revalidate=604800"
+
+[[headers]]
+  for = "/logo*"
+  [headers.values]
+    Cache-Control = "public, max-age=86400, stale-while-revalidate=604800"

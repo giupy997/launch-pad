@@ -2,6 +2,7 @@
 
 import { useReadContracts } from "wagmi";
 import { tokenLiveReads, tokenStaticReads } from "@/lib/tokenReads";
+import { CoinElsewhere } from "@/components/CoinElsewhere";
 import {
   useLaunchpadAddress,
   curveProgress,
@@ -150,11 +151,7 @@ export function TokenPage({ address }: { address: string }) {
           ? treasuryPctV11(platformFeeBps, creatorShareBps + holderShareBps)
           : "…";
   if (curveR.status !== "success" || (curveR.result as readonly unknown[])[0] === 0n) {
-    return (
-      <p className="text-zinc-500">
-        Token not found on this launchpad.
-      </p>
-    );
+    return <CoinElsewhere token={token} />;
   }
 
   const name = nameR.status === "success" ? (nameR.result as string) : "?";

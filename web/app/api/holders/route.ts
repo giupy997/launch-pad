@@ -12,12 +12,18 @@ const FUNCTION_MS = 9_000; // what a request may spend in all, under the hosting
 // coin's answer. The two parameters that shape the answer, and only those:
 // a stray `&x=1` shares the entry rather than opening a new one (and a new
 // count on the nodes).
-const cache = (seconds: number) => ({
-  "cache-control": `public, max-age=${seconds}, s-maxage=${seconds}, stale-while-revalidate=${seconds * 4}`,
+// `stale`: how long an answer past its seconds is still served while the next is read
+// behind it. A whole answer keeps an hour: on a quiet day the first visitor after two
+// minutes of nobody waited out the scan itself (seven seconds for Base's day of
+// volumes); now they get the last answer at once and the scan runs for the next
+// request, which the page makes a minute later. A partial answer keeps its short one.
+const WHOLE_STALE = 3_600;
+const cache = (seconds: number, stale = seconds * 4) => ({
+  "cache-control": `public, max-age=${seconds}, s-maxage=${seconds}, stale-while-revalidate=${stale}`,
   // durable: one entry shared by every edge node, so one scan serves everyone and a
   // stale answer goes out at once while the next scan runs behind it (without it the
   // entry lived on the one node that stored it, and almost every request scanned anew)
-  "netlify-cdn-cache-control": `public, durable, s-maxage=${seconds}, stale-while-revalidate=${seconds * 4}`,
+  "netlify-cdn-cache-control": `public, durable, s-maxage=${seconds}, stale-while-revalidate=${stale}`,
   "netlify-vary": "query=chain|token",
 });
 const NO_STORE = { "cache-control": "no-store" };
@@ -54,14 +60,14 @@ export async function GET(req: NextRequest) {
     if (served) {
       const body = { chain, token, holders: served.holders, launched: served.launched, partial: served.partial, top: served.top };
       if (debug) return NextResponse.json({ ...body, debug: { service: true, last: served.last, created: served.created, graduated: served.graduated } }, { headers: NO_STORE });
-      return NextResponse.json(body, { headers: cache(served.partial ? 5 : 60) });
+      return NextResponse.json(body, { headers: served.partial ? cache(5) : cache(60, WHOLE_STALE) });
     }
     try {
       const { holders, launched, partial, top, debug: did } = await countHolders(onChain, token as `0x${string}`);
       // the chain and coin answered for, so the browser can tell a stray answer apart
       const body = { chain, token, holders, launched, partial, top };
       if (debug) return NextResponse.json({ ...body, debug: { ...did, errors: recentScanErrors.slice(-12) } }, { headers: NO_STORE });
-      return NextResponse.json(body, { headers: cache(partial ? 5 : 60) });
+      return NextResponse.json(body, { headers: partial ? cache(5) : cache(60, WHOLE_STALE) });
     } catch (e) {
       // an address the pad does not know is no coin: nothing is counted, nothing is kept
       if (e instanceof UnknownCoinError) return NextResponse.json({ error: e.message }, { status: 404, headers: cache(300) });

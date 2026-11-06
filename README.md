@@ -146,10 +146,15 @@ contracts ran before Base, and what the project was before the contracts:
     the pool fee once graduated and the day's volume, with the market cap and
     the 24h change on the right; curve stats and progress bar; buy/sell box
     with on-chain quotes, automatic approve and 1% slippage guard; price
-    chart; under it two tabs, Trades and Holders. The trades come from
+    chart; under it two tabs, Trades and Holders. An address the app chain's
+    launchpad does not know is looked up on the other chain's launchpad
+    (`components/CoinElsewhere.tsx`): a link to a testnet coin opened with
+    the app on Base takes a visitor without a wallet to Liteforge at once,
+    and offers the switch to one with a wallet connected. The trades come from
     `/api/trades` (the pad's events scanned once on the server, cached in
     Netlify's durable cache, one entry for every edge node, twenty seconds
-    fresh and served stale while the next scan runs; the browser then reading
+    fresh and, when the answer is whole, served stale for an hour while the
+    next scan runs behind it; the browser then reading
     only the blocks mined since into its
     localStorage cache; the browser scans by itself when the server does not
     answer). On a chain with no archive node (Liteforge, where the public node

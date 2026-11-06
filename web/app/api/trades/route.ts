@@ -28,12 +28,18 @@ const BUDGET_MS = 8_500; // what a request may spend reading, under the hosting 
 // otherwise: without `netlify-vary` every coin would be served the first
 // coin's trades. The three parameters that shape the answer, and only those:
 // a stray `&x=1` shares the entry rather than costing the nodes a scan.
-const cache = (seconds: number) => ({
-  "cache-control": `public, max-age=${seconds}, s-maxage=${seconds}, stale-while-revalidate=${seconds * 4}`,
+// `stale`: how long an answer past its seconds is still served while the next is read
+// behind it. A whole answer keeps an hour: on a quiet day the first visitor after two
+// minutes of nobody waited out the scan itself (seven seconds for Base's day of
+// volumes); now they get the last answer at once and the scan runs for the next
+// request, which the page makes a minute later. A partial answer keeps its short one.
+const WHOLE_STALE = 3_600;
+const cache = (seconds: number, stale = seconds * 4) => ({
+  "cache-control": `public, max-age=${seconds}, s-maxage=${seconds}, stale-while-revalidate=${stale}`,
   // durable: one entry shared by every edge node, so one scan serves everyone and a
   // stale answer goes out at once while the next scan runs behind it (without it the
   // entry lived on the one node that stored it, and almost every request scanned anew)
-  "netlify-cdn-cache-control": `public, durable, s-maxage=${seconds}, stale-while-revalidate=${seconds * 4}`,
+  "netlify-cdn-cache-control": `public, durable, s-maxage=${seconds}, stale-while-revalidate=${stale}`,
   "netlify-vary": "query=chain|token|pools",
 });
 const NO_STORE = { "cache-control": "no-store" };
@@ -125,7 +131,7 @@ export async function GET(req: NextRequest) {
     memory.set(key, out);
     return NextResponse.json(
       { chain: chainId, token, first: out.first.toString(), last: out.last.toString(), truncated: out.truncated, trades: packTrades(out.trades) },
-      { headers: cache(20) }
+      { headers: cache(20, out.truncated ? 80 : WHOLE_STALE) }
     );
   } catch {
     return NextResponse.json({ error: "the chain's nodes did not answer" }, { status: 503, headers: NO_STORE });
