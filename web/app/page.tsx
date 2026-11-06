@@ -20,7 +20,7 @@ const unitPrice = (eth: bigint, tokens: bigint, decimals: number) =>
   tokens > 0n ? Number(eth) / 10 ** decimals / (Number(tokens) / 1e18) : null;
 
 export default function Explore() {
-  const { tokens: allTokens, isLoading, isLoadingMore, complete, isError, count: readSoFar, total } = useTokens();
+  const { tokens: allTokens, isLoading, isLoadingMore, complete, isError, total } = useTokens();
   const chain = useAppChain();
   const pad = useLaunchpadAddress() ?? ZERO_ADDRESS;
   // Pre-markets are pair assets, bought for users by the zap when they trade
@@ -141,7 +141,7 @@ export default function Explore() {
         coins={coins}
         usd={usd}
         loading={isLoading}
-        more={isLoadingMore ? { read: readSoFar, total } : null}
+        more={isLoadingMore ? { read: allTokens.length, total } : null}
         error={isError}
         king={
           king
