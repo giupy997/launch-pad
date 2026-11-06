@@ -39,8 +39,11 @@ export const robinhood = defineChain({
 });
 
 /** LitVM — Litecoin's EVM layer 2 (Arbitrum Orbit), Liteforge testnet. Gas
- *  and quote asset is zkLTC (bridged LTC). No multicall3 entry: wagmi falls
- *  back to single reads until Multicall3 is deployed there. */
+ *  and quote asset is zkLTC (bridged LTC). Multicall3 is at its usual address
+ *  there (3,808 bytes of code, read on 2026-11-06): without this entry wagmi
+ *  sent every read as a call of its own, 3,530 eth_call in the half minute
+ *  after a switch to the chain (358 coins, ten reads each), to a node that
+ *  answers in one to five seconds; with it they travel a few dozen to a call. */
 export const litvmTestnet = defineChain({
   id: 4441,
   name: "LitVM Liteforge",
@@ -50,6 +53,9 @@ export const litvmTestnet = defineChain({
   },
   blockExplorers: {
     default: { name: "Liteforge Explorer", url: "https://liteforge.explorer.caldera.xyz" },
+  },
+  contracts: {
+    multicall3: { address: "0xcA11bde05977b3631167028862bE2a173976CA11" },
   },
   testnet: true,
 });
