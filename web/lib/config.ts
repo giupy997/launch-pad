@@ -39,11 +39,14 @@ export const robinhood = defineChain({
 });
 
 /** LitVM — Litecoin's EVM layer 2 (Arbitrum Orbit), Liteforge testnet. Gas
- *  and quote asset is zkLTC (bridged LTC). Multicall3 is at its usual address
- *  there (3,808 bytes of code, read on 2026-11-06): without this entry wagmi
- *  sent every read as a call of its own, 3,530 eth_call in the half minute
- *  after a switch to the chain (358 coins, ten reads each), to a node that
- *  answers in one to five seconds; with it they travel a few dozen to a call. */
+ *  and quote asset is zkLTC (bridged LTC). No multicall3 entry, on purpose:
+ *  Multicall3 is deployed there, but the node serves an aggregate far worse
+ *  than the single reads it replaces. Tried on 2026-11-06 (fbac39d, 1de112f,
+ *  04afe1b): aggregates of the pad's 358 coins took 20 to 37 s each, the one
+ *  of every coin's metadata failed whole, and on a browser's one HTTP/2
+ *  connection the requests queued until they timed out; the explore page,
+ *  which had loaded slowly on single reads, did not load at all. Without the
+ *  entry wagmi sends each read as a call of its own, thirty to a request. */
 export const litvmTestnet = defineChain({
   id: 4441,
   name: "LitVM Liteforge",
@@ -53,9 +56,6 @@ export const litvmTestnet = defineChain({
   },
   blockExplorers: {
     default: { name: "Liteforge Explorer", url: "https://liteforge.explorer.caldera.xyz" },
-  },
-  contracts: {
-    multicall3: { address: "0xcA11bde05977b3631167028862bE2a173976CA11" },
   },
   testnet: true,
 });
@@ -357,16 +357,12 @@ export const RPC_URLS: Record<number, string[]> = {
  *  (mainnet.base.org: "limited to a 2,000 range"). The scan learns a smaller
  *  one from a refusal; chains missing here start from a guess. */
 export const GETLOGS_CHUNK: Record<number, bigint> = { [base.id]: 1_999n };
-/** Liteforge's node works through the calls of one HTTP request in a row, and
- *  serves separate requests side by side. Measured on 2026-11-06, a day it
- *  took 9.5 s for a single eth_call, reading the pad's 340 coins: aggregates
- *  five to a request, 22 s; thirty single reads to a request, 9 to 16 s; one
- *  aggregate to a request, all sent at once, 8 s. So nothing is batched over
- *  HTTP here: every aggregate is a request of its own. And the timeout is
- *  thirty seconds, since a request that is slow there is not one that failed
- *  (at viem's ten, every read of the explore page timed out and the page sat
- *  on its placeholders). */
-const slowNodeTransport = () => http(undefined, { timeout: 30_000 });
+/** Liteforge's reads: single calls, thirty to a request, as on every chain
+ *  without a multicall, and thirty seconds to answer instead of viem's ten:
+ *  the node took 9.5 s for one eth_call on 2026-11-06, and a request that is
+ *  slow there is not one that failed (a timeout is asked again, which is one
+ *  more request to a node already behind). */
+const slowNodeTransport = () => http(undefined, { batch: { batchSize: 30, wait: 16 }, timeout: 30_000 });
 const chainTransport = (chainId: number) => {
   const urls = RPC_URLS[chainId];
   return urls ? fallback(urls.map((u) => http(u, { batch: { batchSize: 30, wait: 16 } }))) : transport();
@@ -396,9 +392,7 @@ export const config = createConfig({
         ]
       : []),
   ],
-  // an aggregate carries 4 KB of calls (two dozen reads), not viem's 1 KB (half a dozen):
-  // fewer, fuller eth_call, which is what a slow node serves best (below)
-  batch: { multicall: { batchSize: 4_096, wait: 16 } },
+  batch: { multicall: { wait: 16 } },
   transports: {
     [base.id]: chainTransport(base.id),
     [giwaSepolia.id]: transport(),
