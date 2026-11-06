@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { parseAbi } from "viem";
-import { cookieToInitialState, useChainId, useReadContract, useReadContracts } from "wagmi";
+import { useQueries } from "@tanstack/react-query";
+import { parseAbi, type Abi } from "viem";
+import { cookieToInitialState, useChainId, useConfig, useReadContract } from "wagmi";
+import { hashFn, readContractsQueryOptions } from "wagmi/query";
 import { launchpadAbi, launchTokenAbi, padAbiFor, type PadVersion } from "./abi";
 import { APP_CHAINS, DEFAULT_CHAIN, LAUNCHPAD_ADDRESS, PAD_VERSION, QUOTE_ASSETS, VISIBLE_CHAINS, config, isHiddenToken } from "./config";
 
@@ -116,11 +118,13 @@ const transferableAbi = parseAbi(["function transferable() view returns (bool)"]
 // minutes: a list opened after an hour elsewhere still shows at once.
 const DAY = 24 * 60 * 60 * 1000;
 const REFETCH = { refetchInterval: 5_000, gcTime: DAY } as const;
-// a list this long (Liteforge: 340 coins on the rehearsal pad) reads its curves four
-// times a minute, not twelve: at five seconds that was 340 calls every five seconds
-// to a node answering in one to ten, most of a cold visit's load
+// a list this long (Liteforge: 358 coins on the rehearsal pad) reads its curves once a
+// minute and its metadata every five: at five and thirty seconds that was 84 calls a
+// second, for as long as the page stayed open, to a node that answers a request in one
+// to ten seconds; at twenty seconds for the curves it was still 30
 const BIG_LIST = 100;
-const BIG_LIST_REFETCH = 20_000;
+const BIG_LIST_REFETCH = 60_000;
+const BIG_LIST_META_REFETCH = { refetchInterval: 300_000, staleTime: 240_000, gcTime: DAY } as const;
 // name/symbol never change — fetch once per session, keep forever.
 export const IMMUTABLE = { staleTime: Infinity, gcTime: Infinity } as const;
 // metadata (logo, links, livestream) changes rarely — poll gently.
@@ -241,147 +245,183 @@ export function parseMeta(result: unknown): TokenMeta {
   return { logoURI, website, twitter, telegram, livestream, description };
 }
 
-/** Full token list with name, symbol, curve state and metadata (multicall). */
-// The first slots of the pad's token list are read in the same round trip as
-// its count: a slot past the end reverts and reads as a failure, so the list
-// is known without waiting for the count. A pad with more coins than this
-// reads the rest once the count is in.
-const FIRST_SLOTS = 32;
+/** The pad's token list, read in groups. */
+// A group is GROUP coins by their place in the pad's own list. The pad only
+// ever appends, so a full group never changes, and each group is read by
+// itself: its slots, then the names, metadata and curves of its coins. A
+// group shows as soon as it has answered, the newest groups asked first, and
+// a group whose request failed is asked again without holding the others.
+// Before, the names of every coin were one query and their curves another:
+// on Liteforge (358 coins, a node that takes seconds a request) nothing
+// showed until the slowest of sixty requests had answered, and one that
+// failed left the whole list empty.
+const GROUP = 30;
 
 type Read = { status: string; result?: unknown };
+type GroupRead = { address: `0x${string}`; abi: Abi; functionName: string; args?: readonly unknown[]; chainId: number };
+type KeyContract = { address?: string; args?: readonly unknown[]; chainId?: number };
 
-/** The previous answer stands in while a list grows, but never across chains:
- *  a name read from one chain's list must not show against another's
- *  addresses. (wagmi puts the chain id in every read's key.) */
-function sameChainPlaceholder(chainId: number) {
+/** The previous answer of the same group on the same chain stands in while
+ *  the group's list grows (a coin just created), and never another group's
+ *  or another chain's: a name must not show against another coin's address.
+ *  The group is told by the first read of the query's key. */
+function sameGroup(chainId: number, isFirst: (c: KeyContract) => boolean) {
   return <T>(prev: T | undefined, prevQuery: { queryKey: readonly unknown[] } | undefined): T | undefined => {
-    const key = prevQuery?.queryKey?.[1] as { chainId?: number } | undefined;
-    return key?.chainId === chainId ? prev : undefined;
+    const c = (prevQuery?.queryKey?.[1] as { contracts?: KeyContract[] } | undefined)?.contracts?.[0];
+    return c && c.chainId === chainId && isFirst(c) ? prev : undefined;
   };
 }
+const sameAddress = (a: unknown, b: string) => typeof a === "string" && a.toLowerCase() === b.toLowerCase();
+/** whether every read of an answer failed: a request that did not get through, to ask again */
+const allFailed = (data: unknown) => Array.isArray(data) && data.length > 0 && data.every((r: Read) => r.status !== "success");
 
 /** The pad's coins with name, curve and metadata, for the current chain, or
- *  for `chainId`. `warm` reads another chain's list once, without polling,
- *  only so that a switch there finds it in the cache. Two round trips: count
- *  and first slots together, then names, curves and metadata together. */
+ *  for `chainId`, newest first. `warm` reads another chain's list once,
+ *  without polling, only so that a switch there finds it in the cache.
+ *  `isLoading` until the first group is in; `isLoadingMore` while others
+ *  are still being read; `complete` once every group has answered. */
 export function useTokens(chainIdOverride?: number, opts: { warm?: boolean } = {}) {
   const appChainId = useAppChain().id;
   const chainId = chainIdOverride ?? appChainId;
   const pad = LAUNCHPAD_ADDRESS[chainId];
   const padSafe = (pad ?? ZERO_ADDRESS) as `0x${string}`;
   const warm = opts.warm === true;
-  const poll = warm ? ONCE : REFETCH;
-  const pollMeta = warm ? { ...ONCE, staleTime: META_REFETCH.staleTime } : META_REFETCH;
+  const wagmiConfig = useConfig();
 
   const { data: count, isError: countError } = useReadContract({
     address: pad,
     abi: launchpadAbi,
     functionName: "tokenCount",
     chainId,
-    query: { ...poll, enabled: !!pad },
+    query: { ...(warm ? ONCE : REFETCH), enabled: !!pad },
+  });
+  const n = pad && count !== undefined ? Number(count) : undefined;
+
+  // The first group's slots are read in the same round trip as the count (a slot past
+  // the end reverts and reads as a failure); the others once the count says how many.
+  // The last group holds what the count says it holds: its key changes when a coin is
+  // created, and only that group is read again.
+  const groups = !pad ? 0 : n === undefined ? 1 : Math.ceil(n / GROUP);
+  const order = useMemo(() => Array.from({ length: groups }, (_, i) => groups - 1 - i), [groups]); // newest first
+  const sizeOf = (g: number) => (n === undefined ? GROUP : Math.max(0, Math.min(GROUP, n - g * GROUP)));
+  const big = (n ?? 0) > BIG_LIST;
+
+  const slotQs = useQueries({
+    queries: order.map((g) => {
+      const size = sizeOf(g);
+      const contracts: GroupRead[] = Array.from({ length: size }, (_, i) => ({
+        address: padSafe,
+        abi: launchpadAbi as Abi,
+        functionName: "allTokens",
+        args: [BigInt(g * GROUP + i)],
+        chainId,
+      }));
+      return {
+        ...readContractsQueryOptions(wagmiConfig, { contracts, chainId }),
+        queryKeyHashFn: hashFn,
+        enabled: !!pad && size > 0,
+        ...IMMUTABLE,
+        // a slot the count says exists and that did not answer is asked again
+        refetchInterval: (q: { state: { data?: unknown } }) =>
+          n !== undefined && Array.isArray(q.state.data) && (q.state.data as Read[]).some((r) => r.status !== "success") ? RETRY_MS : false,
+        placeholderData: sameGroup(chainId, (c) => c.args?.[0] === BigInt(g * GROUP)),
+      };
+    }),
   });
 
-  const slot = (i: number) => ({
-    address: padSafe,
-    abi: launchpadAbi,
-    functionName: "allTokens" as const,
-    args: [BigInt(i)] as const,
-    chainId,
-  });
-  // The token list is append-only: a slot never changes once read.
-  const first = useReadContracts({
-    contracts: Array.from({ length: FIRST_SLOTS }, (_, i) => slot(i)),
-    query: { enabled: !!pad, ...IMMUTABLE },
-  });
-  const firstReads = first.data as readonly Read[] | undefined;
-  // the slots that answered are the coins that existed when they were read
-  const known = firstReads ? firstReads.filter((r) => r.status === "success").length : 0;
-  const n = pad ? Number(count ?? 0n) : 0;
-  const restIdx = useMemo(
-    () => (firstReads && n > known ? Array.from({ length: n - known }, (_, i) => known + i) : []),
-    [firstReads, n, known]
+  // each group's coins, in the pad's order, the hidden ones left out
+  const slotData = slotQs.map((q) => q.data as readonly Read[] | undefined);
+  const slotKey = slotData.map((d) => (d ? d.map((r) => (r.status === "success" ? (r.result as string) : "")).join(",") : "?")).join("|");
+  const addrsOf = useMemo(
+    () =>
+      slotData.map((d) =>
+        (d ?? []).flatMap((r) => (r.status === "success" && !isHiddenToken(chainId, r.result as `0x${string}`) ? [r.result as `0x${string}`] : []))
+      ),
+    // the answers' content, not their identity: a refetch that reads the same slots changes nothing
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [slotKey, chainId]
   );
-  const rest = useReadContracts({
-    contracts: restIdx.map(slot),
-    query: { enabled: restIdx.length > 0, ...IMMUTABLE },
-  });
-  const restReads = rest.data as readonly Read[] | undefined;
-
-  const tokenAddrs = useMemo(() => {
-    const seen = new Set<string>();
-    const out: `0x${string}`[] = [];
-    for (const r of [...(firstReads ?? []), ...(restReads ?? [])]) {
-      if (r.status !== "success") continue;
-      const a = r.result as `0x${string}`;
-      if (seen.has(a.toLowerCase()) || isHiddenToken(chainId, a)) continue;
-      seen.add(a.toLowerCase());
-      out.push(a);
-    }
-    return out;
-  }, [firstReads, restReads, chainId]);
 
   // Three tiers so the recurring RPC load stays light: name/symbol once per
-  // session, metadata every 30s, only curve state at full 5s cadence.
-  const { data: statics, isLoading: staticsLoading } = useReadContracts({
-    contracts: tokenAddrs.flatMap((t) => [
-      { address: t, abi: launchTokenAbi, functionName: "name" as const, chainId },
-      { address: t, abi: launchTokenAbi, functionName: "symbol" as const, chainId },
-      { address: padSafe, abi: launchpadAbi, functionName: "feesToHolders" as const, args: [t] as const, chainId },
-      // reverts on tokens from launchpads older than v7.3 and on v12's — treated as false
-      { address: t, abi: transferableAbi, functionName: "transferable" as const, chainId },
-    ]),
-    query: { enabled: tokenAddrs.length > 0, ...IMMUTABLE, placeholderData: sameChainPlaceholder(chainId) },
+  // session, metadata every 30s, only curve state at the full cadence.
+  const staticQs = useQueries({
+    queries: order.map((_, i) => {
+      const addrs = addrsOf[i];
+      const contracts: GroupRead[] = addrs.flatMap((t) => [
+        { address: t, abi: launchTokenAbi as Abi, functionName: "name", chainId },
+        { address: t, abi: launchTokenAbi as Abi, functionName: "symbol", chainId },
+        { address: padSafe, abi: launchpadAbi as Abi, functionName: "feesToHolders", args: [t], chainId },
+        // reverts on tokens from launchpads older than v7.3 and on v12's — treated as false
+        { address: t, abi: transferableAbi as Abi, functionName: "transferable", chainId },
+      ]);
+      return {
+        ...readContractsQueryOptions(wagmiConfig, { contracts, chainId }),
+        queryKeyHashFn: hashFn,
+        enabled: addrs.length > 0,
+        ...IMMUTABLE,
+        refetchInterval: (q: { state: { data?: unknown } }) => (allFailed(q.state.data) ? RETRY_MS : false),
+        placeholderData: sameGroup(chainId, (c) => sameAddress(c.address, addrs[0] ?? "")),
+      };
+    }),
+  });
+  const metaQs = useQueries({
+    queries: order.map((_, i) => {
+      const addrs = addrsOf[i];
+      const contracts: GroupRead[] = addrs.map((t) => ({ address: padSafe, abi: launchpadAbi as Abi, functionName: "tokenMetadata", args: [t], chainId }));
+      return {
+        ...readContractsQueryOptions(wagmiConfig, { contracts, chainId }),
+        queryKeyHashFn: hashFn,
+        enabled: addrs.length > 0,
+        ...(warm ? { ...ONCE, staleTime: META_REFETCH.staleTime } : big ? BIG_LIST_META_REFETCH : META_REFETCH),
+        placeholderData: sameGroup(chainId, (c) => sameAddress(c.args?.[0], addrs[0] ?? "")),
+      };
+    }),
+  });
+  const curveQs = useQueries({
+    queries: order.map((_, i) => {
+      const addrs = addrsOf[i];
+      const contracts: GroupRead[] = addrs.map((t) => ({ address: padSafe, abi: launchpadAbi as Abi, functionName: "curves", args: [t], chainId }));
+      return {
+        ...readContractsQueryOptions(wagmiConfig, { contracts, chainId }),
+        queryKeyHashFn: hashFn,
+        enabled: addrs.length > 0,
+        ...(warm ? ONCE : REFETCH),
+        ...(!warm && big ? { refetchInterval: BIG_LIST_REFETCH } : {}),
+        placeholderData: sameGroup(chainId, (c) => sameAddress(c.args?.[0], addrs[0] ?? "")),
+      };
+    }),
   });
 
-  const { data: metas } = useReadContracts({
-    contracts: tokenAddrs.map((t) => ({
-      address: padSafe,
-      abi: launchpadAbi,
-      functionName: "tokenMetadata" as const,
-      args: [t] as const,
-      chainId,
-    })),
-    query: { enabled: tokenAddrs.length > 0, ...pollMeta, placeholderData: sameChainPlaceholder(chainId) },
-  });
-
-  const { data: curves, isLoading: curvesLoading } = useReadContracts({
-    contracts: tokenAddrs.map((t) => ({
-      address: padSafe,
-      abi: launchpadAbi,
-      functionName: "curves" as const,
-      args: [t] as const,
-      chainId,
-    })),
-    query: {
-      enabled: tokenAddrs.length > 0,
-      ...poll,
-      ...(!warm && tokenAddrs.length > BIG_LIST ? { refetchInterval: BIG_LIST_REFETCH } : {}),
-      placeholderData: sameChainPlaceholder(chainId),
-    },
-  });
+  const staticData = staticQs.map((q) => q.data as readonly Read[] | undefined);
+  const metaData = metaQs.map((q) => q.data as readonly Read[] | undefined);
+  const curveData = curveQs.map((q) => q.data as readonly Read[] | undefined);
+  // one stamp for the answers the list is built from: react-query hands back the same arrays
+  // while nothing changed, but useQueries a new outer array on every render
+  const stamp = [...staticQs, ...metaQs, ...curveQs].map((q) => q.dataUpdatedAt).join(",");
 
   const tokens: TokenInfo[] = useMemo(() => {
-    if (!statics || !curves) return [];
-    // a previous answer may be shorter than the list it stands in for (a coin
-    // just created): the coins it covers show now, the new one once read
-    const covered = Math.min(tokenAddrs.length, Math.floor(statics.length / 4), curves.length);
-    return tokenAddrs
-      .slice(0, covered)
-      .map((address, i) => {
-        const name = statics[i * 4];
-        const symbol = statics[i * 4 + 1];
-        const feesToHolders = statics[i * 4 + 2];
-        const transferable = statics[i * 4 + 3];
-        const curve = curves[i];
-        const meta = metas?.[i];
-        if (
-          name?.status !== "success" ||
-          symbol?.status !== "success" ||
-          curve?.status !== "success"
-        )
-          return null;
-        return {
-          address,
+    const out: TokenInfo[] = [];
+    // `order` is newest group first; within a group the pad's order is oldest first
+    for (let i = 0; i < order.length; i++) {
+      const addrs = addrsOf[i];
+      const statics = staticData[i];
+      const curves = curveData[i];
+      const metas = metaData[i];
+      if (!addrs?.length || !statics || !curves) continue;
+      // a previous answer may be shorter than the group it stands in for (a coin
+      // just created): the coins it covers show now, the new one once read
+      const covered = Math.min(addrs.length, Math.floor(statics.length / 4), curves.length);
+      const group: TokenInfo[] = [];
+      for (let k = 0; k < covered; k++) {
+        const name = statics[k * 4];
+        const symbol = statics[k * 4 + 1];
+        const feesToHolders = statics[k * 4 + 2];
+        const transferable = statics[k * 4 + 3];
+        const curve = curves[k];
+        const meta = metas?.[k];
+        if (name?.status !== "success" || symbol?.status !== "success" || curve?.status !== "success") continue;
+        group.push({
+          address: addrs[k],
           name: name.result as string,
           symbol: symbol.result as string,
           curve: parseCurve(curve.result),
@@ -391,17 +431,28 @@ export function useTokens(chainIdOverride?: number, opts: { warm?: boolean } = {
               : { logoURI: "", website: "", twitter: "", telegram: "", livestream: "", description: "" },
           feesToHolders: feesToHolders?.status === "success" ? (feesToHolders.result as boolean) : false,
           isPreMarket: transferable?.status === "success" ? (transferable.result as boolean) : false,
-        };
-      })
-      .filter((t): t is TokenInfo => t !== null)
-      .reverse(); // newest first
-  }, [statics, curves, metas, tokenAddrs]);
+        });
+      }
+      out.push(...group.reverse()); // newest first
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [addrsOf, stamp, order]);
 
-  // loading until the first slots answer, then until the coins' names and curves are in;
-  // an error is a list that could not be read at all, with nothing cached to show
-  const isLoading = (!!pad && first.isPending) || (tokenAddrs.length > 0 && (staticsLoading || curvesLoading));
-  const isError = !firstReads && (first.isError || (countError && count === undefined));
-  return { tokens, isLoading, isError, count: tokenAddrs.length };
+  // what is still being read: the count, a group's slots, or the names and curves of a group
+  // whose coins are known
+  const pending =
+    !!pad &&
+    ((count === undefined && !countError) ||
+      slotQs.some((q, i) => sizeOf(order[i]) > 0 && q.isPending) ||
+      addrsOf.some((a, i) => a.length > 0 && (staticQs[i].isPending || curveQs[i].isPending)));
+  const known = addrsOf.reduce((sum, a) => sum + a.length, 0);
+  // loading until the first group is on the page; an error is a list that could not be read
+  // at all, with nothing to show
+  const isLoading = pending && tokens.length === 0;
+  const isLoadingMore = pending && tokens.length > 0;
+  const isError = !pending && tokens.length === 0 && known === 0 && ((countError && count === undefined) || slotQs.some((q) => q.isError));
+  return { tokens, isLoading, isLoadingMore, complete: !!pad && !pending, isError, count: known, total: n ?? known };
 }
 
 export function spotPrice(curve: CurveInfo): bigint {

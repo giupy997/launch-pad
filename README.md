@@ -124,7 +124,12 @@ contracts ran before Base, and what the project was before the contracts:
   scripts write and read
 - `ops/` — the owner's watch (timelocks, pads, site → Telegram) and the timelock operations, see [`ops/README.md`](ops/README.md)
 - `web/` — Next.js 16 + React 19 + wagmi v2 + viem frontend
-  - `/` Explore: King of the Hill (the coin on its curve closest to
+  - `/` Explore: the pad's list is read in groups of thirty coins by their
+    place in the pad's list (`useTokens` in `web/lib/hooks.ts`): each group
+    shows as soon as its own reads answer, the newest asked first, and a
+    group whose request failed is asked again without holding the others; a
+    list over a hundred coins re-reads its curves once a minute and its
+    metadata every five. King of the Hill (the coin on its curve closest to
     graduating, with the shape of its day, its price, volume and holders),
     the Contenders behind it, then every coin under Trending / New /
     Graduated tabs with a sort menu (recently graduated, last trade, market

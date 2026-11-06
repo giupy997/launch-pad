@@ -20,7 +20,7 @@ const unitPrice = (eth: bigint, tokens: bigint, decimals: number) =>
   tokens > 0n ? Number(eth) / 10 ** decimals / (Number(tokens) / 1e18) : null;
 
 export default function Explore() {
-  const { tokens: allTokens, isLoading, isError } = useTokens();
+  const { tokens: allTokens, isLoading, isLoadingMore, complete, isError, count: readSoFar, total } = useTokens();
   const chain = useAppChain();
   const pad = useLaunchpadAddress() ?? ZERO_ADDRESS;
   // Pre-markets are pair assets, bought for users by the zap when they trade
@@ -29,7 +29,9 @@ export default function Explore() {
   // the graduated coins' pools: their swaps count in the day's volume, their reserves price them
   const graduatedAddrs = useMemo(() => tokens.filter((t) => t.curve.graduated).map((t) => t.address), [tokens]);
   const { pools, reserves, ready: poolsReady } = usePools(pad, graduatedAddrs, chain.id);
-  const { data: volumes } = useVolumes(pools, !isLoading && poolsReady);
+  // the day's volumes once the whole list is in: asked while it still grows, each new group
+  // of graduated coins would be another question to the server, another scan
+  const { data: volumes } = useVolumes(pools, complete && poolsReady);
   // money in dollars wherever the quote is LTC in one of its forms (cbLTC, zkLTC): a
   // market cap reads as a market cap, the quote amount stays beneath it
   const usd = useLtcPrice().data?.usd ?? null;
@@ -139,6 +141,7 @@ export default function Explore() {
         coins={coins}
         usd={usd}
         loading={isLoading}
+        more={isLoadingMore ? { read: readSoFar, total } : null}
         error={isError}
         king={
           king
@@ -153,7 +156,7 @@ export default function Explore() {
       />
 
       {/* once this chain's list is in, the other chains' lists are read ahead, so a switch shows them at once */}
-      {!isLoading &&
+      {complete &&
         VISIBLE_CHAINS.filter((c) => c.id !== chain.id && LAUNCHPAD_ADDRESS[c.id]).map((c) => <WarmTokens key={c.id} chainId={c.id} />)}
 
       {target && (

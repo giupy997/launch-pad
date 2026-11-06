@@ -45,12 +45,15 @@ export function ExploreView({
   coins,
   usd,
   loading,
+  more,
   error,
   king,
 }: {
   coins: Coin[];
   usd: number | null;
   loading: boolean;
+  /** the list is on the page and still growing: how many coins are read, of how many */
+  more?: { read: number; total: number } | null;
   error: boolean;
   /** the day's most traded coin, with its holders (so far, while `holdersPartial`) and the day's price line */
   king: { coin: Coin; holders: number | null | undefined; holdersPartial: boolean; points: number[] } | null;
@@ -142,6 +145,11 @@ export function ExploreView({
               <TokenRow key={c.token.address} coin={c} usd={usd} now={now} />
             ))}
           </div>
+        )}
+        {more && !q && (
+          <p className="label pt-2 text-zinc-500 animate-pulse">
+            Reading more coins · {more.read} of {more.total}
+          </p>
         )}
       </section>
     </div>
