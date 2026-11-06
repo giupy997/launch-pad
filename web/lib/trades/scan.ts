@@ -291,7 +291,7 @@ function cutSize(span: bigint, cap: bigint | undefined): bigint {
 async function getLogsAdaptive(
   set: Node[],
   t: ScanTarget,
-  filter: { address: `0x${string}`; topics: (`0x${string}` | `0x${string}`[])[] },
+  filter: { address: `0x${string}` | `0x${string}`[]; topics: (`0x${string}` | `0x${string}`[])[] },
   ranges: Range[],
   concurrency: number,
   deadline?: number
@@ -439,16 +439,15 @@ export async function scanTrades(
   if (start > toBlock) return { trades: [], truncated: false, first: fromBlock, last: fromBlock - 1n };
   const set = scanNodes(t);
   const ranges = splitRange(start, toBlock, chunkFor(t));
-  const scans = [
-    { logs: [] as RpcLog[], pool: null as PoolRef | null, migrator: undefined as `0x${string}` | undefined, filter: { address: pad, topics } },
-    ...(await Promise.all(
-      pools.map(async (pool) => ({
-        logs: [] as RpcLog[],
-        pool,
-        migrator: await migratorOf(t, pad, pool, deadline),
-        filter: { address: pool.pair, topics: [topicSwap] },
-      }))
-    )),
+  // the pools' swaps in one filter that names every pair: a request a range for all of
+  // them, where a request a pool a range was 26 on Liteforge's 25 pools, each a second or
+  // more on its node. The logs are told apart by the pair that emitted them.
+  const refs = await Promise.all(pools.map(async (pool) => ({ pool, migrator: await migratorOf(t, pad, pool, deadline) })));
+  const byPair = new Map(refs.map((r) => [r.pool.pair.toLowerCase(), r]));
+  type LogScan = { logs: RpcLog[]; swaps: boolean; filter: { address: `0x${string}` | `0x${string}`[]; topics: (`0x${string}` | `0x${string}`[])[] } };
+  const scans: LogScan[] = [
+    { logs: [], swaps: false, filter: { address: pad, topics } },
+    ...(refs.length ? [{ logs: [], swaps: true, filter: { address: refs.map((r) => r.pool.pair), topics: [topicSwap] } }] : []),
   ];
   // the same ranges for the pad and every pool; a range counts as read only when every scan read it
   const failedKeys = new Set<string>();
@@ -478,7 +477,18 @@ export async function scanTrades(
               return bn >= within.lo && bn <= within.hi;
             })
           : scan.logs;
-        return scan.pool ? decodeSwaps(logs, scan.pool, pad, scan.migrator) : decodeTrades(logs);
+        if (!scan.swaps) return decodeTrades(logs);
+        const perPair = new Map<string, RpcLog[]>();
+        for (const l of logs) {
+          const k = l.address.toLowerCase();
+          const list = perPair.get(k);
+          if (list) list.push(l);
+          else perPair.set(k, [l]);
+        }
+        return [...perPair].flatMap(([pair, ls]) => {
+          const r = byPair.get(pair);
+          return r ? decodeSwaps(ls, r.pool, pad, r.migrator) : [];
+        });
       })
     );
   if (!failedKeys.size) return { trades: decodeAll(), truncated: start > fromBlock, first: start, last: toBlock };
@@ -500,7 +510,7 @@ export async function scanTrades(
  *  one node gets all the time: a second one is reached when the first hangs. */
 export async function scanLogsWide(
   t: ScanTarget,
-  filter: { address: `0x${string}`; topics: (`0x${string}` | `0x${string}`[])[] },
+  filter: { address: `0x${string}` | `0x${string}`[]; topics: (`0x${string}` | `0x${string}`[])[] },
   fromBlock: bigint,
   toBlock: bigint,
   timeoutMs = 8_000,
@@ -551,7 +561,7 @@ export async function scanLogsWide(
  *  then comes back, the rest is for the next call. */
 export async function scanLogs(
   t: ScanTarget,
-  filter: { address: `0x${string}`; topics: (`0x${string}` | `0x${string}`[])[] },
+  filter: { address: `0x${string}` | `0x${string}`[]; topics: (`0x${string}` | `0x${string}`[])[] },
   fromBlock: bigint,
   toBlock: bigint,
   concurrency = 3,

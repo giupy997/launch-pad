@@ -54,7 +54,9 @@ export async function GET(req: NextRequest) {
   const chain = Object.values(POINTS_CHAINS).find((c) => c.chainId === chainId);
   const token = p.get("token") ?? "";
   const poolsRaw = (p.get("pools") ?? "").split(",").filter(Boolean);
-  if (!chain || !(token === "all" || ADDRESS.test(token)) || poolsRaw.length > 20 || !poolsRaw.every((s) => POOL.test(s))) {
+  // sixty pools at most: what a URL carries at ease (87 characters a pool). Twenty refused
+  // Liteforge's twenty-five, and its explore page never got the day's volumes from here.
+  if (!chain || !(token === "all" || ADDRESS.test(token)) || poolsRaw.length > 60 || !poolsRaw.every((s) => POOL.test(s))) {
     return NextResponse.json({ error: "unknown chain, or a malformed token or pool" }, { status: 400 });
   }
   const pools: PoolRef[] = poolsRaw.map((s) => {

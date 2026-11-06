@@ -54,10 +54,11 @@ function fakeNode(swaps: Swap[], calls: { getLogs: number; call: number }): Prom
       let result: unknown;
       if (method === "eth_getLogs") {
         calls.getLogs++;
-        const f = params[0] as { address: string; fromBlock: string; toBlock: string };
+        const f = params[0] as { address: string | string[]; fromBlock: string; toBlock: string };
         const lo = Number(BigInt(f.fromBlock));
         const hi = Number(BigInt(f.toBlock));
-        result = f.address.toLowerCase() === PAIR.toLowerCase() ? swaps.filter((s) => s.block >= lo && s.block <= hi).map(swapLog) : [];
+        const named = ([] as string[]).concat(f.address).map((a) => a.toLowerCase());
+        result = named.includes(PAIR.toLowerCase()) ? swaps.filter((s) => s.block >= lo && s.block <= hi).map(swapLog) : [];
       } else if (method === "eth_call") {
         calls.call++;
         const c = params[0] as { to: string; data: string };
@@ -128,6 +129,25 @@ test("the migrator's own swaps are named, a trader's and a nudge are not", async
     assert.equal(calls.call, 1);
     await scanTrades(t, PAD, TOKEN, 11n, 20n, [pool]);
     assert.equal(calls.call, 1);
+  });
+});
+
+test("the swaps of every pool come in one request, each told by its pair", async () => {
+  await withNode(async (t, calls) => {
+    const other = "0x00000000000000000000000000000000000000b2" as const;
+    const otherPair = "0x00000000000000000000000000000000000000c3" as const;
+    const pools: PoolRef[] = [
+      { token: TOKEN, pair: PAIR, tokenIsZero: true, migrator: MIGRATOR },
+      { token: other, pair: otherPair, tokenIsZero: true, migrator: MIGRATOR },
+    ];
+    const scan = await scanTrades(t, PAD, null, 1n, 10n, pools);
+    assert.equal(scan.truncated, false);
+    // one request for the pad's own trades, one for both pools' swaps
+    assert.equal(calls.getLogs, 2);
+    assert.equal(calls.call, 0);
+    // the node holds swaps of the first pair only: they are that coin's, none the other's
+    assert.equal(scan.trades.length, swaps.length);
+    for (const x of scan.trades) assert.equal(x.token.toLowerCase(), TOKEN.toLowerCase());
   });
 });
 
