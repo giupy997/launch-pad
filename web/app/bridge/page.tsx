@@ -119,7 +119,10 @@ function LitvmBridge() {
       <div className="rounded-xl border border-white/10 p-5 space-y-2">
         <div className="font-mono text-[10px] tracking-widest uppercase text-zinc-500">How it works</div>
         <ul className="text-sm text-zinc-400 space-y-1.5 list-disc list-inside">
-          <li>Add LitVM to your wallet: chain ID 4441, RPC liteforge.rpc.caldera.xyz, symbol zkLTC.</li>
+          <li>
+            Add LitVM to your wallet: chain ID 4441, RPC <span className="font-mono break-all">{litvmTestnet.rpcUrls.default.http[0]}</span>, symbol
+            zkLTC.
+          </li>
           <li>Testnet: request zkLTC from the faucet, then launch and trade here.</li>
           <li>Mainnet (expected later in 2026): lock LTC on Litecoin, receive zkLTC through the bridge.</li>
         </ul>

@@ -122,7 +122,7 @@ contracts ran before Base, and what the project was before the contracts:
 - `litecoin/migration/` — the EVM migration's working directory (not part of
   the parked ledger): the snapshot files `MIGRATION.md` and the rehearsal
   scripts write and read
-- `ops/` — the owner's watch (timelocks, pads, site → Telegram) and the timelock operations, see [`ops/README.md`](ops/README.md)
+- `ops/` — the owner's watch (timelocks, pads, site → Telegram), the timelock operations, and `liteforge-endpoint.mjs`, which checks a new Liteforge RPC endpoint against the chain's fingerprint and writes it wherever the repository names the old one, see [`ops/README.md`](ops/README.md)
 - `web/` — Next.js 16 + React 19 + wagmi v2 + viem frontend
   - `/` Explore: the pad's list is read in groups of thirty coins by their
     place in the pad's list (`useTokens` in `web/lib/hooks.ts`): each group

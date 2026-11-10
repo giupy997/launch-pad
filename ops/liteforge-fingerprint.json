@@ -1,0 +1,20 @@
+{
+  "taken": "2026-11-10T14:57:00.154Z",
+  "from": "liteforge.rpc.caldera.xyz",
+  "chainId": 4441,
+  "block": 69814086,
+  "blocks": {
+    "57741789": "0x501b36c6821f09dc54d47897c5f2d746540f242bc04b5cf8ea4ff1ee8f537cde",
+    "69814086": "0xe239d9c45e9b588a5040cf2caa83e4448713bc04b135aa0b4a56e0cd513e2c39"
+  },
+  "pad": {
+    "address": "0x39D104b3258B6A18c5d5d967CDA182Ded20Bef7F",
+    "codeBytes": 23615,
+    "codeSha256": "7817a8a9c88dc8e26ded97820162a4b9df619025b375ba382a05d0cb7ccc07ad"
+  },
+  "tokens": {
+    "count": 382,
+    "first": "0x616e01ca4370433ae7690d0a5ef891ddbb553e99",
+    "last": "0xa43c7d411571ad150076271312c396b8b77fbb15"
+  }
+}

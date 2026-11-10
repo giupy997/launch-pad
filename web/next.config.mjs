@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 // Where the pages may reach out to, and nowhere else. The wallet key lives
 // in the browser's storage: a script that got in (a dependency gone bad)
 // must find no way to send it anywhere. Connections go to this origin, the
@@ -6,8 +8,14 @@
 // wallet icons; only WalletConnect's verify and secure frames may be
 // embedded. Scripts are this origin's: Next.js needs its inline ones, and
 // in development the tooling needs eval.
+// Liteforge's endpoint is written once, in lib/points/endpoints.ts, a TypeScript
+// file this config cannot import: it is read as text, and a build that does not
+// find the line stops here rather than ship a policy that blocks the chain.
+const endpoints = readFileSync(new URL("./lib/points/endpoints.ts", import.meta.url), "utf8");
+const liteforgeRpc = /^export const LITEFORGE_RPC = "(https:\/\/[^"]+)";$/m.exec(endpoints);
+if (!liteforgeRpc) throw new Error("next.config.mjs: LITEFORGE_RPC not found in lib/points/endpoints.ts");
 const RPC_HOSTS = [
-  "https://liteforge.rpc.caldera.xyz", // LitVM Liteforge
+  new URL(liteforgeRpc[1]).origin, // LitVM Liteforge
   "https://mainnet.base.org", // Base
   "https://base-rpc.publicnode.com", // Base, second
   "https://base.drpc.org", // Base, third

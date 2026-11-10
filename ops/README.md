@@ -45,6 +45,51 @@ an hour). `node ops/watch.mjs --dry --once` runs one
 pass and prints instead of sending (from a shell, it writes its state to
 `ops/state/watch.json`, gitignored).
 
+## Liteforge's endpoint (`ops/liteforge-endpoint.mjs`)
+
+LitVM's testnet is reached through one RPC endpoint, written once for the
+site and the points service (`web/lib/points/endpoints.ts`: the wagmi chain,
+the server routes, the explorer API, the bridge page and the
+Content-Security-Policy all read it) and named in the contracts' scripts,
+`foundry.toml`, the live fork test and the README. When LitVM moves it (the
+infrastructure upgrade of 2026-11-10 retires the Caldera endpoints), the
+script checks the new endpoint and writes it in all of them:
+
+```bash
+node ops/liteforge-endpoint.mjs snapshot                         # before the move: the chain as the current endpoint shows it
+node ops/liteforge-endpoint.mjs check  <new rpc> [--explorer <url>]
+node ops/liteforge-endpoint.mjs switch <new rpc> [--explorer <url>]   # check, then rewrite; no commit, no push
+```
+
+`snapshot` writes `ops/liteforge-fingerprint.json`: the chain id, the hashes
+of the pad's deploy block and of a recent block, the pad's code and its list
+of coins. `check` holds a new endpoint to it: the same chain id, the same
+two hashes, the pad with the same code and the same coins, a head at least
+as far as the fingerprint and as the points service has read; and it asks of
+the endpoint what the site and the service ask: thirty calls in one request,
+a browser's cross-origin request from notus-pad.fun, 9,000 blocks of logs in
+one call, the pad's first logs. It reads only and names an endpoint by its
+host. `switch` refuses an endpoint that fails a check.
+
+After a switch: `cd web && npm run typecheck && npm test`, commit `web`,
+`contracts` and `README.md`, push (Netlify builds the site with the new
+endpoint in its bundle and in its policy), then on the server
+`cd ~/launch-pad && git pull && sudo systemctl restart notus-points` (the
+service reads the chain from the same file and resumes from its checkpoint),
+and `curl -s https://notus-pad.fun/api/health` for `rpc:liteforge` and
+`points`. Between the old endpoint going dark and the push, the testnet's
+pages show their placeholders and the service leaves the blocks for its next
+pass; Base is untouched. A wallet that already holds the network keeps the
+old RPC: its owner edits the network's RPC URL, or removes the network and
+lets the site add it again.
+
+If the check fails on the chain itself (another chain id, no code at the
+pad's address, other hashes), the state did not come over and a new endpoint
+is not enough: the pad would be deployed again (`DeployLitVM.s.sol`, the
+owner's call) and its address, deploy block and the season written in
+`web/lib/config.ts` and `web/lib/points/chains.ts`. The points service's
+record of Season 0 stays on the server whatever the chain does.
+
 ## The timelock operations (`contracts/script/ops/timelock.sh`)
 
 The owner's operations on the Base v12 timelock, each scheduled now and

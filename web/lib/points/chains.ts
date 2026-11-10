@@ -2,6 +2,7 @@
 // block it was deployed at, the public RPCs in order, how the quote is
 // denominated, and the season running there. Kept in step with lib/config.ts
 // by hand: that module pulls wagmi in, which a Node process does not want.
+import { LITEFORGE_EXPLORER, LITEFORGE_RPC } from "./endpoints.ts";
 
 export type PointsSeason = {
   number: number;
@@ -63,7 +64,7 @@ export const POINTS_CHAINS: Record<string, PointsChain> = {
     name: "LitVM Liteforge testnet",
     pad: "0x39D104b3258B6A18c5d5d967CDA182Ded20Bef7F",
     deployBlock: 57_741_789n,
-    rpcs: ["https://liteforge.rpc.caldera.xyz/infra-partner-http"],
+    rpcs: [LITEFORGE_RPC],
     archive: [], // not tried in one request over a long span: the chain's node has not been measured for it
     quoteDecimals: 18,
     quoteSymbol: "zkLTC",
@@ -77,7 +78,7 @@ export const POINTS_CHAINS: Record<string, PointsChain> = {
     lag: 60n,
     hidden: [],
     season: { number: 0, name: "Season 0", start: 57_741_789n, end: null, rehearsal: true },
-    explorer: "https://liteforge.explorer.caldera.xyz",
+    explorer: LITEFORGE_EXPLORER,
   },
   // Base: the v12 pad in cbLTC (the v11 pad 0xEfbB…b5f4, block 52,180,589, is
   // not indexed: it was replaced, its coins left where they trade). No season here (the features

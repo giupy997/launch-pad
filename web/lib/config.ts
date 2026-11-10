@@ -3,6 +3,7 @@ import { base, mainnet, sepolia } from "viem/chains";
 import { cookieStorage, createConfig, createStorage, fallback, http, injected } from "wagmi";
 import { walletConnect } from "wagmi/connectors";
 import type { PadVersion } from "./abi";
+import { LITEFORGE_EXPLORER, LITEFORGE_RPC } from "./points/endpoints";
 
 export const giwaSepolia = defineChain({
   id: 91342,
@@ -52,10 +53,10 @@ export const litvmTestnet = defineChain({
   name: "LitVM Liteforge",
   nativeCurrency: { name: "zkLTC", symbol: "zkLTC", decimals: 18 },
   rpcUrls: {
-    default: { http: ["https://liteforge.rpc.caldera.xyz/infra-partner-http"] },
+    default: { http: [LITEFORGE_RPC] },
   },
   blockExplorers: {
-    default: { name: "Liteforge Explorer", url: "https://liteforge.explorer.caldera.xyz" },
+    default: { name: "Liteforge Explorer", url: LITEFORGE_EXPLORER },
   },
   testnet: true,
 });
