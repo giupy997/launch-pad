@@ -38,7 +38,7 @@ else
   unset KEYSTORE_PASSWORD
   SIGNER=(--account "${ACCOUNT:-notus}" --password-file "$PWFILE")
 fi
-DST_RPC=${DST_RPC:-https://liteforge.rpc.caldera.xyz/infra-partner-http}
+DST_RPC=${DST_RPC:-https://rpc.testnet.liteforge.zeeve.net}
 # the v7.7 pad's migrator on Liteforge: it knows the DEX router there
 OLD_MIGRATOR=0xE34b882BD48D3b13A92C5A7C99469485d1761776
 NATIVE_VIRTUAL=${NATIVE_VIRTUAL:-500000000000000000}
@@ -98,9 +98,9 @@ OUT=$(TOKEN=$TOKEN SINGLE_SIGNER=true QUOTE_IN=${POOL_QUOTE_IN:-1000000000000000
 echo "$OUT" | grep -E "^ +[a-z]|PASS|Error|revert|Reason" || true
 
 echo "== done"
-echo "   pad        $PAD   https://liteforge.explorer.caldera.xyz/address/$PAD"
+echo "   pad        $PAD   https://explorer.testnet.liteforge.zeeve.net/address/$PAD"
 echo "   migrator   $MIGRATOR"
-echo "   coin       $TOKEN   https://liteforge.explorer.caldera.xyz/address/$TOKEN"
+echo "   coin       $TOKEN   https://explorer.testnet.liteforge.zeeve.net/address/$TOKEN"
 echo "   pool       $PAIR"
 echo "   treasury   $DEPLOYER (the deployer: the launchpad's 0.5% and the harvest's part landed here)"
 echo "   buckets    $(cast call "$PAD" "taxTreasury(address)(uint256)" "$TOKEN" --rpc-url "$DST_RPC") / $(cast call "$PAD" "taxPot(address)(uint256)" "$TOKEN" --rpc-url "$DST_RPC") coins still waiting (next harvest: anyone, next block)"

@@ -52,8 +52,10 @@ site and the points service (`web/lib/points/endpoints.ts`: the wagmi chain,
 the server routes, the explorer API, the bridge page and the
 Content-Security-Policy all read it) and named in the contracts' scripts,
 `foundry.toml`, the live fork test and the README. When LitVM moves it (the
-infrastructure upgrade of 2026-11-10 retires the Caldera endpoints), the
-script checks the new endpoint and writes it in all of them:
+infrastructure upgrade of 2026-11-10 retired the Caldera endpoints for
+Zeeve's, `rpc.testnet.liteforge.zeeve.net`, switched that evening with every
+check passed), the script checks the new endpoint and writes it in all of
+them:
 
 ```bash
 node ops/liteforge-endpoint.mjs snapshot                         # before the move: the chain as the current endpoint shows it

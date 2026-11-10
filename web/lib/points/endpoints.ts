@@ -10,6 +10,6 @@
 // No imports: the points service loads this file under Node as it is.
 
 /** the chain's JSON-RPC endpoint, public: it is in the browser's bundle */
-export const LITEFORGE_RPC = "https://liteforge.rpc.caldera.xyz/infra-partner-http";
+export const LITEFORGE_RPC = "https://rpc.testnet.liteforge.zeeve.net";
 /** the chain's block explorer (Blockscout), without a trailing slash */
-export const LITEFORGE_EXPLORER = "https://liteforge.explorer.caldera.xyz";
+export const LITEFORGE_EXPLORER = "https://explorer.testnet.liteforge.zeeve.net";

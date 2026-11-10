@@ -68,7 +68,7 @@ fi
 # host; its errors cut every URL to its host, so a key stays out of the logs.
 export SRC_RPC=${SRC_RPC:-https://mainnet.base.org}
 SRC_CHUNK=${SRC_CHUNK:-499}
-DST_RPC=${DST_RPC:-https://liteforge.rpc.caldera.xyz/infra-partner-http}
+DST_RPC=${DST_RPC:-https://rpc.testnet.liteforge.zeeve.net}
 SRC_PAD=${SRC_PAD:-0xEfbB4ebdf5130cC4fC45899EeBA727fa2F55b5f4}
 SRC_QUOTE=${SRC_QUOTE:-0xcb17C9Db87B595717C857a08468793f5bAb6445F}
 SRC_FROM=${SRC_FROM:-52180589}

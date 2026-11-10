@@ -158,7 +158,7 @@ contract LiveLiteforgeForkTest is Test {
             skipAll = true;
             return;
         }
-        vm.createSelectFork(vm.envOr("FORK_RPC", string("https://liteforge.rpc.caldera.xyz/infra-partner-http")));
+        vm.createSelectFork(vm.envOr("FORK_RPC", string("https://rpc.testnet.liteforge.zeeve.net")));
         PAD = IPadV11(vm.envOr("LAUNCHPAD", V11_PAD));
         MIGRATOR = IMigratorV2(PAD.migrator());
         vm.deal(creator, 1 ether);

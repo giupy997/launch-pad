@@ -39,11 +39,11 @@ import {ILaunchpadMigration} from "../src/interfaces/ILaunchpadMigration.sol";
 /// (<treasury>, <launchpad>, <migrator> as the deploy printed them):
 ///
 ///   forge verify-contract --chain 4441 --verifier blockscout \
-///     --verifier-url https://liteforge.explorer.caldera.xyz/api/ --watch \
+///     --verifier-url https://explorer.testnet.liteforge.zeeve.net/api/ --watch \
 ///     --constructor-args "$(cast abi-encode 'constructor(address)' <treasury>)" \
 ///     <launchpad> src/Launchpad.sol:Launchpad
 ///   forge verify-contract --chain 4441 --verifier blockscout \
-///     --verifier-url https://liteforge.explorer.caldera.xyz/api/ --watch \
+///     --verifier-url https://explorer.testnet.liteforge.zeeve.net/api/ --watch \
 ///     --constructor-args "$(cast abi-encode 'constructor(address,address)' <launchpad> "$UNIV2_ROUTER")" \
 ///     <migrator> src/UniV2Migrator.sol:UniV2Migrator
 ///   (and the TimelockController with (uint256 delay, address[] proposers, address[] executors, address 0),
