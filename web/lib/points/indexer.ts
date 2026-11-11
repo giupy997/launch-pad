@@ -297,6 +297,32 @@ export class ChainIndexer {
     };
   }
 
+  private paced: { at: number; seconds: number; blocks: bigint } | null = null;
+  /** How many blocks back from the last one read `seconds` ago is: the chain's pace
+   *  measured over its last 20,000 blocks, then over the stretch that says, since a chain
+   *  that makes its blocks as its traffic asks has no one pace (Liteforge: 0.25 s a block
+   *  for a month, 0.3 to 0.6 after 2026-11-10). Kept ten minutes; the configured pace when
+   *  the nodes do not say. */
+  async blocksIn(seconds: number): Promise<bigint> {
+    const configured = BigInt(Math.round(seconds / this.chain.blockSeconds));
+    if (this.paced && this.paced.seconds === seconds && this.now() - this.paced.at < 600_000) return this.paced.blocks;
+    try {
+      const measure = async (over: bigint) => {
+        const from = this.last > over ? this.last - over : 0n;
+        if (from >= this.last) throw new Error("no blocks to measure");
+        const [a, b] = await Promise.all([this.nodes.blockTime(from), this.nodes.blockTime(this.last)]);
+        if (b <= a) throw new Error("the blocks' times do not advance");
+        return (b - a) / Number(this.last - from);
+      };
+      const rough = BigInt(Math.max(1, Math.round(seconds / (await measure(20_000n)))));
+      const blocks = rough < this.last ? BigInt(Math.max(1, Math.round(seconds / (await measure(rough))))) : rough;
+      this.paced = { at: this.now(), seconds, blocks };
+      return blocks;
+    } catch {
+      return this.paced?.seconds === seconds ? this.paced.blocks : configured;
+    }
+  }
+
   /** the pad's curve trades from block `from` on, every coin together, oldest first, as the
    *  site's feed packs them (the explore cards' day of volumes) */
   async padTrades(from: bigint): Promise<PadTradesView> {

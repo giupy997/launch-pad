@@ -183,6 +183,22 @@ test("an invite binds once, with the invitee's signature, and pays from then on"
   assert.deepEqual(carolView.invitees, [{ wallet: bob.address.toLowerCase(), points: 8 }]);
 });
 
+test("a stretch of time is so many blocks at the chain's measured pace, the configured one when no node says", async () => {
+  const store = new Store(join(dir, "pace"));
+  let dark = false;
+  const t: Transport = async (url, method, params) => {
+    if (dark && method === "eth_getBlockByNumber") throw new RpcError("fetch failed");
+    return transport(url, method, params);
+  };
+  const ix = new ChainIndexer(chain, new Nodes(chain.rpcs, chain.chunk, { transport: t, sleep: async () => {} }), store);
+  await ix.pass();
+  // the test chain stamps a block a second, and is configured like Liteforge (four a second)
+  assert.equal(await ix.blocksIn(100), 100n);
+  dark = true;
+  assert.equal(await ix.blocksIn(100), 100n); // kept
+  assert.equal(await ix.blocksIn(200), BigInt(Math.round(200 / chain.blockSeconds))); // never measured: the configured pace
+});
+
 test("a node behind the chain is not believed: its empty answer does not pass the blocks over", async () => {
   const store = new Store(join(dir, "behind"));
   // the head comes from a server that is up to date; the logs, for a while, from one that

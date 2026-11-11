@@ -55,7 +55,13 @@ async function secondsABlock(t: ScanTarget, configured: number, latest: bigint, 
   const known = pace.get(t.chainId);
   if (known && Date.now() - known.at < PACE_MS) return known.seconds;
   try {
-    const seconds = await blockSecondsNow(t, latest, 5_000n, 1_500, Math.min(deadline, Date.now() + 2_000));
+    const until = Math.min(deadline, Date.now() + 2_500);
+    // the last minutes first, then the stretch those say a day is: a chain that makes its
+    // blocks as its traffic asks (Liteforge: 0.3 to 0.6 s within one day) has no pace of
+    // the moment that a day can be counted by
+    const rough = await blockSecondsNow(t, latest, 5_000n, 1_500, until);
+    const span = BigInt(Math.round(86_400 / rough));
+    const seconds = span > 5_000n && span < latest ? await blockSecondsNow(t, latest, span, 1_500, until).catch(() => rough) : rough;
     pace.set(t.chainId, { at: Date.now(), seconds });
     return seconds;
   } catch {

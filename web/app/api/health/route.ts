@@ -52,7 +52,8 @@ export async function GET() {
         const until = Date.now() + CHECK_MS - 500;
         const seconds = await blockSecondsNow(t, await latestBlock(t, 2_000, until), 5_000n, 2_000, until);
         const off = seconds / c.blockSeconds;
-        if (off > 1.3 || off < 0.77) throw new Error(`${seconds.toFixed(2)} s a block, configured ${c.blockSeconds}`);
+        const tolerance = c.paceTolerance ?? 1.3;
+        if (off > tolerance || off < 1 / tolerance) throw new Error(`${seconds.toFixed(2)} s a block, configured ${c.blockSeconds}`);
         return `${seconds.toFixed(2)} s a block`;
       })
     );

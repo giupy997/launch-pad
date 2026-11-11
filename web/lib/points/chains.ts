@@ -29,7 +29,15 @@ export type PointsChain = {
   /** the quote's decimals: 18 for native zkLTC, 8 for cbLTC */
   quoteDecimals: number;
   quoteSymbol: string;
+  /** the chain's seconds a block as configured. The season's rules count in
+   *  it (an invitee's thirty days are that many blocks, lib/points/rules.ts),
+   *  so on a scored chain it stays what it was when the season opened;
+   *  whatever is shown as time is measured from the chain instead. */
   blockSeconds: number;
+  /** how far the chain's measured pace may be from `blockSeconds`, as a
+   *  factor either way, before /api/health says so; 1.3 when absent. Wider
+   *  for a chain that makes its blocks as its traffic asks. */
+  paceTolerance?: number;
   /** blocks one eth_getLogs may cover on the first of `rpcs`; what each
    *  node takes is learned per node from its refusals */
   chunk: bigint;
@@ -68,7 +76,11 @@ export const POINTS_CHAINS: Record<string, PointsChain> = {
     archive: [], // not tried in one request over a long span: the chain's node has not been measured for it
     quoteDecimals: 18,
     quoteSymbol: "zkLTC",
-    blockSeconds: 0.25, // measured on the live chain: ~4 blocks a second (Orbit's 250 ms)
+    // 0.25 s from the pad's deploy to the chain's move to new infrastructure on 2026-11-10
+    // (0.25 to 0.29 over every stretch measured); between 0.3 and 0.6 since, with its
+    // traffic. Left at 0.25: Season 0's rules count in it. A day of volume is measured.
+    blockSeconds: 0.25,
+    paceTolerance: 3,
     // the node took these whole during the backfill. Measured on 2026-10-19 from a fast
     // connection: 1.3 s for 1,000 blocks, 2.4 s for 3,000, 2.2 s for 9,000, 16 s for 27,000, a
     // timeout past ~80,000: the time is the call's, not the span's, so a smaller window would
