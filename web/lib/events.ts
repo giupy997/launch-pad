@@ -27,7 +27,12 @@ export type { Trade, TradeKind, PoolRef };
 // itself, usually a single getLogs, and keeps the result in localStorage.
 
 const DEFAULT_CHUNK = 9_000n; // a guess for chains without a configured size
-const SERVER_TIMEOUT_MS = 9_000;
+// the server answers within its function's ten seconds: waiting nine gave up on answers that
+// came at 9.7 s, and the browser then scanned by itself the node the server could not read
+const SERVER_TIMEOUT_MS = 11_000;
+// the browser's own scan, when the server gave nothing: it stops here and shows what it read.
+// Without an end, a node that serves no logs kept a coin's page on "Reading the chain…"
+const OWN_SCAN_MS = 25_000;
 
 function targetFor(chain: { id: number; rpcUrls: { default: { http: readonly string[] } } }): ScanTarget {
   return { chainId: chain.id, urls: RPC_URLS[chain.id] ?? chain.rpcUrls.default.http, chunk: GETLOGS_CHUNK[chain.id] ?? DEFAULT_CHUNK };
@@ -168,7 +173,7 @@ export function useTrades(token: `0x${string}`, pool: PoolRef | null = null, ena
       if (latest === null) latest = await latestBlock(t);
       if (cached && latest <= cached.last) return cached;
       const from = cached ? cached.last + 1n : deployBlock;
-      const fresh = await scanTrades(t, pad, token, from, latest, pools);
+      const fresh = await scanTrades(t, pad, token, from, latest, pools, undefined, Date.now() + OWN_SCAN_MS);
       // nothing new could be read: keep what we have, try again next tick
       if (fresh.last < from) return cached ?? { trades: [], truncated: fresh.truncated };
       const trades = cached ? [...cached.trades, ...fresh.trades] : fresh.trades;
@@ -262,7 +267,7 @@ export function useVolumes(pools: PoolRef[] = [], ready = true) {
       let partial = false;
       if (latest > last) {
         const from = last + 1n > dayStart ? last + 1n : dayStart;
-        const fresh = await scanTrades(t, pad, null, from, latest, pools);
+        const fresh = await scanTrades(t, pad, null, from, latest, pools, undefined, Date.now() + OWN_SCAN_MS);
         if (fresh.last >= from) {
           trades = [...trades, ...fresh.trades];
           last = fresh.last;

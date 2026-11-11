@@ -50,6 +50,7 @@ const NO_STORE = { "cache-control": "no-store" };
 // the configured pace for when the nodes do not say: Base's blocks went from 2 s to 0.2 s
 // on 2026-11-05 and the "day" of 43,200 blocks behind the cards' volumes was 2.4 hours for
 // six days; Liteforge's pace follows its traffic, and no figure divides its day.
+const FRESH_MS = 4_500; // what the read of the blocks since the points service's may take
 const COIN_HISTORY_DAYS = 12n; // what a keyed node's fifty chunks reached at 2 s a block
 const PACE_MS = 10 * 60_000;
 const days = new Map<number, { at: number; blocks: bigint }>();
@@ -125,7 +126,14 @@ export async function GET(req: NextRequest) {
       const history = served
         ? { trades: served.trades, last: BigInt(served.last), graduated: served.graduated === null ? null : BigInt(served.graduated) }
         : { trades: servedPad!.trades, last: BigInt(servedPad!.last), graduated: null };
-      const fresh = latest > history.last ? await scanTrades(target, chain.pad, coin, history.last + 1n, latest, pools, CONCURRENCY, deadline) : null;
+      // the blocks since the service's are few: a node that does not give them in FRESH_MS is
+      // not giving them, and the history in hand is answered without it (flagged as short
+      // where a pool's swaps are missing). Given the whole budget, the answer left at 9.7 s
+      // on the evening Liteforge's node served no logs, after the browser had stopped waiting.
+      const fresh =
+        latest > history.last
+          ? await scanTrades(target, chain.pad, coin, history.last + 1n, latest, pools, CONCURRENCY, Math.min(deadline, Date.now() + FRESH_MS))
+          : null;
       const joined = joinHistory(history, fresh, served !== null && pools.length > 0, all ? BigInt(servedPad!.from) : chain.deployBlock);
       out = { first: joined.first, last: joined.last, trades: joined.trades, truncated: joined.truncated };
     } else if (held && held.first <= windowStart && latest - held.last <= chain.chunk * 10n) {
