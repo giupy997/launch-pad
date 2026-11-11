@@ -48,6 +48,46 @@ export const fetchTransport: Transport = async (url, method, params) => {
   return body.result;
 };
 
+/** Two JSON-RPC calls in one HTTP request to one node, answered in their
+ *  order: what is behind an endpoint is often several servers, and two
+ *  separate calls may be answered by two of them. Throws RpcError when
+ *  either call fails. */
+export type TransportPair = (url: string, calls: [Call, Call]) => Promise<[unknown, unknown]>;
+export type Call = { method: string; params: unknown[] };
+
+export const fetchPair: TransportPair = async (url, calls) => {
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(calls.map((c, id) => ({ jsonrpc: "2.0", id, method: c.method, params: c.params }))),
+      signal: AbortSignal.timeout(25_000),
+    });
+  } catch (e) {
+    throw new RpcError(`fetch failed: ${(e as Error).message}`);
+  }
+  let body: unknown;
+  try {
+    body = await res.json();
+  } catch {
+    body = null;
+  }
+  if (!Array.isArray(body)) {
+    // a node that refuses the batch answers one error for the lot
+    const one = body as RpcBody | null;
+    if (one?.error) throw new RpcError(String(one.error.message ?? "rpc error"), one.error.code, res.status);
+    throw new RpcError(res.ok ? "no batch answer" : `http ${res.status}`, undefined, res.status);
+  }
+  const byId = new Map<number, RpcBody>((body as (RpcBody & { id?: number })[]).map((b) => [Number(b.id), b]));
+  return calls.map((_, id) => {
+    const b = byId.get(id);
+    if (b?.error) throw new RpcError(String(b.error.message ?? "rpc error"), b.error.code, res.status);
+    if (!b || !("result" in b)) throw new RpcError("no result");
+    return b.result;
+  }) as [unknown, unknown];
+};
+
 export type Range = { lo: bigint; hi: bigint };
 export type LogFilter = { address: `0x${string}` | `0x${string}`[]; topics: (`0x${string}` | `0x${string}`[] | null)[] };
 
@@ -106,6 +146,9 @@ export function stretches(ok: Range[]): Range[] {
 
 export type NodesOptions = {
   transport?: Transport;
+  /** two calls in one request; by default an HTTP batch, or, with a `transport` of the
+   *  caller's and none of these, the two calls one after the other through it */
+  transportPair?: TransportPair;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
   /** how long a node that answered "too many requests" sits out */
@@ -119,6 +162,7 @@ export class Nodes {
   readonly urls: string[];
   private readonly throttledUntil = new Map<string, number>();
   private readonly transport: Transport;
+  private readonly pair: TransportPair;
   private readonly now: () => number;
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly cooldownMs: number;
@@ -131,6 +175,10 @@ export class Nodes {
     this.urls = urls;
     this.chunk = chunk;
     this.transport = opts.transport ?? fetchTransport;
+    const own = opts.transport;
+    this.pair =
+      opts.transportPair ??
+      (own ? async (url, [a, b]) => [await own(url, a.method, a.params), await own(url, b.method, b.params)] : fetchPair);
     this.now = opts.now ?? Date.now;
     this.sleep = opts.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
     this.cooldownMs = opts.throttleCooldownMs ?? THROTTLE_COOLDOWN_MS;
@@ -181,7 +229,13 @@ export class Nodes {
   }
 
   /** the logs of `filter` over [from, to], a few ranges at a time: which
-   *  ranges came back, and which no node served */
+   *  ranges came back, and which no node served. A range counts as served
+   *  only by a node that says, in the same request, that it has reached the
+   *  range's last block: a node behind the chain answers the blocks it does
+   *  not have with no logs and no error, and an indexer that believed it
+   *  would pass over their events for good. (Seen on 2026-11-11: one of the
+   *  servers behind Liteforge's new endpoint answered a head 32,000 blocks
+   *  behind the others'.) */
   async getLogs(filter: LogFilter, from: bigint, to: bigint, concurrency = 3): Promise<{ logs: RpcLog[]; ok: Range[]; failed: Range[] }> {
     const queue = splitRange(from, to, this.chunk);
     const logs: RpcLog[] = [];
@@ -197,7 +251,11 @@ export class Nodes {
           let cap: bigint | undefined;
           for (const url of this.order()) {
             try {
-              const got = (await this.transport(url, "eth_getLogs", [{ ...filter, fromBlock: hex(r.lo), toBlock: hex(r.hi) }])) as RpcLog[];
+              const [at, got] = (await this.pair(url, [
+                { method: "eth_blockNumber", params: [] },
+                { method: "eth_getLogs", params: [{ ...filter, fromBlock: hex(r.lo), toBlock: hex(r.hi) }] },
+              ])) as [string, RpcLog[]];
+              if (BigInt(at) < r.hi) throw new RpcError(`the node is at block ${BigInt(at)}, behind ${r.hi}`);
               logs.push(...got);
               ok.push(r);
               settled = true;

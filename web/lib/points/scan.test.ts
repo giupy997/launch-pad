@@ -4,7 +4,7 @@
 //   node --test --experimental-strip-types web/lib/points/scan.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { capNamed, isRangeError, isThrottle, Nodes, RpcError, stretches, type Transport } from "./scan.ts";
+import { capNamed, isRangeError, isThrottle, Nodes, RpcError, stretches, type Transport, type TransportPair } from "./scan.ts";
 import type { RpcLog } from "./decode.ts";
 
 const TO = 52_081_799n;
@@ -35,7 +35,11 @@ function fakeTransport(behaviours: Record<string, Behaviour>, calls: Record<stri
   };
 }
 function fakeNodes(behaviours: Record<string, Behaviour>, calls: Record<string, number>, chunk: bigint): Nodes {
-  return new Nodes(Object.keys(behaviours), chunk, { transport: fakeTransport(behaviours, calls), sleep: async () => {} });
+  const transport = fakeTransport(behaviours, calls);
+  // a node's head travels with its logs in one request (Nodes.getLogs): here every node is at
+  // the chain's head, and the request is the one the behaviours judge and the counts count
+  const transportPair: TransportPair = async (url, [, logs]) => [hex(TO + 60n), await transport(url, logs.method, logs.params)];
+  return new Nodes(Object.keys(behaviours), chunk, { transport, transportPair, sleep: async () => {} });
 }
 const rangeErr = () => new RpcError('{"code":-32614,"message":"eth_getLogs is limited to a 2,000 range"}', -32614, 413);
 const archiveErr = () => new RpcError("Archive requests require a personal token. Get one at: https://www.allnodes.com/publicnode", -32602, 403);

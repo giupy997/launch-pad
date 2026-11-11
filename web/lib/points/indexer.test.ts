@@ -16,7 +16,7 @@ import type { PointsChain } from "./chains.ts";
 import { padEventsAbi, TRANSFER_TOPIC, type RpcLog } from "./decode.ts";
 import { ChainIndexer } from "./indexer.ts";
 import { referralMessage } from "./referral.ts";
-import { Nodes, RpcError, type Transport } from "./scan.ts";
+import { Nodes, RpcError, type Transport, type TransportPair } from "./scan.ts";
 import { Store } from "./store.ts";
 
 const PAD = "0x4D3C63F873bc2aC79E529C8003321d60643a4025" as const;
@@ -181,6 +181,28 @@ test("an invite binds once, with the invitee's signature, and pays from then on"
   const carolView = ix.wallet(carol.address);
   assert.ok(carolView.byKind.some((k) => k.kind === "ref_inviter" && k.points === 8)); // 10% of 80
   assert.deepEqual(carolView.invitees, [{ wallet: bob.address.toLowerCase(), points: 8 }]);
+});
+
+test("a node behind the chain is not believed: its empty answer does not pass the blocks over", async () => {
+  const store = new Store(join(dir, "behind"));
+  // the head comes from a server that is up to date; the logs, for a while, from one that
+  // stopped 500 blocks back and answers the blocks it does not have with nothing
+  let stale = true;
+  const pair: TransportPair = async (url, [a, b]) => {
+    const at = stale ? hex(head - 500n) : ((await transport(url, a.method, a.params)) as string);
+    const logs = stale ? [] : await transport(url, b.method, b.params);
+    return [at, logs];
+  };
+  const nodes = new Nodes(chain.rpcs, chain.chunk, { transport, transportPair: pair, sleep: async () => {} });
+  const ix = new ChainIndexer(chain, nodes, store);
+  const before = ix.last;
+  await assert.rejects(ix.pass(), /no node served/);
+  assert.equal(ix.last, before); // nothing counted as read
+  stale = false;
+  await ix.pass();
+  assert.ok(ix.last > before);
+  assert.equal(ix.lastError, null);
+  assert.ok(ix.trades.length > 0); // the events of those blocks are there
 });
 
 test("a stretch the node refuses is left for the next pass, never skipped", async () => {
