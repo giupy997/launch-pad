@@ -19,6 +19,11 @@ export class RpcError extends Error {
   }
 }
 
+/** how long a node has to answer. Liteforge's node, the days after its move, took 15 to 27
+ *  seconds for a range of logs and gave up by itself at 30: at 25 here, the answers that
+ *  were coming were thrown away. Nobody waits on the indexer; it can wait on the node. */
+const NODE_MS = 40_000;
+
 /** one JSON-RPC call to one node; throws RpcError on any failure */
 export type Transport = (url: string, method: string, params: unknown[]) => Promise<unknown>;
 
@@ -31,7 +36,7 @@ export const fetchTransport: Transport = async (url, method, params) => {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-      signal: AbortSignal.timeout(25_000),
+      signal: AbortSignal.timeout(NODE_MS),
     });
   } catch (e) {
     throw new RpcError(`fetch failed: ${(e as Error).message}`);
@@ -62,7 +67,7 @@ export const fetchPair: TransportPair = async (url, calls) => {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(calls.map((c, id) => ({ jsonrpc: "2.0", id, method: c.method, params: c.params }))),
-      signal: AbortSignal.timeout(25_000),
+      signal: AbortSignal.timeout(NODE_MS),
     });
   } catch (e) {
     throw new RpcError(`fetch failed: ${(e as Error).message}`);

@@ -188,8 +188,18 @@ test("the day's blocks are searched by the blocks' times after a pass; the confi
   const ix = new ChainIndexer(chain, new Nodes(chain.rpcs, chain.chunk, { transport, sleep: async () => {} }), store);
   assert.equal(ix.dayBlocks(), BigInt(Math.round(86_400 / chain.blockSeconds)));
   await ix.pass();
-  // the test chain stamps a block a second and is younger than a day: every block of it
-  assert.equal(ix.dayBlocks(), ix.last);
+  // the test chain stamps a block a second and is younger than a day: every block of it,
+  // as far as the indexer had read when the pass began and the search ran
+  assert.equal(ix.dayBlocks(), chain.deployBlock - 1n);
+
+  // a node that serves no logs still says its blocks' times: the day is searched all the same
+  const dark: Transport = async (url, method, params) => {
+    if (method === "eth_getLogs") throw new RpcError("request timed out");
+    return transport(url, method, params);
+  };
+  const blind = new ChainIndexer(chain, new Nodes(chain.rpcs, chain.chunk, { transport: dark, sleep: async () => {} }), new Store(join(dir, "pace-dark")));
+  await assert.rejects(blind.pass());
+  assert.notEqual(blind.dayBlocks(), BigInt(Math.round(86_400 / chain.blockSeconds)));
 });
 
 test("a node behind the chain is not believed: its empty answer does not pass the blocks over", async () => {

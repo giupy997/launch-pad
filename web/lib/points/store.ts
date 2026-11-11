@@ -37,6 +37,9 @@ export type Meta = {
   last: bigint;
   rulesVersion?: number;
   chunk?: bigint;
+  /** the node whose refusals taught `chunk` (the host of the chain's first RPC): a lesson
+   *  from one node says nothing of the next (absent in files written before 2026-11-11) */
+  chunkFrom?: string;
   /** the newest block whose coin transfers are in the events (absent: none read yet, the
    *  backfill starts at the deploy block on the next pass) */
   transfersLast?: bigint;

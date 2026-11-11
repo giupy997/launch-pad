@@ -25,7 +25,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { join } from "node:path";
 import { POINTS_CHAINS } from "../web/lib/points/chains.ts";
-import { ChainIndexer } from "../web/lib/points/indexer.ts";
+import { ChainIndexer, nodeHost } from "../web/lib/points/indexer.ts";
 import { Nodes } from "../web/lib/points/scan.ts";
 import { Store } from "../web/lib/points/store.ts";
 
@@ -48,8 +48,12 @@ for (const key of KEYS) {
     process.exit(1);
   }
   const store = new Store(join(DATA, key));
-  // the chunk a refusal taught is kept with the chain's data, so a restart starts there
-  const learned = store.readMeta()?.chunk;
+  // the chunk a refusal taught is kept with the chain's data, so a restart starts there: when
+  // the node is still the one that taught it. Liteforge moved to another on 2026-11-10 and
+  // the service went on in ranges of 500 blocks learned from the old one, eight requests a
+  // pass to a node that takes twenty-five seconds a request whatever the range.
+  const meta = store.readMeta();
+  const learned = meta?.chunkFrom === nodeHost(chain.rpcs[0]) ? meta.chunk : undefined;
   const nodes = new Nodes(chain.rpcs, learned !== undefined && learned < chain.chunk ? learned : chain.chunk, {
     onChunk: (size) => log(`${key}: nodes take ${size} blocks per getLogs`),
   });

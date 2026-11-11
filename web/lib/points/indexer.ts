@@ -6,6 +6,15 @@
 import { type PointsChain } from "./chains.ts";
 import { decodePadLog, decodeTransferLog, eventOrder, PAD_TOPICS, TRANSFER_TOPIC, type PadEvent } from "./decode.ts";
 import { blocksSince } from "./pace.ts";
+
+/** a node's host, the name a learned chunk is kept under (never its path: a URL may carry a key) */
+export function nodeHost(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return "";
+  }
+}
 import { verifyReferral } from "./referral.ts";
 import {
   computeLedger,
@@ -95,7 +104,7 @@ export class ChainIndexer {
   }
 
   private meta() {
-    return { last: this.last, rulesVersion: RULES_VERSION, chunk: this.nodes.chunk, transfersLast: this.transfersLast };
+    return { last: this.last, rulesVersion: RULES_VERSION, chunk: this.nodes.chunk, chunkFrom: nodeHost(this.nodes.urls[0]), transfersLast: this.transfersLast };
   }
 
   private apply(ev: PadEvent) {
@@ -187,12 +196,14 @@ export class ChainIndexer {
   async pass(): Promise<{ from: bigint; to: bigint; events: number } | null> {
     try {
       this.head = await this.nodes.blockNumber();
+      // the day's blocks first, by the blocks' times: it needs no logs, and a node that
+      // serves none (a pass that fails below) must not leave the day at the configured guess
+      await this.refreshDay();
       const target = this.head - this.chain.lag;
       if (target <= this.last) {
         // nothing mined since (a quiet chain makes no blocks): a pass all the same, and the
         // coins' transfers read on if they are behind
         await this.readTransfers();
-        await this.refreshDay();
         this.lastError = null;
         this.passes++;
         this.updatedAt = Math.floor(this.now() / 1000);
@@ -217,7 +228,6 @@ export class ChainIndexer {
       this.last = upTo;
       this.store.writeMeta(this.meta());
       await this.readTransfers();
-      await this.refreshDay();
       this.recompute();
       this.passes++;
       this.updatedAt = Math.floor(this.now() / 1000);
