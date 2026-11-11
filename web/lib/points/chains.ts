@@ -35,8 +35,9 @@ export type PointsChain = {
    *  whatever is shown as time is measured from the chain instead. */
   blockSeconds: number;
   /** how far the chain's measured pace may be from `blockSeconds`, as a
-   *  factor either way, before /api/health says so; 1.3 when absent. Wider
-   *  for a chain that makes its blocks as its traffic asks. */
+   *  factor either way, before /api/health says so; 1.3 when absent.
+   *  Infinity for a chain that makes its blocks as its traffic asks: its
+   *  pace is reported and never a failure, since no figure is its pace. */
   paceTolerance?: number;
   /** blocks one eth_getLogs may cover on the first of `rpcs`; what each
    *  node takes is learned per node from its refusals */
@@ -77,10 +78,12 @@ export const POINTS_CHAINS: Record<string, PointsChain> = {
     quoteDecimals: 18,
     quoteSymbol: "zkLTC",
     // 0.25 s from the pad's deploy to the chain's move to new infrastructure on 2026-11-10
-    // (0.25 to 0.29 over every stretch measured); between 0.3 and 0.6 since, with its
-    // traffic. Left at 0.25: Season 0's rules count in it. A day of volume is measured.
+    // (0.25 to 0.29 over every stretch measured); since then with its traffic: 0.3 s in a
+    // busy hour, 0.8 that evening, hours without a block at night. Left at 0.25: Season 0's
+    // rules count in it. A day is searched by the blocks' times (lib/points/pace.ts), and
+    // the pace is no alarm here: a tolerance of 3 rang the first quiet evening.
     blockSeconds: 0.25,
-    paceTolerance: 3,
+    paceTolerance: Infinity,
     // the node took these whole during the backfill. Measured on 2026-10-19 from a fast
     // connection: 1.3 s for 1,000 blocks, 2.4 s for 3,000, 2.2 s for 9,000, 16 s for 27,000, a
     // timeout past ~80,000: the time is the call's, not the span's, so a smaller window would
