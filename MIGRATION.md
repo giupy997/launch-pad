@@ -278,20 +278,23 @@ Two timelock rounds of 24 hours, with the coin list closing between them:
 
 1. **Schedule the announcement**, with every bucket at dust (step 2). The
    freeze block is part of the calldata, so it is chosen now; counted from
-   the current block (Base makes one every 2 s), it must leave room for the
+   the current block at the chain's pace of the day (Base made a block every
+   2 s until 2026-11-05 and makes one every 0.2 s since: never count the
+   blocks by hand, the script measures), it must leave room for the
    24 hours until the announcement can execute, then for one more delay so
    the migrateOut operations scheduled at the execution are ready when the
    freeze lands, and for a margin during which a `cancelFreeze` (24 hours to
-   land itself) can still be scheduled. 100,000 blocks (~55 h) does it:
-   about 31 h of public notice on the site, which shows the countdown from
-   the execution on.
+   land itself) can still be scheduled. About 55 hours from now does it
+   (990,000 blocks at 0.2 s): about 31 h of public notice on the site, which
+   shows the countdown from the execution on.
 
    ```bash
    cd ~/launch-pad/contracts && bash script/ops/timelock.sh safe-calldata announce-freeze 31
    ```
 
    The script picks the block (the delay plus 31 hours of notice from now,
-   at 2 s a block), prints it and the time it lands: write it in the env
+   at the pace it measures over the chain's last 5,000 blocks), prints it,
+   the pace and the time it lands: write it in the env
    file as `FREEZE=<that block>`. Then the Safe (Transaction Builder,
    `to`/`data` as printed, two signatures).
 

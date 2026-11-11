@@ -150,6 +150,31 @@ there (four buys in the block after graduation, through outside routers) and cha
 No finding. One operational note: twenty minutes after the graduation no `harvest` had run
 (`nextHarvestAt` 0), the keeper on the VPS was not running; the buckets wait, nothing is lost.
 
+### Base's block time (2026-11-11)
+
+Base made a block every 2 s until block 53,556,119 (2026-11-05 17:59:45 UTC) and makes one every
+0.2 s from the next. Nothing in the repository measured it: the figure was a constant in the
+site's configuration and a default in the operations script. Found on 2026-11-11, from the
+site showing Notus a day's volume of 9 cbLTC where the pool had traded ten times that.
+
+What the deployed contracts count in blocks, read again at the new pace: the freeze
+(`announceFreeze(atBlock)`, `frozen()`), which is a block the owner chooses, and the pad's
+`buybackAndBurn`, one slice of a curve coin's burn pot a block. `UniV2Migrator` v5 paces its
+harvest and its buyback by `block.timestamp` (five minutes) and is untouched; the timelock's
+delay is seconds.
+
+| ID | Finding | Status |
+|---|---|---|
+| M-05 | `timelock.sh announce-freeze` turned the hours of notice into a block at 2 s a block (`BLOCK_SECONDS` defaulting to 2), and `MIGRATION.md` gave the freeze as "100,000 blocks (~55 h)". At 0.2 s a block the script's 24-hour notice lands 2.4 hours after the execution and the document's figure in 5.5 hours: a freeze far shorter than announced, which the pad cannot take back once it has landed. Latent: no freeze was ever announced on v12 (`freezeBlock` 0) | Fixed 2026-11-11: the script measures the chain's pace over its last 5,000 blocks at the moment it picks the block and prints it (`BLOCK_SECONDS` remains as an override), and stops if it cannot measure; the document gives the notice in hours and says never to count the blocks by hand. Dry run that day: 31 hours of notice after a 24-hour delay is 990,000 blocks, where the old arithmetic gave 99,000 |
+| L-07 | The site counted a day as 43,200 blocks and a trade's age at 2 s a block (`BLOCK_SECONDS`, `blockSeconds`): from 2026-11-05 the cards' and the coin page's "24h volume" and "24h change" covered 2.4 hours, the ages of trades without a read timestamp were shown ten times older, and a coin's history from the server reached back 28 hours instead of 11.6 days. Figures shown, no funds | Fixed 2026-11-11: `/api/trades` measures the chain's pace (two blocks' timestamps, kept ten minutes) and takes the day and a coin's twelve days of history from it, the long spans in one request to the archive node; the constants are 0.2; `/api/health` compares each chain's pace with the configured one (`pace:base`, `pace:liteforge`, not vital) and the watch reports a difference on Telegram |
+
+The pad's `buybackAndBurn` is as it was in blocks, one slice (half a percent of the curve's
+virtual reserve) a block, and ten times closer in time: a run of slices that took twenty
+seconds takes two. The slice's size, which is what a trade wrapped around one cannot profit
+from, does not depend on the pace; the time a position has to be held across a run does, and
+is shorter. The pad cannot be changed; a curve coin's burn pot is its tax on curve trades, a
+fraction of a cbLTC on every coin of the pad at that date. Noted, not changed.
+
 ## Dependency policy (`web/`)
 
 - `npm ci --ignore-scripts` everywhere: the lock is installed as it is and no

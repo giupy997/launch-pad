@@ -503,6 +503,9 @@ async function sitePass(state) {
     } catch {}
     // the site's own words, cut short: a page somebody else controls must not shape the message
     if (status !== 200 || !j?.ok) problems.push(`/api/health risponde ${status}${Array.isArray(j?.failing) && j.failing.length ? `, guasti: ${clip(j.failing.join(", "))}` : ""}`);
+    // a chain whose pace is no longer the configured one: the site stays up and shows wrong times
+    const drifted = Array.isArray(j?.failing) ? j.failing.filter((n) => typeof n === "string" && n.startsWith("pace:")) : [];
+    if (drifted.length) problems.push(`il tempo di blocco è cambiato (${clip(drifted.map((n) => `${n.slice(5)}: ${j.checks?.[n]?.note ?? "?"}`).join("; "), 160)}): aggiornare blockSeconds`);
     healthNote = j?.status !== undefined ? clip(j.status, 80) : `http ${status}`;
   } catch (e) {
     problems.push(`/api/health non risponde (${clip(e.message ?? e, 120)})`);

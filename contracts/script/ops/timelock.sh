@@ -238,10 +238,19 @@ case "${1:-}" in
         # a day at least, so holders see it coming and the keeper empties the buckets (MIGRATION.md)
         HOURS=${3:?hours of notice after the execution, 24 at least}
         [ "$HOURS" -ge 24 ] 2>/dev/null || { echo "the notice is 24 hours at least (PAD-5: a freeze that lands at once cannot be cancelled)"; exit 1; }
-        BLOCK_SECONDS=${BLOCK_SECONDS:-2}
+        # the notice is hours, the pad counts blocks: the chain's pace is measured over its last
+        # 5,000 blocks, never assumed. Base made a block every 2 s until 2026-11-05 and one every
+        # 0.2 s since: at the old figure a 24-hour notice would have landed in 2.4 hours.
+        # BLOCK_SECONDS overrides the measure, for a chain whose pace is about to change.
         NOW_BLOCK=$(cast block-number)
-        AT=$(( NOW_BLOCK + (d + HOURS * 3600) / BLOCK_SECONDS ))
-        echo "The pad $PAD stands still from block $AT: about $HOURS h after the earliest execution (block $NOW_BLOCK now, $BLOCK_SECONDS s a block),"
+        if [ -z "${BLOCK_SECONDS:-}" ]; then
+          T_NOW=$(cast block "$NOW_BLOCK" --field timestamp)
+          T_OLD=$(cast block $(( NOW_BLOCK - 5000 )) --field timestamp)
+          [ "$T_NOW" -gt "$T_OLD" ] 2>/dev/null || { echo "could not measure the chain's pace (blocks $(( NOW_BLOCK - 5000 )) and $NOW_BLOCK): set BLOCK_SECONDS"; exit 1; }
+          BLOCK_SECONDS=$(awk -v dt=$(( T_NOW - T_OLD )) 'BEGIN { printf "%.3f", dt / 5000 }')
+        fi
+        AT=$(awk -v now="$NOW_BLOCK" -v s=$(( d + HOURS * 3600 )) -v b="$BLOCK_SECONDS" 'BEGIN { printf "%d", now + s / b + 0.999 }')
+        echo "The pad $PAD stands still from block $AT: about $HOURS h after the earliest execution (block $NOW_BLOCK now, $BLOCK_SECONDS s a block, measured),"
         echo "around $(when $(( $(date -u +%s) + d + HOURS * 3600 ))). From the announcement on no coin is created; until the block trading goes on."
         [ "$(cast call "$PAD" "pendingCoins()(uint256)" | awk '{print $1}')" = 0 ] || { echo "   a migrated coin is still delivering (pendingCoins != 0): the pad would refuse"; exit 1; }
         read -rp "   type FREEZE to go on: " yes; [ "$yes" = FREEZE ] || { echo "stopped"; exit 1; }

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getStore } from "@netlify/blobs";
 import { POINTS_CHAINS } from "@/lib/points/chains";
-import { latestBlock, redact } from "@/lib/trades/scan";
+import { blockSecondsNow, latestBlock, redact } from "@/lib/trades/scan";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +39,23 @@ export async function GET() {
     names.push(`rpc:${c.key}`);
     // two seconds a node, so one that hangs does not fail the check while the others answer
     runs.push(timed(async () => `block ${await latestBlock({ chainId: c.chainId, urls: c.rpcs, chunk: c.chunk }, 2_000, Date.now() + CHECK_MS - 500)}`));
+  }
+  // each chain's pace against the one the site is configured with: what the pages count in
+  // blocks and show as time (a day of volume, a trade's age, the hours to a freeze) is wrong
+  // by as much as these differ. Not vital, and said: Base's went from 2 s to 0.2 s on
+  // 2026-11-05 and nothing here noticed for six days.
+  for (const c of Object.values(POINTS_CHAINS)) {
+    names.push(`pace:${c.key}`);
+    runs.push(
+      timed(async () => {
+        const t = { chainId: c.chainId, urls: c.rpcs, chunk: c.chunk };
+        const until = Date.now() + CHECK_MS - 500;
+        const seconds = await blockSecondsNow(t, await latestBlock(t, 2_000, until), 5_000n, 2_000, until);
+        const off = seconds / c.blockSeconds;
+        if (off > 1.3 || off < 0.77) throw new Error(`${seconds.toFixed(2)} s a block, configured ${c.blockSeconds}`);
+        return `${seconds.toFixed(2)} s a block`;
+      })
+    );
   }
   names.push("blobs");
   runs.push(

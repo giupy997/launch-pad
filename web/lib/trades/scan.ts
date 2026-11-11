@@ -57,11 +57,20 @@ export type ScanTarget = {
    *  a node that keeps only recent blocks answers such a request with the
    *  old logs silently left out. None in the browser. */
   archive?: readonly string[];
+  /** how far back, in blocks, a scan reads when one of `archive` gives the
+   *  whole span in one request; when none does, the ranges go back
+   *  `chunk × SPAN_CHUNKS` as ever. A coin's history is a few hundred logs
+   *  over millions of blocks: one request to a node that keeps them, far too
+   *  many ranges for one that has to be asked chunk by chunk. */
+  wideSpan?: bigint;
 };
 
-/** how far back a first scan reads, in chunks: ~2.3 days on Base at 1,999
- *  blocks a chunk (~11.6 at the 9,999 of a keyed node), ~1.3 on Liteforge's
- *  250 ms blocks at 9,000 */
+/** how far back a first scan reads, in chunks. In time that is what the
+ *  chain's pace makes of it: on Base 5.5 hours at 1,999 blocks a chunk and
+ *  28 at the 9,999 of a keyed node since its blocks went from 2 s to 0.2 s
+ *  (block 53,556,120, 2026-11-05; 2.3 and 11.6 days before), 1.3 days on
+ *  Liteforge's 250 ms blocks at 9,000. A longer history comes through
+ *  `wideSpan`. */
 export const SPAN_CHUNKS = 50n;
 /** a scan over more ranges than this tries the whole span in one request first */
 const WIDE_FROM_RANGES = 4;
@@ -179,6 +188,21 @@ function inTime<T>(p: Promise<T>, ms: number): Promise<T> {
  *  a budget asks that way) */
 export function latestBlock(t: ScanTarget, perNodeMs?: number, deadline?: number): Promise<bigint> {
   return firstNode(scanNodes(t), (c) => c.getBlockNumber(), perNodeMs, deadline);
+}
+
+/** The chain's seconds a block as it runs now: the time between `latest` and
+ *  the block `over` before it, by their timestamps. A chain's pace is not a
+ *  constant (Base's went from 2 s to 0.2 s on 2026-11-05, and "a day" counted
+ *  as 43,200 blocks became 2.4 hours): what is counted in blocks and meant in
+ *  time asks this. */
+export async function blockSecondsNow(t: ScanTarget, latest: bigint, over = 5_000n, perNodeMs?: number, deadline?: number): Promise<number> {
+  const set = scanNodes(t);
+  const from = latest > over ? latest - over : 0n;
+  if (from === latest) throw new Error("no blocks to measure");
+  const [a, b] = await Promise.all([from, latest].map((n) => firstNode(set, (c) => c.getBlock({ blockNumber: n }), perNodeMs, deadline)));
+  const seconds = Number(b.timestamp - a.timestamp) / Number(latest - from);
+  if (!(seconds > 0)) throw new Error("the blocks' times do not advance");
+  return seconds;
 }
 
 type Range = { lo: bigint; hi: bigint };
@@ -435,7 +459,8 @@ export async function scanTrades(
   const topics: (`0x${string}` | `0x${string}`[])[] = [[topicBought, topicSold]];
   if (token) topics.push(`0x${token.slice(2).toLowerCase().padStart(64, "0")}` as `0x${string}`);
 
-  const start = toBlock - fromBlock + 1n > maxSpan ? toBlock - maxSpan + 1n : fromBlock;
+  const startOf = (span: bigint) => (toBlock - fromBlock + 1n > span ? toBlock - span + 1n : fromBlock);
+  const start = startOf(maxSpan);
   if (start > toBlock) return { trades: [], truncated: false, first: fromBlock, last: fromBlock - 1n };
   const set = scanNodes(t);
   const ranges = splitRange(start, toBlock, chunkFor(t));
@@ -449,25 +474,6 @@ export async function scanTrades(
     { logs: [], swaps: false, filter: { address: pad, topics } },
     ...(refs.length ? [{ logs: [], swaps: true, filter: { address: refs.map((r) => r.pool.pair), topics: [topicSwap] } }] : []),
   ];
-  // the same ranges for the pad and every pool; a range counts as read only when every scan read it
-  const failedKeys = new Set<string>();
-  // a long span in one request first, from a node that serves the whole history (one coin's
-  // trades are few): the ranges are spared. Not again once no such node took it.
-  let wideWorth = ranges.length > WIDE_FROM_RANGES && !!t.archive?.length;
-  for (const scan of scans) {
-    const left = deadline === undefined ? Infinity : deadline - Date.now();
-    if (wideWorth && left > 500) {
-      const wide = await scanLogsWide(t, scan.filter, start, toBlock, Math.min(WIDE_MS, left), t.archive);
-      if (wide) {
-        scan.logs = wide;
-        continue;
-      }
-      wideWorth = false;
-    }
-    const r = await getLogsAdaptive(set, t, scan.filter, ranges, concurrency, deadline);
-    scan.logs = r.logs;
-    for (const f of r.failed) failedKeys.add(`${f.lo}-${f.hi}`);
-  }
   const decodeAll = (within?: Range) =>
     sortTrades(
       scans.flatMap((scan) => {
@@ -491,6 +497,43 @@ export async function scanTrades(
         });
       })
     );
+  // the same ranges for the pad and every pool; a range counts as read only when every scan read it
+  const failedKeys = new Set<string>();
+  // a long span in one request first, from a node that serves the whole history (one coin's
+  // trades are few): the ranges are spared. Not again once no such node took it.
+  let wideWorth = ranges.length > WIDE_FROM_RANGES && !!t.archive?.length;
+  // further back than the ranges go, when such a node gives every scan its whole span: all
+  // of them or none, since a history with the pool's swaps and not the pad's trades is no
+  // history. When one does not come, the ranges read their own shorter span below.
+  const wideStart = t.archive?.length && t.wideSpan !== undefined && t.wideSpan > maxSpan ? startOf(t.wideSpan) : start;
+  if (wideStart < start) {
+    const got: RpcLog[][] = [];
+    for (const scan of scans) {
+      const left = deadline === undefined ? Infinity : deadline - Date.now();
+      const wide = left > 500 ? await scanLogsWide(t, scan.filter, wideStart, toBlock, Math.min(WIDE_MS, left), t.archive) : null;
+      if (!wide) break;
+      got.push(wide);
+    }
+    if (got.length === scans.length) {
+      scans.forEach((scan, i) => (scan.logs = got[i]));
+      return { trades: decodeAll(), truncated: wideStart > fromBlock, first: wideStart, last: toBlock };
+    }
+    wideWorth = false;
+  }
+  for (const scan of scans) {
+    const left = deadline === undefined ? Infinity : deadline - Date.now();
+    if (wideWorth && left > 500) {
+      const wide = await scanLogsWide(t, scan.filter, start, toBlock, Math.min(WIDE_MS, left), t.archive);
+      if (wide) {
+        scan.logs = wide;
+        continue;
+      }
+      wideWorth = false;
+    }
+    const r = await getLogsAdaptive(set, t, scan.filter, ranges, concurrency, deadline);
+    scan.logs = r.logs;
+    for (const f of r.failed) failedKeys.add(`${f.lo}-${f.hi}`);
+  }
   if (!failedKeys.size) return { trades: decodeAll(), truncated: start > fromBlock, first: start, last: toBlock };
 
   const got = stretches(ranges.filter((r) => !failedKeys.has(`${r.lo}-${r.hi}`)));

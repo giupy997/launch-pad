@@ -77,8 +77,11 @@ export const DEFAULT_CHAIN = base;
  *  brand stays out of the way. */
 export const CHAIN_LABEL: Record<number, string> = { [base.id]: "cbLTC" };
 
-/** Seconds a block takes, to turn a freeze block into a time. */
-export const BLOCK_SECONDS: Record<number, number> = { [base.id]: 2, [litvmTestnet.id]: 0.25 }; // Liteforge: ~4 blocks a second, measured
+/** Seconds a block takes, to turn a freeze block into a time and a trade's
+ *  block into its age. Measured, and not for ever: Base made a block every
+ *  2 s until block 53,556,119 (2026-11-05 17:59:45 UTC) and one every 0.2 s
+ *  from the next; /api/health compares the configured pace with the chain's. */
+export const BLOCK_SECONDS: Record<number, number> = { [base.id]: 0.2, [litvmTestnet.id]: 0.25 }; // Liteforge: ~4 blocks a second, measured
 /** Where a chain's coins go when the pad freezes for its migration (v8 pads
  *  and on): what the frozen notice names. Base's v11 coins move to the v12
  *  pad on Base first; the LitVM move comes after that, from v12. */

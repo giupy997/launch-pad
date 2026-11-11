@@ -3,7 +3,7 @@ import { POINTS_CHAINS } from "@/lib/points/chains";
 import { client as rpcClient, isPadCoin } from "@/lib/holders/count";
 import { SERVICE_MS, servedPadTrades, servedTrades } from "@/lib/points/served";
 import { joinHistory } from "@/lib/trades/history";
-import { SPAN_CHUNKS, latestBlock, packTrades, scanTrades, stampTimestamps, type PoolRef, type ScanTarget, type Trade } from "@/lib/trades/scan";
+import { SPAN_CHUNKS, blockSecondsNow, latestBlock, packTrades, scanTrades, stampTimestamps, type PoolRef, type ScanTarget, type Trade } from "@/lib/trades/scan";
 
 /** The trades of one coin (its curve and, given its pool, its swaps), or of
  *  the whole pad over the last day (`token=all`, for the explore cards'
@@ -44,6 +44,25 @@ const cache = (seconds: number, stale = seconds * 4) => ({
 });
 const NO_STORE = { "cache-control": "no-store" };
 
+// A day, and a coin's history, are times; the scans count blocks. The chain's pace is
+// measured (two blocks' timestamps, kept ten minutes an instance), with the configured one
+// for when the nodes do not say: Base's blocks went from 2 s to 0.2 s on 2026-11-05 and the
+// "day" of 43,200 blocks behind the cards' volumes was 2.4 hours for six days.
+const COIN_HISTORY_SECONDS = 12 * 86_400; // what a keyed node's fifty chunks reached at 2 s a block
+const PACE_MS = 10 * 60_000;
+const pace = new Map<number, { at: number; seconds: number }>();
+async function secondsABlock(t: ScanTarget, configured: number, latest: bigint, deadline: number): Promise<number> {
+  const known = pace.get(t.chainId);
+  if (known && Date.now() - known.at < PACE_MS) return known.seconds;
+  try {
+    const seconds = await blockSecondsNow(t, latest, 5_000n, 1_500, Math.min(deadline, Date.now() + 2_000));
+    pace.set(t.chainId, { at: Date.now(), seconds });
+    return seconds;
+  } catch {
+    return known?.seconds ?? configured;
+  }
+}
+
 type Held = { first: bigint; last: bigint; trades: Trade[]; truncated: boolean };
 const memory = new Map<string, Held>();
 const MEMORY_KEYS = 64; // answers a warm instance keeps: the oldest goes when a new key comes
@@ -81,8 +100,14 @@ export async function GET(req: NextRequest) {
     const known = await Promise.all(named.map((t) => isPadCoin(c, chain, t)));
     if (known.some((k) => !k)) return NextResponse.json({ error: "not a coin of this launchpad" }, { status: 404, headers: cache(300) });
     const latest = await latestBlock(target, 2_500, deadline);
-    // one coin: the same window a browser's first scan reads; the pad: the last day
-    const span = all ? BigInt(Math.round(86_400 / chain.blockSeconds)) : chain.chunk * SPAN_CHUNKS;
+    const seconds = await secondsABlock(target, chain.blockSeconds, latest, deadline);
+    // the pad: the last day, whole or not at all short (a day cut to the scan's fifty chunks
+    // would be shown as a day); one coin: the window a browser's first scan reads, and on a
+    // chain with a node that keeps its history, twelve days in one request
+    const day = BigInt(Math.round(86_400 / seconds));
+    const span = all ? day : chain.chunk * SPAN_CHUNKS;
+    if (all && day > span) target.wideSpan = day;
+    if (!all) target.wideSpan = BigInt(Math.round(COIN_HISTORY_SECONDS / seconds));
     const windowStart = latest - span + 1n > chain.deployBlock ? latest - span + 1n : chain.deployBlock;
     const held = memory.get(key);
     let out: Held;

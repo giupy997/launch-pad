@@ -151,6 +151,22 @@ test("the swaps of every pool come in one request, each told by its pair", async
   });
 });
 
+test("a node that keeps the history gives a longer span in one request; without one the ranges go as far as ever", async () => {
+  await withNode(async (t, calls) => {
+    const pool: PoolRef = { token: TOKEN, pair: PAIR, tokenIsZero: true, migrator: MIGRATOR };
+    // fifty chunks of 1,000 reach back 50,000 blocks; the wide span asks for 150,000
+    const far = await scanTrades({ ...t, archive: t.urls, wideSpan: 150_000n }, PAD, TOKEN, 1n, 200_000n, [pool]);
+    assert.equal(far.first, 50_001n);
+    assert.equal(far.last, 200_000n);
+    assert.equal(far.truncated, true); // the coin's first 50,000 blocks are not in it
+    assert.equal(calls.getLogs, 2); // the pad's trades and the pool's swaps, one request each
+  });
+  await withNode(async (t) => {
+    const near = await scanTrades({ ...t, wideSpan: 150_000n }, PAD, TOKEN, 1n, 200_000n, []);
+    assert.equal(near.first, 150_001n); // no archive node: the fifty chunks, whatever the wide span
+  });
+});
+
 test("a ref that names the migrator spares the pad the question", async () => {
   await withNode(async (t, calls) => {
     const scan = await scanTrades(t, PAD, null, 1n, 10n, [{ token: TOKEN, pair: PAIR, tokenIsZero: true, migrator: MIGRATOR }]);

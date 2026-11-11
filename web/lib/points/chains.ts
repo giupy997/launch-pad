@@ -93,7 +93,7 @@ export const POINTS_CHAINS: Record<string, PointsChain> = {
     archive: KEYED_BASE,
     quoteDecimals: 8,
     quoteSymbol: "cbLTC",
-    blockSeconds: 2,
+    blockSeconds: 0.2, // 2 s until block 53,556,119 (2026-11-05), 0.2 s since; measured again by /api/health
     // a keyed node takes 10,000 blocks a call; the public ones name their own cap, learned per node
     chunk: KEYED_BASE.length ? 9_999n : 1_999n,
     lag: 60n,
