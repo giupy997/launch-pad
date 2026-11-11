@@ -190,6 +190,12 @@ export function latestBlock(t: ScanTarget, perNodeMs?: number, deadline?: number
   return firstNode(scanNodes(t), (c) => c.getBlockNumber(), perNodeMs, deadline);
 }
 
+/** a block's timestamp, unix seconds, from the first node that says */
+export async function blockTime(t: ScanTarget, block: bigint, perNodeMs?: number, deadline?: number): Promise<number> {
+  const b = await firstNode(scanNodes(t), (c) => c.getBlock({ blockNumber: block }), perNodeMs, deadline);
+  return Number(b.timestamp);
+}
+
 /** The chain's seconds a block as it runs now: the time between `latest` and
  *  the block `over` before it, by their timestamps. A chain's pace is not a
  *  constant (Base's went from 2 s to 0.2 s on 2026-11-05, and "a day" counted

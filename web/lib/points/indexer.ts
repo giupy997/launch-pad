@@ -5,6 +5,7 @@
 
 import { type PointsChain } from "./chains.ts";
 import { decodePadLog, decodeTransferLog, eventOrder, PAD_TOPICS, TRANSFER_TOPIC, type PadEvent } from "./decode.ts";
+import { blocksSince } from "./pace.ts";
 import { verifyReferral } from "./referral.ts";
 import {
   computeLedger,
@@ -191,6 +192,7 @@ export class ChainIndexer {
         // nothing mined since (a quiet chain makes no blocks): a pass all the same, and the
         // coins' transfers read on if they are behind
         await this.readTransfers();
+        await this.refreshDay();
         this.lastError = null;
         this.passes++;
         this.updatedAt = Math.floor(this.now() / 1000);
@@ -215,6 +217,7 @@ export class ChainIndexer {
       this.last = upTo;
       this.store.writeMeta(this.meta());
       await this.readTransfers();
+      await this.refreshDay();
       this.recompute();
       this.passes++;
       this.updatedAt = Math.floor(this.now() / 1000);
@@ -297,29 +300,20 @@ export class ChainIndexer {
     };
   }
 
-  private paced: { at: number; seconds: number; blocks: bigint } | null = null;
-  /** How many blocks back from the last one read `seconds` ago is: the chain's pace
-   *  measured over its last 20,000 blocks, then over the stretch that says, since a chain
-   *  that makes its blocks as its traffic asks has no one pace (Liteforge: 0.25 s a block
-   *  for a month, 0.3 to 0.6 after 2026-11-10). Kept ten minutes; the configured pace when
-   *  the nodes do not say. */
-  async blocksIn(seconds: number): Promise<bigint> {
-    const configured = BigInt(Math.round(seconds / this.chain.blockSeconds));
-    if (this.paced && this.paced.seconds === seconds && this.now() - this.paced.at < 600_000) return this.paced.blocks;
+  private day: { at: number; blocks: bigint } | null = null;
+  /** How many of the last blocks read were made in the last day, searched by the blocks'
+   *  times (lib/points/pace.ts) and kept ten minutes; at the configured pace until a search
+   *  has answered. Asked after a pass, never by a request: the search is some thirty reads. */
+  dayBlocks(): bigint {
+    return this.day?.blocks ?? BigInt(Math.round(86_400 / this.chain.blockSeconds));
+  }
+  private async refreshDay() {
+    if (this.day && this.now() - this.day.at < 600_000) return;
     try {
-      const measure = async (over: bigint) => {
-        const from = this.last > over ? this.last - over : 0n;
-        if (from >= this.last) throw new Error("no blocks to measure");
-        const [a, b] = await Promise.all([this.nodes.blockTime(from), this.nodes.blockTime(this.last)]);
-        if (b <= a) throw new Error("the blocks' times do not advance");
-        return (b - a) / Number(this.last - from);
-      };
-      const rough = BigInt(Math.max(1, Math.round(seconds / (await measure(20_000n)))));
-      const blocks = rough < this.last ? BigInt(Math.max(1, Math.round(seconds / (await measure(rough))))) : rough;
-      this.paced = { at: this.now(), seconds, blocks };
-      return blocks;
+      const blocks = await blocksSince((n) => this.nodes.blockTime(n), this.last, 86_400, BigInt(Math.round(86_400 / this.chain.blockSeconds)));
+      this.day = { at: this.now(), blocks };
     } catch {
-      return this.paced?.seconds === seconds ? this.paced.blocks : configured;
+      /* the next pass asks again; the day stays what it was */
     }
   }
 

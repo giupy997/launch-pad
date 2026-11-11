@@ -236,9 +236,10 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   const head = req.method === "HEAD";
   if (what === "trades") {
     // the pad's last day of curve trades, for the explore cards' volumes on a chain whose
-    // public node cannot scan a day of logs in time; a day in the chain's blocks as it runs
-    // (measured: Liteforge's pace follows its traffic), from the block the service has read up to
-    const day = await ix.blocksIn(86_400);
+    // public node cannot scan a day of logs in time; the day's blocks as the chain made them
+    // (searched by their times after each pass: Liteforge's pace follows its traffic), back
+    // from the block the service has read up to
+    const day = ix.dayBlocks();
     json(res, 200, await ix.padTrades(ix.last > day ? ix.last - day : 0n), true, head);
     return;
   }

@@ -3,7 +3,8 @@ import { POINTS_CHAINS } from "@/lib/points/chains";
 import { client as rpcClient, isPadCoin } from "@/lib/holders/count";
 import { SERVICE_MS, servedPadTrades, servedTrades } from "@/lib/points/served";
 import { joinHistory } from "@/lib/trades/history";
-import { SPAN_CHUNKS, blockSecondsNow, latestBlock, packTrades, scanTrades, stampTimestamps, type PoolRef, type ScanTarget, type Trade } from "@/lib/trades/scan";
+import { blocksSince } from "@/lib/points/pace";
+import { SPAN_CHUNKS, blockTime, latestBlock, packTrades, scanTrades, stampTimestamps, type PoolRef, type ScanTarget, type Trade } from "@/lib/trades/scan";
 
 /** The trades of one coin (its curve and, given its pool, its swaps), or of
  *  the whole pad over the last day (`token=all`, for the explore cards'
@@ -44,28 +45,25 @@ const cache = (seconds: number, stale = seconds * 4) => ({
 });
 const NO_STORE = { "cache-control": "no-store" };
 
-// A day, and a coin's history, are times; the scans count blocks. The chain's pace is
-// measured (two blocks' timestamps, kept ten minutes an instance), with the configured one
-// for when the nodes do not say: Base's blocks went from 2 s to 0.2 s on 2026-11-05 and the
-// "day" of 43,200 blocks behind the cards' volumes was 2.4 hours for six days.
-const COIN_HISTORY_SECONDS = 12 * 86_400; // what a keyed node's fifty chunks reached at 2 s a block
+// A day, and a coin's history, are times; the scans count blocks. The day's blocks are
+// searched by their timestamps (lib/points/pace.ts) and kept ten minutes an instance, with
+// the configured pace for when the nodes do not say: Base's blocks went from 2 s to 0.2 s
+// on 2026-11-05 and the "day" of 43,200 blocks behind the cards' volumes was 2.4 hours for
+// six days; Liteforge's pace follows its traffic, and no figure divides its day.
+const COIN_HISTORY_DAYS = 12n; // what a keyed node's fifty chunks reached at 2 s a block
 const PACE_MS = 10 * 60_000;
-const pace = new Map<number, { at: number; seconds: number }>();
-async function secondsABlock(t: ScanTarget, configured: number, latest: bigint, deadline: number): Promise<number> {
-  const known = pace.get(t.chainId);
-  if (known && Date.now() - known.at < PACE_MS) return known.seconds;
+const days = new Map<number, { at: number; blocks: bigint }>();
+async function dayBlocks(t: ScanTarget, configuredSeconds: number, latest: bigint, deadline: number): Promise<bigint> {
+  const known = days.get(t.chainId);
+  if (known && Date.now() - known.at < PACE_MS) return known.blocks;
+  const configured = BigInt(Math.round(86_400 / configuredSeconds));
   try {
-    const until = Math.min(deadline, Date.now() + 2_500);
-    // the last minutes first, then the stretch those say a day is: a chain that makes its
-    // blocks as its traffic asks (Liteforge: 0.3 to 0.6 s within one day) has no pace of
-    // the moment that a day can be counted by
-    const rough = await blockSecondsNow(t, latest, 5_000n, 1_500, until);
-    const span = BigInt(Math.round(86_400 / rough));
-    const seconds = span > 5_000n && span < latest ? await blockSecondsNow(t, latest, span, 1_500, until).catch(() => rough) : rough;
-    pace.set(t.chainId, { at: Date.now(), seconds });
-    return seconds;
+    const until = Math.min(deadline, Date.now() + 3_000);
+    const blocks = await blocksSince((n) => blockTime(t, n, 1_500, until), latest, 86_400, configured);
+    days.set(t.chainId, { at: Date.now(), blocks });
+    return blocks;
   } catch {
-    return known?.seconds ?? configured;
+    return known?.blocks ?? configured;
   }
 }
 
@@ -106,14 +104,13 @@ export async function GET(req: NextRequest) {
     const known = await Promise.all(named.map((t) => isPadCoin(c, chain, t)));
     if (known.some((k) => !k)) return NextResponse.json({ error: "not a coin of this launchpad" }, { status: 404, headers: cache(300) });
     const latest = await latestBlock(target, 2_500, deadline);
-    const seconds = await secondsABlock(target, chain.blockSeconds, latest, deadline);
     // the pad: the last day, whole or not at all short (a day cut to the scan's fifty chunks
     // would be shown as a day); one coin: the window a browser's first scan reads, and on a
-    // chain with a node that keeps its history, twelve days in one request
-    const day = BigInt(Math.round(86_400 / seconds));
+    // chain with a node that keeps its history, twelve days of blocks in one request
+    const day = await dayBlocks(target, chain.blockSeconds, latest, deadline);
     const span = all ? day : chain.chunk * SPAN_CHUNKS;
     if (all && day > span) target.wideSpan = day;
-    if (!all) target.wideSpan = BigInt(Math.round(COIN_HISTORY_SECONDS / seconds));
+    if (!all) target.wideSpan = day * COIN_HISTORY_DAYS;
     const windowStart = latest - span + 1n > chain.deployBlock ? latest - span + 1n : chain.deployBlock;
     const held = memory.get(key);
     let out: Held;
