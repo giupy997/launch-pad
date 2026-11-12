@@ -162,9 +162,9 @@ contracts ran before Base, and what the project was before the contracts:
     next scan runs behind it; the browser then reading
     only the blocks mined since into its
     localStorage cache; the browser scans by itself when the server does not
-    answer). On a chain with no archive node (Liteforge, where the public node
-    takes two seconds per 9,000-block `eth_getLogs` and the chain makes
-    345,000 blocks a day) the coin's history comes from the points service,
+    answer). On a chain with no archive node (Liteforge, where the node takes
+    2,000 blocks an `eth_getLogs` and the chain makes some 200,000 a day)
+    the coin's history comes from the points service,
     which read it without a time budget (`POINTS.md`, the coin routes), and
     the nodes are asked only for the blocks since; the same for the holders
     below, and for the day of volumes the explore cards rank by (`token=all`),

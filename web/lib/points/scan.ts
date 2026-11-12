@@ -113,9 +113,9 @@ export function isRangeError(e: unknown): boolean {
 }
 /** the range cap a refusal names ("eth_getLogs is limited to a 2,000 range"), if any */
 export function capNamed(e: unknown): bigint | null {
-  const m = text(e).match(/limited to (?:a )?([\d,]+)|([\d,]+) blocks? (?:range|limit|max)|range (?:of|limit(?: is)?|max(?:imum)?(?: of)?) ([\d,]+)/);
+  const m = text(e).match(/limited to (?:a )?([\d,]+)|([\d,]+) blocks? (?:range|limit|max)|range (?:of|limit(?: is)?|max(?:imum)?(?: of)?) ([\d,]+)|exceeds? ([\d,]+) blocks/);
   if (!m) return null;
-  const v = BigInt((m[1] ?? m[2] ?? m[3]).replace(/,/g, ""));
+  const v = BigInt((m[1] ?? m[2] ?? m[3] ?? m[4]).replace(/,/g, ""));
   return v >= MIN_CHUNK ? v : null;
 }
 

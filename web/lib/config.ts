@@ -360,7 +360,7 @@ export const RPC_URLS: Record<number, string[]> = {
 /** The block range one eth_getLogs may cover on the chain's public nodes
  *  (mainnet.base.org: "limited to a 2,000 range"). The scan learns a smaller
  *  one from a refusal; chains missing here start from a guess. */
-export const GETLOGS_CHUNK: Record<number, bigint> = { [base.id]: 1_999n };
+export const GETLOGS_CHUNK: Record<number, bigint> = { [base.id]: 1_999n, [litvmTestnet.id]: 1_999n }; // Liteforge's node: 2,000 at most, from 2026-11-12
 /** Liteforge's reads: single calls, thirty to a request, as on every chain
  *  without a multicall, and thirty seconds to answer instead of viem's ten:
  *  the node took 9.5 s for one eth_call on 2026-11-06, and a request that is

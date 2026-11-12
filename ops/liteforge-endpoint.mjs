@@ -33,7 +33,7 @@ const PAD = "0x39D104b3258B6A18c5d5d967CDA182Ded20Bef7F";
 const DEPLOY_BLOCK = 57_741_789; // the pad's (web/lib/points/chains.ts)
 const MULTICALL3 = "0xcA11bde05977b3631167028862bE2a173976CA11";
 const SEL = { tokenCount: "0x9f181b5e", allTokens: "0x634282af" };
-const WINDOW = 9_000; // blocks of logs the points service asks for in one call
+const WINDOW = 1_999; // blocks of logs the points service asks for in one call (web/lib/points/chains.ts)
 const BATCH = 30; // calls the browser's transport puts in one request
 
 // the files that name the endpoint, beside ENDPOINTS: the contracts' scripts and the documents

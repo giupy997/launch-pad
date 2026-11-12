@@ -50,7 +50,14 @@ export async function GET() {
       timed(async () => {
         const t = { chainId: c.chainId, urls: c.rpcs, chunk: c.chunk };
         const until = Date.now() + CHECK_MS - 500;
-        const seconds = await blockSecondsNow(t, await latestBlock(t, 2_000, until), 5_000n, 2_000, until);
+        // a node that does not say is rpc:<chain>'s to report: here it is "not measured",
+        // not a failure, or a node's hiccup reads on Telegram as a chain that changed pace
+        let seconds: number;
+        try {
+          seconds = await blockSecondsNow(t, await latestBlock(t, 2_000, until), 5_000n, 2_000, until);
+        } catch {
+          return "not measured";
+        }
         const off = seconds / c.blockSeconds;
         const tolerance = c.paceTolerance ?? 1.3;
         if (off > tolerance || off < 1 / tolerance) throw new Error(`${seconds.toFixed(2)} s a block, configured ${c.blockSeconds}`);

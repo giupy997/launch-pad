@@ -84,12 +84,13 @@ export const POINTS_CHAINS: Record<string, PointsChain> = {
     // the pace is no alarm here: a tolerance of 3 rang the first quiet evening.
     blockSeconds: 0.25,
     paceTolerance: Infinity,
-    // the node took these whole during the backfill. Measured on 2026-10-19 from a fast
-    // connection: 1.3 s for 1,000 blocks, 2.4 s for 3,000, 2.2 s for 9,000, 16 s for 27,000, a
-    // timeout past ~80,000: the time is the call's, not the span's, so a smaller window would
-    // only cost more calls. From Netlify's functions every call runs past their 4-second cap,
-    // which is why a coin's history there comes from the points service (lib/points/served.ts)
-    chunk: 9_000n,
+    // what the node takes in one eth_getLogs. Zeeve's, from 2026-11-12: 2,000 blocks and no
+    // more ("eth_getLogs range exceeds 2000 blocks; split the range"), 0.4 s a call, the
+    // pad's first blocks included. (Caldera's, until 2026-11-10, took 9,000 in two seconds
+    // and the time was the call's, not the span's.) A day there is some 200,000 blocks, a
+    // hundred calls: more than a Netlify function's ten seconds hold, which is why a coin's
+    // history and the day of volumes come from the points service (lib/points/served.ts)
+    chunk: 1_999n,
     lag: 60n,
     hidden: [],
     season: { number: 0, name: "Season 0", start: 57_741_789n, end: null, rehearsal: true },

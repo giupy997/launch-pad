@@ -167,9 +167,9 @@ GET  /health
 ```
 
 The two coin routes exist for the site's own `/api/trades` and `/api/holders`
-on a chain with no archive node (Liteforge): its public node answers an
-`eth_getLogs` over 9,000 blocks in about two seconds and the chain makes
-345,000 blocks a day, so a Netlify function, with ten seconds, could read
+on a chain with no archive node (Liteforge): its node takes 2,000 blocks an
+`eth_getLogs` (Zeeve's, from 2026-11-12; Caldera's took 9,000 in about two
+seconds) and the chain makes some 200,000 blocks a day, so a Netlify function, with ten seconds, could read
 minutes of a coin's life and never its history, and a coin's page there
 showed no chart and "Holders ≥ 0". The service has the history already: it
 reads the pad's events without a time budget, and since 2026-10-19 every
