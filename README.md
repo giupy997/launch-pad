@@ -140,7 +140,8 @@ contracts ran before Base, and what the project was before the contracts:
     the Contenders behind it, then every coin under Trending / New /
     Graduated tabs with a sort menu (recently graduated, last trade, market
     cap, 24h volume, bonding progress, newest, oldest), a search box and a
-    choice of cards or rows; every figure computed once per coin from the
+    choice of cards or rows, twenty-four coins at a time with a "Show more"
+    under them; every figure computed once per coin from the
     on-chain list (multicall, 5s refresh) and the day's trades, each coin
     formatted in its own quote
   - `/create`: token creation with logo (1:1) and social links, a searchable

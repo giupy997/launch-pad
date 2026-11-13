@@ -11,6 +11,9 @@ import type { Coin } from "./types";
 
 const num = (v: bigint | undefined) => (v === undefined ? 0 : Number(v));
 const byProgress = (a: Coin, b: Coin) => b.stats.progress - a.stats.progress;
+/** Coins on the page at first, and added by each "Show more": eight rows of three cards. A pad
+ *  with four hundred coins (Liteforge, November 2026) made a page of a hundred and forty rows. */
+const PAGE = 24;
 
 /** the list in the order asked; the input comes newest first */
 function sortCoins(list: Coin[], sort: Sort): Coin[] {
@@ -39,7 +42,7 @@ function sortCoins(list: Coin[], sort: Sort): Coin[] {
 }
 
 /** The explore page below the hero: the most traded coin and the ones behind it, then every
- *  coin under tabs, a sort and a choice of cards or rows. Pure rendering:
+ *  coin under tabs, a sort and a choice of cards or rows, PAGE at a time. Pure rendering:
  *  the page computes the figures (see types.ts). */
 export function ExploreView({
   coins,
@@ -59,14 +62,25 @@ export function ExploreView({
   king: { coin: Coin; holders: number | null | undefined; holdersPartial: boolean; points: number[] } | null;
 }) {
   const [tab, setTabState] = useState<Tab>("trending");
-  const [sort, setSort] = useState<Sort>("volume");
+  const [sort, setSortState] = useState<Sort>("volume");
   const [view, setView] = useState<View>("grid");
-  const [query, setQuery] = useState("");
+  const [query, setQueryState] = useState("");
+  // how many of the list are on the page; another tab, order or search starts from the top again
+  const [shown, setShown] = useState(PAGE);
   const now = useNow(30_000); // one clock for every row's "last trade"
   // a tab brings its natural order; the sort menu may then change it
   const setTab = (t: Tab) => {
     setTabState(t);
-    setSort(t === "graduated" ? "graduated" : t === "new" ? "newest" : "volume");
+    setSortState(t === "graduated" ? "graduated" : t === "new" ? "newest" : "volume");
+    setShown(PAGE);
+  };
+  const setSort = (v: Sort) => {
+    setSortState(v);
+    setShown(PAGE);
+  };
+  const setQuery = (v: string) => {
+    setQueryState(v);
+    setShown(PAGE);
   };
 
   const graduated = coins.filter((c) => c.token.curve.graduated);
@@ -82,6 +96,8 @@ export function ExploreView({
     if (q) out = out.filter((c) => c.token.name.toLowerCase().includes(q) || c.token.symbol.toLowerCase().includes(q) || c.token.address.toLowerCase() === q);
     return sortCoins(out, sort);
   }, [coins, tab, q, sort]);
+  const visible = list.slice(0, shown);
+  const left = list.length - visible.length;
 
   return (
     <div className="space-y-10">
@@ -135,15 +151,25 @@ export function ExploreView({
 
         {view === "grid" ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {list.map((c) => (
+            {visible.map((c) => (
               <TokenCard key={c.token.address} token={c.token} volume24h={c.stats.volume24h} usd={usd} />
             ))}
           </div>
         ) : (
           <div className="space-y-2">
-            {list.map((c) => (
+            {visible.map((c) => (
               <TokenRow key={c.token.address} coin={c} usd={usd} now={now} />
             ))}
+          </div>
+        )}
+        {left > 0 && (
+          <div className="flex flex-col items-center gap-2 pt-2">
+            <button type="button" className="btn-ghost px-5 py-2 text-sm" onClick={() => setShown((n) => n + PAGE)}>
+              Show {Math.min(PAGE, left)} more
+            </button>
+            <p className="label text-zinc-500">
+              {visible.length} of {list.length} coins
+            </p>
           </div>
         )}
         {more && !q && (
