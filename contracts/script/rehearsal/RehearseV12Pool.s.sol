@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import {Script, console} from "forge-std/Script.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {Launchpad} from "../../src/Launchpad.sol";
 import {UniV2Migrator} from "../../src/UniV2Migrator.sol";
 import {Keys} from "./Keys.sol";
@@ -69,8 +70,13 @@ contract RehearseV12Pool is Script {
         single = vm.envOr("SINGLE_SIGNER", false);
         string memory symbol = vm.envOr("SYMBOL", string("GRAD"));
         s.token = vm.envOr("TOKEN", address(0));
-        if (s.token == address(0)) s.token = s.pad.migratedTicker(keccak256(bytes(symbol)));
-        require(s.token != address(0), "no such migrated ticker on this pad (or pass TOKEN)");
+        // by ticker among the pad's coins, the first with it: a ticker names no coin by itself (TOKEN does)
+        uint256 count = s.pad.tokenCount();
+        for (uint256 i = 0; i < count && s.token == address(0); i++) {
+            address t = s.pad.allTokens(i);
+            if (keccak256(bytes(IERC20Metadata(t).symbol())) == keccak256(bytes(symbol))) s.token = t;
+        }
+        require(s.token != address(0), "no coin with this ticker on this pad (or pass TOKEN)");
         (,,,, bool graduated,, address quote) = s.pad.curves(s.token);
         require(graduated, "not graduated: no pool to trade on");
         s.pair = s.migrator.pairOf(s.token);

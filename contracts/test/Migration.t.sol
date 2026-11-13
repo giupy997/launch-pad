@@ -179,6 +179,7 @@ contract MigrationTest is Test {
         uint256 sold_
     ) internal view returns (LaunchpadBase.LedgerCoin memory) {
         return LaunchpadBase.LedgerCoin({
+            id: keccak256(bytes(symbol)), // a ledger's coin: the ticker was the coin
             name: name,
             symbol: symbol,
             meta: _meta(),
@@ -1230,8 +1231,9 @@ contract MigrationTest is Test {
         assertEq(pad.freezeBlock(), block.number + 5);
     }
 
-    /// Two coins of one ticker in a tree (a hand-made file: the tool refuses them) cannot lend
-    /// each other holders: a holder's leaf names its coin by the coin's own leaf.
+    /// Two leaves that name the same coin of a ledger (one id; a hand-made file: the tools
+    /// refuse an id named twice) cannot lend each other holders: a holder's leaf names its
+    /// coin by the coin's own leaf.
     function test_aHolderLeafNamesItsCoinNotItsTicker() public {
         LaunchpadBase.LedgerCoin memory a = _coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold);
         LaunchpadBase.LedgerCoin memory b = _coin("Lite Cat", "LCAT", dave, false, virtualQuote, sold);
@@ -1261,17 +1263,134 @@ contract MigrationTest is Test {
         d.proofs[0] = _proofOf(MerkleTree.holderLeaf(leafB, carol, sold / 2));
         vm.expectRevert(LaunchpadBase.NotInSnapshot.selector);
         mig.migrateBalances(token, d);
-        // the other coin itself can never be created: its ticker is taken
+        // the other coin itself can never be created: it names the same coin of the ledger
         d.holders[0] = carol;
-        vm.expectRevert(LaunchpadBase.TickerMigrated.selector);
+        vm.expectRevert(LaunchpadBase.CoinMigrated.selector);
         mig.migrateToken{value: realQuote}(b, _proofOf(leafB), d);
     }
 
-    function test_aTickerMigratesOnce() public {
+    function test_aCoinMigratesOnce() public {
         _migrate(false);
-        vm.expectRevert(LaunchpadBase.TickerMigrated.selector);
+        vm.expectRevert(LaunchpadBase.CoinMigrated.selector);
         _mt(_coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold), holders, bals, realQuote);
-        assertTrue(pad.migratedTicker(keccak256("LCAT")) != address(0));
+        assertTrue(pad.migratedCoin(keccak256("LCAT")) != address(0));
+    }
+
+    /// The id of a launchpad's coin: its address there, as 32 bytes (snapshot-evm.mjs).
+    function _idOf(address sourceToken) internal pure returns (bytes32) {
+        return bytes32(uint256(uint160(sourceToken)));
+    }
+
+    /// Two coins of a launchpad that share a ticker, as NOTUS and LESTER do on Base v12:
+    /// each is a coin of its own, named by its address there. Both migrate, each to its own
+    /// token with its own holders, and neither takes a holder of the other.
+    function test_twoCoinsThatShareATickerEachMigrate() public {
+        LaunchpadBase.LedgerCoin memory first = _coin("Notus", "NOTUS", creator, false, virtualQuote, sold);
+        LaunchpadBase.LedgerCoin memory second = _coin("Notus", "NOTUS", creator, false, virtualQuote, sold);
+        first.id = _idOf(makeAddr("the first NOTUS on the source pad"));
+        second.id = _idOf(makeAddr("the second NOTUS on the source pad"));
+        // alike in everything but the id: two leaves all the same
+        bytes32 leafFirst = MerkleTree.coinLeaf(first);
+        bytes32 leafSecond = MerkleTree.coinLeaf(second);
+        assertTrue(leafFirst != leafSecond, "the id is part of the leaf");
+
+        address[] memory hs1 = new address[](2);
+        uint256[] memory bs1 = new uint256[](2);
+        (hs1[0], hs1[1]) = (alice, bob);
+        (bs1[0], bs1[1]) = (sold / 2, sold - sold / 2);
+        address[] memory hs2 = new address[](1);
+        uint256[] memory bs2 = new uint256[](1);
+        hs2[0] = carol;
+        bs2[0] = sold;
+        leaves.push(leafFirst);
+        leaves.push(MerkleTree.holderLeaf(leafFirst, alice, bs1[0]));
+        leaves.push(MerkleTree.holderLeaf(leafFirst, bob, bs1[1]));
+        leaves.push(leafSecond);
+        leaves.push(MerkleTree.holderLeaf(leafSecond, carol, sold));
+        _commit();
+
+        address tokenFirst = _mt(first, hs1, bs1, realQuote);
+        address tokenSecond = _mt(second, hs2, bs2, realQuote);
+        assertTrue(tokenFirst != tokenSecond, "two tokens");
+        assertEq(pad.migratedCoin(first.id), tokenFirst);
+        assertEq(pad.migratedCoin(second.id), tokenSecond);
+        assertEq(pad.migrationCoinLeaf(tokenFirst), leafFirst);
+        assertEq(pad.migrationCoinLeaf(tokenSecond), leafSecond);
+        assertEq(LaunchToken(tokenFirst).symbol(), "NOTUS");
+        assertEq(LaunchToken(tokenSecond).symbol(), "NOTUS", "the ticker is kept, by both");
+        assertEq(IERC20(tokenFirst).balanceOf(alice), bs1[0]);
+        assertEq(IERC20(tokenFirst).balanceOf(bob), bs1[1]);
+        assertEq(IERC20(tokenFirst).balanceOf(carol), 0, "the second coin's holder holds none of the first");
+        assertEq(IERC20(tokenSecond).balanceOf(carol), sold);
+        assertEq(IERC20(tokenSecond).balanceOf(alice), 0);
+        assertEq(pad.migrationPending(tokenFirst), 0);
+        assertEq(pad.migrationPending(tokenSecond), 0);
+        assertEq(pad.pendingCoins(), 0, "both delivered whole");
+        assertEq(address(pad).balance, 2 * realQuote, "each with its own reserve");
+
+        // each trades by itself
+        vm.prank(dave);
+        pad.buy{value: 0.01 ether}(tokenSecond, 0);
+        assertGt(IERC20(tokenSecond).balanceOf(dave), 0);
+        assertEq(IERC20(tokenFirst).balanceOf(dave), 0);
+    }
+
+    /// A holder's balance of one of two coins that share a ticker is no balance of the other:
+    /// its leaf names the coin's leaf, and the two leaves differ by their ids.
+    function test_aHolderOfOneTwinIsNotDeliveredToTheOther() public {
+        LaunchpadBase.LedgerCoin memory first = _coin("Notus", "NOTUS", creator, false, virtualQuote, sold);
+        LaunchpadBase.LedgerCoin memory second = _coin("Notus", "NOTUS", creator, false, virtualQuote, sold);
+        first.id = _idOf(makeAddr("the first NOTUS on the source pad"));
+        second.id = _idOf(makeAddr("the second NOTUS on the source pad"));
+        bytes32 leafFirst = MerkleTree.coinLeaf(first);
+        bytes32 leafSecond = MerkleTree.coinLeaf(second);
+        leaves.push(leafFirst);
+        leaves.push(MerkleTree.holderLeaf(leafFirst, alice, sold / 2));
+        leaves.push(leafSecond);
+        leaves.push(MerkleTree.holderLeaf(leafSecond, carol, sold / 2));
+        _commit();
+
+        address[] memory one = new address[](1);
+        uint256[] memory oneBal = new uint256[](1);
+        one[0] = alice;
+        oneBal[0] = sold / 2;
+        LaunchpadBase.Delivery memory d = _deliveryFor(leafFirst, one, oneBal);
+        address tokenFirst = mig.migrateToken{value: realQuote}(first, _proofOf(leafFirst), d);
+
+        // carol's balance is a leaf of the tree, of the second coin's: the first token refuses it
+        one[0] = carol;
+        d = _deliveryFor(leafSecond, one, oneBal);
+        vm.expectRevert(LaunchpadBase.NotInSnapshot.selector);
+        mig.migrateBalances(tokenFirst, d);
+        // and the second coin takes it
+        address tokenSecond = mig.migrateToken{value: realQuote}(second, _proofOf(leafSecond), d);
+        assertEq(IERC20(tokenSecond).balanceOf(carol), sold / 2);
+        assertEq(IERC20(tokenFirst).balanceOf(carol), 0);
+    }
+
+    /// One token per id, whatever else the leaf says: the same coin of the source under
+    /// another ticker (a hand-made file) is refused once the coin has its token.
+    function test_anIdMigratesOnceWhateverItsTicker() public {
+        LaunchpadBase.LedgerCoin memory first = _coin("Notus", "NOTUS", creator, false, virtualQuote, sold);
+        LaunchpadBase.LedgerCoin memory again = _coin("Notus Again", "NOTUS2", creator, false, virtualQuote, sold);
+        first.id = _idOf(makeAddr("NOTUS on the source pad"));
+        again.id = first.id;
+        _add(first, holders, bals);
+        _add(again, holders, bals);
+        _commit();
+        _mt(first, holders, bals, realQuote);
+        vm.expectRevert(LaunchpadBase.CoinMigrated.selector);
+        _mt(again, holders, bals, realQuote);
+    }
+
+    /// A coin without an id is no coin of any snapshot.
+    function test_aCoinWithoutAnIdIsRefused() public {
+        LaunchpadBase.LedgerCoin memory c = _coin("Lite Cat", "LCAT", creator, false, virtualQuote, sold);
+        c.id = bytes32(0);
+        _add(c, holders, bals);
+        _commit();
+        vm.expectRevert(LaunchpadBase.BadMigration.selector);
+        _mt(c, holders, bals, realQuote);
     }
 
     function test_migrationNeedsARootAndEndsWhenClosed() public {

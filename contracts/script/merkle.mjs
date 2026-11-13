@@ -27,6 +27,7 @@ const uint16s = (names) => names.map((name) => ({ name, type: "uint16" }));
 export const LEDGER_COIN = {
   type: "tuple",
   components: [
+    { name: "id", type: "bytes32" },
     { name: "name", type: "string" },
     { name: "symbol", type: "string" },
     { name: "meta", type: "tuple", components: strings(["logoURI", "website", "twitter", "telegram", "livestream", "description"]) },
@@ -54,7 +55,9 @@ const LEAF_HOLDER = 2;
  *  destination's quote with its reserve and its pots, the launchpad's own rate left for the
  *  pad to stamp (platformBps 0). */
 export function ledgerCoin(c, destQuote = zeroAddress) {
+  if (!/^0x[0-9a-fA-F]{64}$/.test(c.id ?? "") || /^0x0{64}$/.test(c.id)) throw new Error(`${c.symbol}: the file names no id for this coin (32 bytes: its address on the source pad, or the hash of its ticker for a ledger's coin)`);
   return {
+    id: c.id,
     name: c.name,
     symbol: c.symbol,
     meta: {
@@ -126,10 +129,21 @@ export function buildTree(leaves) {
   return { root, proof };
 }
 
-/** The tree of a snapshot file's coins: coin by coin, its leaf then its holders'. */
+/** The id of a coin of an EVM launchpad: its address there, as 32 bytes. */
+export const coinIdOfToken = (token) => `0x${getAddress(token).slice(2).toLowerCase().padStart(64, "0")}`;
+/** The id of a coin of the Litecoin ledger, where the ticker was the coin: its hash. */
+export const coinIdOfTicker = (symbol) => keccak256(new TextEncoder().encode(symbol));
+
+/** The tree of a snapshot file's coins: coin by coin, its leaf then its holders'. An id
+ *  named twice is refused: the pad gives one token per id, and a holder's balance proves
+ *  itself for the coin its leaf names. */
 export function migrationTree(coins, destQuote = zeroAddress) {
   const leaves = [];
+  const ids = new Set();
   for (const c of coins) {
+    const id = String(c.id).toLowerCase();
+    if (ids.has(id)) throw new Error(`${c.symbol}: the id ${c.id} names two coins of the file`);
+    ids.add(id);
     if (c.holders.length !== c.balances.length) throw new Error(`${c.symbol}: holders and balances differ in length`);
     const leaf = coinLeaf(ledgerCoin(c, destQuote));
     leaves.push(leaf);

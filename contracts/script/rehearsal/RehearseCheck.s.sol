@@ -20,7 +20,7 @@ contract RehearseCheck is Script {
         UniV2Migrator migrator = UniV2Migrator(payable(vm.parseJsonAddress(t, ".migrator")));
 
         for (uint256 i = 0; i < coins.length; i++) {
-            address token = pad.migratedTicker(keccak256(bytes(coins[i].symbol)));
+            address token = pad.migratedCoin(coins[i].id);
             require(token != address(0), string.concat(coins[i].symbol, ": not migrated"));
             require(pad.migrationPending(token) == 0, string.concat(coins[i].symbol, ": holders still pending"));
             _checkHolders(coins[i], token);

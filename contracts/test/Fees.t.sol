@@ -473,6 +473,7 @@ contract FeesTest is Test {
         LaunchpadBase.FeeConfig memory ledgerFees = custom;
         ledgerFees.platformBps = 100; // the ledger's launchpad fee: not this launchpad's
         LaunchpadBase.LedgerCoin memory coin = LaunchpadBase.LedgerCoin({
+            id: keccak256("LEDG"),
             name: "Ledger Coin",
             symbol: "LEDG",
             meta: meta,
@@ -537,6 +538,7 @@ contract FeesTest is Test {
         // everyone sold into the pool there, or the coins were burned: nothing to deliver, so the pool is seeded at once
         uint256 burnedThere = 10_000_000e18;
         LaunchpadBase.LedgerCoin memory coin = LaunchpadBase.LedgerCoin({
+            id: keccak256("EMPT"),
             name: "Empty Coin",
             symbol: "EMPT",
             meta: meta,

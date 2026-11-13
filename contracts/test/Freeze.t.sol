@@ -159,6 +159,7 @@ contract FreezeTest is Test {
         returns (LaunchpadBase.LedgerCoin memory)
     {
         return LaunchpadBase.LedgerCoin({
+            id: keccak256(bytes(symbol)),
             name: name,
             symbol: symbol,
             meta: meta,

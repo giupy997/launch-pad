@@ -1,6 +1,7 @@
 #!/bin/bash
 # A local rehearsal of a migration, on one anvil node: a pad quoted in a mock
-# cbLTC gets two coins and three holders, freezes, migrates out; the snapshot
+# cbLTC gets three coins, two of them under one ticker (each migrates as a
+# coin of its own, named by its address), and three holders, freezes, migrates out; the snapshot
 # tool reads it at the freeze block; a fresh v12 pad receives the coins through
 # MigrateFromLedger; a check compares every holder and every price; then the
 # graduated coin's twin is bought, sold and harvested on its pool. Needs
@@ -51,10 +52,17 @@ if [ "$MIGRATE_AS" = operator ]; then KEY=$ALICE; else KEY=$DEPLOYER; fi
 [ -n "${FEES:-}" ] && SNAP+=(--fees "$FEES")
 
 echo "== 4. the snapshot, at the freeze block"
-node script/snapshot-evm.mjs --rpc $RPC --launchpad "$PAD" --quote "$QUOTE" --from-block 0 --network anvil "${SNAP[@]}" --out "$MIG/anvil-rehearsal.json"
+node script/snapshot-evm.mjs --rpc $RPC --launchpad "$PAD" --quote "$QUOTE" --from-block 0 --network anvil ${SNAP[@]+"${SNAP[@]}"} --out "$MIG/anvil-rehearsal.json"
 
 echo "== 5. migrateOut: the quote leaves for the bridging account"
 forge script script/rehearsal/RehearseMigrateOut.s.sol --rpc-url $RPC --broadcast 2>&1 | show
+
+if [ "$MIGRATE_AS" = operator ]; then
+  # the root is the owner's to commit (setMigrationRoot): the operator delivers what it proves and cannot set it
+  echo "== 5b. the owner commits the snapshot's root"
+  cast send "$TARGET" "setMigrationRoot(bytes32,uint256)" "0x$(node -p "require('$MIG/anvil-rehearsal.json').stateRoot")" \
+    "$(node -p "require('$MIG/anvil-rehearsal.json').freezeHeight")" --rpc-url $RPC --private-key $DEPLOYER >/dev/null
+fi
 
 echo "== 6. the migration itself (MigrateFromLedger, direct)"
 ALLOW_DRY_RUN=true LAUNCHPAD=$TARGET MIGRATION_FILE=$MIG/anvil-rehearsal.json forge script script/MigrateFromLedger.s.sol --rpc-url $RPC --private-key "$KEY" --broadcast 2>&1 | show

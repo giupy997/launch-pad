@@ -2,7 +2,7 @@
  "network": "test",
  "height": 3600090,
  "freezeHeight": 3600090,
- "stateRoot": "46c19381e8fb095571fe24d39cc68c42759b31f87aacc32c6866c3053061718e",
+ "stateRoot": "c505c1fdaff8f7637b5a1343f0c41ee5c9dd6f6a447c84e3d361a4b213ee0a31",
  "generatedAt": "2026-09-27T17:08:14.365Z",
  "totals": {
   "coins": 3,
@@ -17,6 +17,7 @@
  "coins": [
   {
    "name": "Chikun",
+   "id": "0x0c24a8e21cbec8892deaed476c847f6183514a061b4c186ae1b138c0b23a2d8d",
    "symbol": "CHIKUN",
    "logo": "",
    "creator": "0x8fc5ea0D9ebb9E4D892000Eb63077A887789496d",
@@ -44,6 +45,7 @@
   },
   {
    "name": "Lite Cat",
+   "id": "0x84053d8ef3bab7422255acdc01718824386bc3fa1170041b7bb26405038e418b",
    "symbol": "LCAT",
    "logo": "https://i.imgur.com/1Q9Z1Zm.png",
    "creator": "0x2F36E1dB7ef4bf6394D65BD84C091774a9673471",
@@ -79,6 +81,7 @@
   },
   {
    "name": "Mimble",
+   "id": "0x041545ad0e5fc216a90ff8a3328f1fafe8bc315658da7714deb9155e4a85b096",
    "symbol": "MWEB",
    "logo": "",
    "creator": "0xAa96DFFd61B8C21b69b06F98710eF65c74eeD595",

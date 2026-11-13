@@ -21,7 +21,7 @@ contract TimelockTest is Test {
     TimelockController timelock;
     MigrateFromLedger script;
     uint256 constant DELAY = 2 days;
-    bytes32 constant ROOT = bytes32(uint256(0x46c19381e8fb095571fe24d39cc68c42759b31f87aacc32c6866c3053061718e));
+    bytes32 constant ROOT = bytes32(uint256(0xc505c1fdaff8f7637b5a1343f0c41ee5c9dd6f6a447c84e3d361a4b213ee0a31));
 
     function setUp() public {
         pad = new Launchpad(makeAddr("treasury"));
@@ -150,7 +150,7 @@ contract TimelockTest is Test {
         assertEq(address(pad).balance, total, "every reserve arrived, from the operator");
         assertTrue(script.allMigrated(pad, coins));
         for (uint256 i = 0; i < coins.length; i++) {
-            address token = pad.migratedTicker(keccak256(bytes(coins[i].symbol)));
+            address token = pad.migratedCoin(coins[i].id);
             assertEq(pad.migrationPending(token), 0);
             for (uint256 j = 0; j < coins[i].holders.length; j++) {
                 assertEq(IERC20(token).balanceOf(coins[i].holders[j]), coins[i].balances[j]);
@@ -197,12 +197,12 @@ contract TimelockTest is Test {
         assertEq(script.executeFromFile(timelock, pad, json, coins), 1, "the same plan, now ready, runs");
         assertEq(pad.tokenCount(), 3);
         assertEq(
-            pad.migrationRoot(), bytes32(uint256(0x46c19381e8fb095571fe24d39cc68c42759b31f87aacc32c6866c3053061718e))
+            pad.migrationRoot(), bytes32(uint256(0xc505c1fdaff8f7637b5a1343f0c41ee5c9dd6f6a447c84e3d361a4b213ee0a31))
         );
         assertEq(address(pad).balance, total, "every reserve arrived through the timelock");
         assertTrue(script.allMigrated(pad, coins));
         for (uint256 i = 0; i < coins.length; i++) {
-            address token = pad.migratedTicker(keccak256(bytes(coins[i].symbol)));
+            address token = pad.migratedCoin(coins[i].id);
             assertEq(pad.migrationPending(token), 0);
             for (uint256 j = 0; j < coins[i].holders.length; j++) {
                 assertEq(IERC20(token).balanceOf(coins[i].holders[j]), coins[i].balances[j]);
@@ -232,6 +232,7 @@ contract TimelockTest is Test {
         coins[0].name = "Crowd";
         coins[0].sold = sold;
         coins[0].symbol = "CROWD";
+        coins[0].id = keccak256(bytes("CROWD"));
         coins[0].virtualQuote = 0.2 ether;
         // the reserve a constant-product curve holds for what was sold
         coins[0].realQuote = (coins[0].virtualQuote * sold) / (pad.VIRTUAL_TOKEN() - sold);
@@ -271,7 +272,7 @@ contract TimelockTest is Test {
         (uint256 calls, bytes4 first) = _round(coins);
         assertEq(calls, 2, "root and the creation with the first batch");
         assertEq(first, ILaunchpadMigration.setMigrationRoot.selector);
-        address token = pad.migratedTicker(keccak256(bytes("CROWD")));
+        address token = pad.migratedCoin(keccak256(bytes("CROWD")));
         assertTrue(token != address(0));
         assertEq(pad.migrationPending(token), 20 * 1_000_000e18, "twenty holders still to deliver");
         assertFalse(script.allMigrated(pad, coins));

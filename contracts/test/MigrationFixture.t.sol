@@ -8,7 +8,10 @@ import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 /// End to end: the file `parked/litecoin/migration-snapshot.ts` writes from a
 /// real ledger snapshot (here the demo one) goes through the migration script
-/// into a fresh Launchpad, and every holder ends up with their balance.
+/// into a fresh Launchpad, and every holder ends up with their balance. Each
+/// coin of the file carries its `id`, the hash of its ticker (on the ledger
+/// the ticker was the coin); the parked tool predates the field, added to
+/// this file by hand with the root the tree gives with it.
 contract MigrationFixtureTest is Test {
     function test_demoLedgerMigratesEndToEnd() public {
         string memory json = vm.readFile("test/fixtures/migration-demo.json");
@@ -26,12 +29,12 @@ contract MigrationFixtureTest is Test {
 
         script.ensureRoot(pad, json);
         assertEq(
-            pad.migrationRoot(), bytes32(uint256(0x46c19381e8fb095571fe24d39cc68c42759b31f87aacc32c6866c3053061718e))
+            pad.migrationRoot(), bytes32(uint256(0xc505c1fdaff8f7637b5a1343f0c41ee5c9dd6f6a447c84e3d361a4b213ee0a31))
         );
         assertEq(pad.migrationFreezeHeight(), 3_600_090);
         address[] memory tokens = script.migrateAll(pad, coins);
         assertEq(tokens.length, 3);
-        // running it again changes nothing: every ticker exists, every holder was delivered
+        // running it again changes nothing: every coin has its token, every holder was delivered
         address[] memory again = script.migrateAll(pad, coins);
         for (uint256 i = 0; i < tokens.length; i++) {
             assertEq(again[i], tokens[i]);

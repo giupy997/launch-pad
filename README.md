@@ -50,7 +50,10 @@ contracts ran before Base, and what the project was before the contracts:
     may run a migration into the pad without the timelock's delay, delivering
     only what the snapshot's Merkle root (committed through the timelock)
     proves: a leaf per coin, a leaf per holder's balance
-    (`script/MerkleTree.sol`, `script/merkle.mjs`). v11's
+    (`script/MerkleTree.sol`, `script/merkle.mjs`). A coin is named by its
+    `id`, its address on the pad it comes from, never by its ticker, which
+    two coins may share: one token per id (`migratedCoin`; in the
+    repository's pad, the v12 on Base reserves the ticker). v11's
     pre-markets, RWA quote lists and `setFeeSplit` are gone (the old
     adapters and tests are parked in `contracts/legacy/`)
   - `src/LaunchToken.sol` — ERC-20 created by the launchpad; transfers locked

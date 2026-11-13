@@ -69,6 +69,7 @@ contract MigrateFromLedger is Script {
         address feeRecipient;
         address[] holders;
         uint256 holdersBps;
+        bytes32 id; // the coin on its source: its address there as 32 bytes, or the hash of its ticker (a ledger's coin)
         uint256 liquidityBps;
         uint256 liquidityPot;
         string livestream;
@@ -108,7 +109,7 @@ contract MigrateFromLedger is Script {
 
     /// The Coin struct for vm.parseJsonTypeArray, field for field in declaration order.
     string public constant COIN_TYPE =
-        "Coin(uint256[] balances,uint256 burnBps,uint256 burnPot,uint256 burned,uint256 buyTaxBps,address creator,uint256 creatorBps,string description,address feeRecipient,address[] holders,uint256 holdersBps,uint256 liquidityBps,uint256 liquidityPot,string livestream,string logo,string name,uint256 poolToken,uint256 realQuote,uint256 sellTaxBps,uint256 sold,string symbol,string telegram,string twitter,uint256 virtualQuote,string website)";
+        "Coin(uint256[] balances,uint256 burnBps,uint256 burnPot,uint256 burned,uint256 buyTaxBps,address creator,uint256 creatorBps,string description,address feeRecipient,address[] holders,uint256 holdersBps,bytes32 id,uint256 liquidityBps,uint256 liquidityPot,string livestream,string logo,string name,uint256 poolToken,uint256 realQuote,uint256 sellTaxBps,uint256 sold,string symbol,string telegram,string twitter,uint256 virtualQuote,string website)";
 
     /// Holders delivered per transaction: ~35k gas each keeps a batch well
     /// inside any block.
@@ -244,12 +245,12 @@ contract MigrateFromLedger is Script {
         }
     }
 
-    /// Create the coin if this ticker has no token yet, then deliver every
+    /// Create the coin if its id has no token yet, then deliver every
     /// holder not delivered already, BATCH at a time; `p` the coin's proofs
     /// against the file's tree (tree()).
     function migrateOne(Launchpad pad, Coin memory c, address quote, Proofs memory p) public returns (address token) {
         require(c.holders.length == c.balances.length, "holders/balances mismatch");
-        token = pad.migratedTicker(keccak256(bytes(c.symbol)));
+        token = pad.migratedCoin(c.id);
         uint256 from = 0;
         if (token == address(0)) {
             uint256 first = c.holders.length < BATCH ? c.holders.length : BATCH;
@@ -417,7 +418,7 @@ contract MigrateFromLedger is Script {
     /// Every coin has its token and no holder left to deliver.
     function allMigrated(Launchpad pad, Coin[] memory coins) public view returns (bool) {
         for (uint256 i = 0; i < coins.length; i++) {
-            address token = pad.migratedTicker(keccak256(bytes(coins[i].symbol)));
+            address token = pad.migratedCoin(coins[i].id);
             if (token == address(0) || pad.migrationPending(token) != 0) return false;
         }
         return true;
@@ -431,7 +432,7 @@ contract MigrateFromLedger is Script {
         returns (uint256)
     {
         require(c.holders.length == c.balances.length, "holders/balances mismatch");
-        address token = pad.migratedTicker(keccak256(bytes(c.symbol)));
+        address token = pad.migratedCoin(c.id);
         if (token == address(0)) {
             uint256 first = c.holders.length < BATCH ? c.holders.length : BATCH;
             calls[n++] = Call(
@@ -477,12 +478,13 @@ contract MigrateFromLedger is Script {
     /// What the coins not created yet need together.
     function _stillNeeded(Launchpad pad, Coin[] memory coins) internal view returns (uint256 total) {
         for (uint256 i = 0; i < coins.length; i++) {
-            if (pad.migratedTicker(keccak256(bytes(coins[i].symbol))) == address(0)) total += _value(coins[i]);
+            if (pad.migratedCoin(coins[i].id) == address(0)) total += _value(coins[i]);
         }
     }
 
     function _ledgerCoin(Coin memory c, address quote) internal pure returns (LaunchpadBase.LedgerCoin memory) {
         return LaunchpadBase.LedgerCoin({
+            id: c.id,
             name: c.name,
             symbol: c.symbol,
             meta: LaunchpadBase.TokenMetadata({
@@ -538,24 +540,21 @@ contract MigrateFromLedger is Script {
         }
     }
 
-    /// The ticker → token map the site serves as /migrated/<source chain id>.json,
-    /// written next to the migration file.
+    /// The map from each coin to its token here, which the site serves as
+    /// /migrated/<source chain id>.json, written next to the migration file.
     function writeMigrated(Launchpad pad, Coin[] memory coins, string memory file) public {
         string memory json = vm.readFile(file);
         string memory tokensKey = "tokens";
         string memory tokensJson = "";
-        // keyed by the coin's address on the source pad, lowercase, where the file names them
-        // (snapshot-evm.mjs: `sourceTokens`): a ticker is not unique, an address is; by ticker
-        // for a file without them (the Litecoin ledger's)
-        bool byAddress = vm.keyExistsJson(json, ".sourceTokens");
+        // keyed by the coin's address on the source pad, lowercase, where its id is one (an
+        // id with twelve empty bytes ahead of it: snapshot-evm.mjs): a ticker is not unique,
+        // an address is; by ticker for a coin whose id is its ticker's hash (the Litecoin ledger's)
         for (uint256 i = 0; i < coins.length; i++) {
             string memory key = coins[i].symbol;
-            if (byAddress) {
-                key = vm.toLowercase(
-                    vm.toString(vm.parseJsonAddress(json, string.concat(".sourceTokens.", coins[i].symbol)))
-                );
+            if (uint256(coins[i].id) >> 160 == 0) {
+                key = vm.toLowercase(vm.toString(address(uint160(uint256(coins[i].id)))));
             }
-            tokensJson = vm.serializeAddress(tokensKey, key, pad.migratedTicker(keccak256(bytes(coins[i].symbol))));
+            tokensJson = vm.serializeAddress(tokensKey, key, pad.migratedCoin(coins[i].id));
         }
         string memory outKey = "out";
         vm.serializeString(outKey, "network", vm.parseJsonString(json, ".network"));
@@ -566,7 +565,9 @@ contract MigrateFromLedger is Script {
         string memory out = vm.serializeString(outKey, "tokens", tokensJson);
         string memory path = string.concat(file, ".migrated.json");
         vm.writeJson(out, path);
-        console.log(byAddress ? "address -> token map written to" : "ticker -> token map written to", path);
+        console.log(
+            "the map from each coin (its address on the source pad, or its ticker) to its token is written to", path
+        );
     }
 
     /// The holders from `from` to `to`, with their proofs.

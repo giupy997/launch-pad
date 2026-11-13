@@ -23,6 +23,7 @@ contract RehearseSource is Script {
         UniV2Migrator migrator;
         address curveCoin;
         address gradCoin;
+        address twinCoin;
         uint256 freezeAt;
     }
 
@@ -94,6 +95,17 @@ contract RehearseSource is Script {
         vm.stopBroadcast();
 
         _poolBuy();
+
+        // a second coin under GRAD's ticker, on its curve with a holder: two coins of a pad may
+        // share a ticker (NOTUS and LESTER do on Base v12) and each migrates as a coin of its own
+        vm.startBroadcast(Keys.ALICE);
+        e.twinCoin = e.pad
+            .createTokenWithFees(
+                "Grad Coin", "GRAD", 0, meta, address(e.quote), LaunchpadBase.FeeConfig(0, 0, 10_000, 0, 0, 0, 0)
+            );
+        e.quote.approve(address(e.pad), 2e8);
+        e.pad.buyWithQuote(e.twinCoin, 2e8, 0);
+        vm.stopBroadcast();
     }
 
     /// bob buys GRAD from its pool after graduation: a holder the curve never saw.
@@ -124,6 +136,7 @@ contract RehearseSource is Script {
         vm.serializeAddress(j, "migrator", address(e.migrator));
         vm.serializeAddress(j, "curveCoin", e.curveCoin);
         vm.serializeAddress(j, "gradCoin", e.gradCoin);
+        vm.serializeAddress(j, "twinCoin", e.twinCoin);
         vm.serializeAddress(j, "cold", vm.addr(Keys.DEPLOYER));
         vm.writeJson(vm.serializeUint(j, "freezeBlock", e.freezeAt), Keys.SOURCE);
 
@@ -131,6 +144,7 @@ contract RehearseSource is Script {
         console.log("quote (mock cbLTC):", address(e.quote));
         console.log("CURVE:", e.curveCoin);
         console.log("GRAD:", e.gradCoin);
+        console.log("GRAD, the second coin under that ticker:", e.twinCoin);
         console.log("freeze announced for block", e.freezeAt);
     }
 }

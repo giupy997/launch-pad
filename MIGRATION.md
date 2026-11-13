@@ -165,6 +165,13 @@ keyed URL never sits in a command line; the shell refuses to run without
 refuse the pad's whole history from a server, so a snapshot on
 `https://mainnet.base.org` alone stalls on the day.
 
+Two coins of the pad that share a ticker (nine tickers of v12's fifty coins
+do, `NOTUS` and `LESTER` among them) each move as a coin of their own: the
+file names every coin by its `id`, its address on Base, the receiving pad
+gives one token to an id, and both keep their ticker (`SECURITY.md`, M-06).
+The snapshot lists them in its warnings; `--fees` names such a coin by its
+address.
+
 Read its warnings: coins parked in the vault (another provider's share of
 the launchpad's pool, coins sent to the pad) are yours to hand back by hand
 afterwards; coins of unsold pool fees are for the harvest below, run now,

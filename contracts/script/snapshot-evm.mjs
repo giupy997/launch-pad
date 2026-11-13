@@ -37,7 +37,9 @@
 // The file's `stateRoot` is the root of its Merkle tree (a leaf per coin, a
 // leaf per holder: merkle.mjs), which the receiving pad commits to and proves
 // every delivery against; anyone can run this on the frozen source and
-// compare the root. The ABIs it needs are written here, so it reads a v11 pad and a v12 pad
+// compare the root. Each coin carries its `id`, its address on this pad as 32
+// bytes: the receiving pad gives one token to an id, so two coins that share a
+// ticker (nine tickers of Base v12's fifty coins do) each migrate as their own. The ABIs it needs are written here, so it reads a v11 pad and a v12 pad
 // alike (the fee configuration has six fields on one, seven on the other;
 // a v12 pad's unsold pool fees — its tax buckets — are counted as burned,
 // since migrateOut burns them).
@@ -60,7 +62,7 @@ import {
   formatUnits,
   zeroAddress,
 } from "../../web/node_modules/viem/_esm/index.js";
-import { migrationTree } from "./merkle.mjs";
+import { coinIdOfToken, migrationTree } from "./merkle.mjs";
 
 // Every crash goes through one printer: viem quotes the request URL in its
 // messages, and a keyed node's URL carries its key, so every configured URL
@@ -127,7 +129,8 @@ const scale = BigInt(flag("scale", "1"));
 if (scale < 1n) throw new Error("--scale must be 1 or more");
 if (scale !== 1n && !allowUnfrozen) throw new Error("--scale is for a dry run: add --allow-unfrozen");
 // --fees SYMBOL=buy/sell/creator/holders/burn/liquidity: the fee configuration a coin takes on the
-// new pad instead of its own (the pad validates the same bounds at migrateToken)
+// new pad instead of its own (the pad validates the same bounds at migrateToken); the coin's
+// address in place of SYMBOL where several coins carry the ticker
 const feeOverrides = {};
 for (const spec of (flag("fees") ?? "").split(",").map((x) => x.trim()).filter(Boolean)) {
   const m = /^([^=]+)=(\d+)\/(\d+)\/(\d+)\/(\d+)\/(\d+)\/(\d+)$/.exec(spec);
@@ -135,7 +138,7 @@ for (const spec of (flag("fees") ?? "").split(",").map((x) => x.trim()).filter(B
   const [buy, sell, creator, holders, burn, liquidity] = m.slice(2).map(Number);
   if (buy > 1000 || sell > 1000) throw new Error(`--fees ${m[1]}: a tax is 1000 bps (10%) at most`);
   if (creator + holders + burn + liquidity !== 10_000) throw new Error(`--fees ${m[1]}: the four shares must add to 10,000`);
-  feeOverrides[m[1]] = { buyTaxBps: buy, sellTaxBps: sell, creatorBps: creator, holdersBps: holders, burnBps: burn, liquidityBps: liquidity };
+  feeOverrides[/^0x[0-9a-fA-F]{40}$/.test(m[1]) ? m[1].toLowerCase() : m[1]] = { buyTaxBps: buy, sellTaxBps: sell, creatorBps: creator, holdersBps: holders, burnBps: burn, liquidityBps: liquidity };
 }
 
 // The ABIs, written here rather than read from out/: a v11 pad and a v12 pad
@@ -300,7 +303,7 @@ async function logsOf(address, event, eventArgs) {
 }
 
 const coins = [];
-const sourceTokens = {};
+const tokensOf = new Map(); // ticker → the coins that carry it: a ticker names no coin by itself
 const warnings = [];
 const contractHolders = [];
 const ZERO = zeroAddress;
@@ -313,7 +316,7 @@ for (const token of tokens) {
     warnings.push(`${symbol}: quoted in ${coinQuote}, not the migrating quote asset — left out`);
     continue;
   }
-  if (sourceTokens[symbol]) throw new Error(`${symbol}: two coins share this ticker (${sourceTokens[symbol]} and ${token}); the receiving pad names one token per ticker — migrate one of them by hand`);
+  tokensOf.set(symbol, [...(tokensOf.get(symbol) ?? []), token]);
   const [logoURI, website, twitter, telegram, livestream, description] = await read(launchpad, padAbi, "tokenMetadata", [token], block);
   // seven fields on a v12 pad, six on a v11: the seventh (the launchpad's own
   // rate, stamped at creation) is not carried — the receiving pad stamps its own
@@ -325,8 +328,9 @@ for (const token of tokens) {
     fees = await read(launchpad, feeConfigAbi6, "feeConfig", [token], block);
   }
   let [buyTaxBps, sellTaxBps, creatorBps, holdersBps, burnBps, liquidityBps] = fees;
-  if (feeOverrides[symbol]) {
-    const o = feeOverrides[symbol];
+  // an override names its coin by its address, or by its ticker where one coin alone carries it (checked below)
+  const o = feeOverrides[token.toLowerCase()] ?? feeOverrides[symbol];
+  if (o) {
     warnings.push(`${symbol}: fees set for the new pad by --fees: ${o.buyTaxBps}/${o.sellTaxBps} bps tax, shares ${o.creatorBps}/${o.holdersBps}/${o.burnBps}/${o.liquidityBps} (on the source: ${buyTaxBps}/${sellTaxBps}, ${creatorBps}/${holdersBps}/${burnBps}/${liquidityBps})`);
     ({ buyTaxBps, sellTaxBps, creatorBps, holdersBps, burnBps, liquidityBps } = o);
   }
@@ -458,10 +462,10 @@ for (const token of tokens) {
     realQuote = graduated ? realQuote / scale : soldNow === 0n ? 0n : (virtualQuote * soldNow) / (VIRTUAL_TOKEN - soldNow);
   }
   bridgeWei += realQuote + burnPot + liquidityPot;
-  sourceTokens[symbol] = token;
   // the keys in the order vm.parseJson lays them out (alphabetical), so the
   // script's Coin struct reads them straight
   coins.push({
+    id: coinIdOfToken(token), // the coin on this pad: its address, which the receiving pad gives one token to
     name,
     symbol,
     logo: logoURI,
@@ -490,8 +494,18 @@ for (const token of tokens) {
   });
   console.log(`${symbol}: ${holders.length} holders · ${graduated ? "graduated, pool" : "curve"} ${outUnits(realQuote)} quote${pair ? ` · pair ${pair}` : ""}${taxBuckets !== 0n ? ` · ${taxBuckets} coins of fees to burn` : ""}`);
 }
-for (const sym of Object.keys(feeOverrides)) {
-  if (!sourceTokens[sym]) throw new Error(`--fees names ${sym}, which is not a coin of this pad (${Object.keys(sourceTokens).join(", ")})`);
+for (const key of Object.keys(feeOverrides)) {
+  if (/^0x[0-9a-f]{40}$/.test(key)) {
+    if (!coins.some((c) => c.id === coinIdOfToken(key))) throw new Error(`--fees names ${key}, which is not a coin of this pad`);
+  } else if (!tokensOf.has(key)) {
+    throw new Error(`--fees names ${key}, which is not a coin of this pad (${[...tokensOf.keys()].join(", ")})`);
+  } else if (tokensOf.get(key).length > 1) {
+    throw new Error(`--fees names ${key}, a ticker ${tokensOf.get(key).length} coins carry (${tokensOf.get(key).join(", ")}): name the coin by its address`);
+  }
+}
+// tickers more than one coin carries: each coin moves under its own id (its address here) and keeps its ticker
+for (const [sym, list] of tokensOf) {
+  if (list.length > 1) warnings.push(`${sym}: ${list.length} coins carry this ticker (${list.join(", ")}): each migrates as a coin of its own`);
 }
 if (contractHolders.length) {
   for (const h of contractHolders) warnings.push(`a contract holds coins: ${h}`);
@@ -541,7 +555,6 @@ const out = {
     vault: vault,
   },
   unresolved: [],
-  sourceTokens,
   feeOverrides,
   warnings,
   coins,

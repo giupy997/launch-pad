@@ -175,6 +175,20 @@ from, does not depend on the pace; the time a position has to be held across a r
 is shorter. The pad cannot be changed; a curve coin's burn pot is its tax on curve trades, a
 fraction of a cbLTC on every coin of the pad at that date. Noted, not changed.
 
+### A migrated coin's identity (2026-11-13)
+
+The migration into a pad named a coin by its ticker: `migrateToken` reserved the hash of the
+symbol (`migratedTicker`) and refused a second coin with it, and the tools found a coin's token
+by its ticker. That is the Litecoin ledger's rule, where the ticker was the coin. On a launchpad
+a ticker names nothing (L-06): read on 2026-11-13, nine tickers of the Base v12 pad's fifty
+coins are shared, `NOTUS` (`0xf679…132e`, on its curve with 1.35 cbLTC, created before the
+graduated `0x4CFC…0fE5`) and `LESTER` among them, and 54 tickers of the Liteforge pad's 408.
+Found while planning a move of the Liteforge pad to the current stack.
+
+| ID | Finding | Status |
+|---|---|---|
+| M-06 | A coin could not be migrated beside another with its ticker. `snapshot-evm.mjs` stopped at the first shared ticker ("migrate one of them by hand"), so the dry run of the Base to LitVM move would not have produced a file; with a hand-made file the pad gave the ticker to whichever coin the operator delivered first and reverted the other (`TickerMigrated`), leaving that coin's holders on the frozen pad with its reserve already taken out. The uniqueness of the ticker was also what kept two coins' leaves apart: two coins alike in every field have one leaf, and a holder's balance, which names its coin by that leaf, would have proved itself for either. Latent: no migration into a v12 pad was ever run on a live chain, and the pad it concerns is the one not yet deployed | Fixed 2026-11-13 in the repository, for the next stack: `LedgerCoin` carries an `id`, the coin's address on its source pad as 32 bytes (the hash of its ticker for a ledger's coin), part of its leaf; the pad gives one token to an id (`migratedCoin`, `CoinMigrated`) and refuses a coin without one. `snapshot-evm.mjs` writes it and lets shared tickers through with a warning, `merkle.mjs` refuses an id named twice, `MigrateFromLedger.s.sol` and the rehearsal find a coin's token by its id, and the map the site serves is keyed by the source address. Tests: two coins of one ticker each migrate with their own holders, a holder of one is not delivered to the other, an id migrates once whatever its ticker, a coin without an id is refused (`Migration.t.sol`); `rehearse-local.sh` moves two coins under one ticker end to end, in both quotes |
+
 ## Dependency policy (`web/`)
 
 - `npm ci --ignore-scripts` everywhere: the lock is installed as it is and no

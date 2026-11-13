@@ -114,7 +114,7 @@ contract LaunchpadMigration is LaunchpadBase {
         _checkLedgerCoin(coin, first.holders.length);
         bytes32 leaf = _proveCoin(coin, coinProof);
         token = tokenFactory.create(coin.name, coin.symbol, TOTAL_SUPPLY);
-        _claimTicker(coin.symbol, token);
+        _claimCoin(coin.id, token);
         migrationCoinLeaf[token] = leaf;
         curves[token] = _ledgerCurve(coin);
         tokenMetadata[token] = coin.meta;
@@ -162,11 +162,12 @@ contract LaunchpadMigration is LaunchpadBase {
         if (!MerkleProof.verifyCalldata(proof, migrationRoot, leaf)) revert NotInSnapshot();
     }
 
-    /// One token per ledger ticker.
-    function _claimTicker(string calldata symbol, address token) internal {
-        bytes32 sym = keccak256(bytes(symbol));
-        if (migratedTicker[sym] != address(0)) revert TickerMigrated();
-        migratedTicker[sym] = token;
+    /// One token per coin of the snapshot, named by its id: a coin with no
+    /// id is no coin, and one that has its token is not created again.
+    function _claimCoin(bytes32 id, address token) internal {
+        if (id == bytes32(0)) revert BadMigration();
+        if (migratedCoin[id] != address(0)) revert CoinMigrated();
+        migratedCoin[id] = token;
     }
 
     /// Only state the ledger could have produced. A coin that graduated there

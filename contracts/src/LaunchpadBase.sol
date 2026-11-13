@@ -133,6 +133,7 @@ abstract contract LaunchpadBase is Ownable, ReentrancyGuard {
     /// chain's previous launchpad (see MIGRATION.md). Amounts arrive in the
     /// quote's own units and 1e18-unit tokens.
     struct LedgerCoin {
+        bytes32 id; //            the coin where it lived, one token per id (migratedCoin): its address there for a launchpad's coin, the hash of its ticker for the Litecoin ledger's
         string name;
         string symbol;
         TokenMetadata meta;
@@ -186,8 +187,14 @@ abstract contract LaunchpadBase is Ownable, ReentrancyGuard {
     bytes32 public migrationRoot;
     uint256 public migrationFreezeHeight;
     bool public migrationClosed;
-    /// One token per ledger ticker: a coin cannot be migrated twice.
-    mapping(bytes32 symbolHash => address) public migratedTicker;
+    /// One token per coin of the snapshot: a coin cannot be migrated twice.
+    /// A coin is named by its id (LedgerCoin.id), never by its ticker: two
+    /// coins of a launchpad may share a ticker (nine tickers of the Base v12
+    /// pad's fifty coins were shared in November 2026, NOTUS and LESTER among
+    /// them), and each is a coin of its own. The id is part of the coin's
+    /// leaf, so two coins alike in everything else still have two leaves and
+    /// a holder's balance proves itself for one of them only.
+    mapping(bytes32 id => address) public migratedCoin;
     /// Each holder of a migrated coin is delivered once: a batch sent twice
     /// reverts instead of paying twice and starving the holders after it.
     mapping(address token => mapping(address holder => bool)) public migrationDelivered;
@@ -322,7 +329,7 @@ abstract contract LaunchpadBase is Ownable, ReentrancyGuard {
     /// migrateToken outside an open migration (no root set, or closed).
     error MigrationNotOpen();
     /// a ledger ticker that already has its token here.
-    error TickerMigrated();
+    error CoinMigrated();
     /// a holder of a migrated coin listed a second time.
     error AlreadyDelivered(address holder);
     /// a curve coin's reserve does not match its curve state.
