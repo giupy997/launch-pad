@@ -201,9 +201,13 @@ LitVM, and the points rules. Every finding below is open unless its status says 
 
 **The deployed stack.** The solvency of the v12 pad was read from the chain the same day:
 what it holds in cbLTC against every claim on it (curve reserves, pots, creator fees, the
-cashback of every address that ever held a coin with a holders' share), see the line under
-the table once the read completes. The wrapped-buyback test was run against the v12 sources
-as deployed.
+cashback of every address that ever held a coin with a holders' share). At block 57,103,545
+(2026-11-14) the pad held 40.5222 cbLTC against 40.5145 owed: 35.7647 in curve reserves,
+0.8714 in burn and liquidity pots, 0.6200 of creator fees to 27 recipients and 3.2583 of
+cashback across 14 coins (3.2438 of it Lester's, 223 addresses), 0.0078 cbLTC over, the
+rounding the accumulator keeps; no ETH in the pad; every graduated coin's balance at the pad
+is its locked share plus its tax buckets to the unit. The wrapped-buyback test was run against
+the v12 sources as deployed.
 
 | ID | Finding | Status |
 |---|---|---|
