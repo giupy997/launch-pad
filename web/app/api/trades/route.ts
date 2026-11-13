@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { POINTS_CHAINS } from "@/lib/points/chains";
+import { parseAbi, type PublicClient } from "viem";
+import { POINTS_CHAINS, type PointsChain } from "@/lib/points/chains";
 import { client as rpcClient, isPadCoin } from "@/lib/holders/count";
 import { SERVICE_MS, servedPadTrades, servedTrades } from "@/lib/points/served";
 import { joinHistory } from "@/lib/trades/history";
@@ -69,7 +70,40 @@ async function dayBlocks(t: ScanTarget, configuredSeconds: number, latest: bigin
 }
 
 type Held = { first: bigint; last: bigint; trades: Trade[]; truncated: boolean };
+// keyed by the chain, the token and every pool as named, coin, pair and side: two requests
+// share an answer only when they ask for the same thing (SECURITY.md M-09: keyed by the
+// pairs alone, a request naming another coin on Notus's pair, or Notus's pair with the
+// side flipped, wrote its swaps into the trades served to everyone)
 const memory = new Map<string, Held>();
+
+const poolAbi = parseAbi([
+  "function graduatedVia(address) view returns (address)",
+  "function pairOf(address) view returns (address)",
+  "function token0() view returns (address)",
+]);
+/** pools the chain confirmed, `chain.token.pair.side`: a coin's pool and its sides never change */
+const knownPools = new Set<string>();
+const poolKey = (chainId: number, x: PoolRef) => `${chainId}.${x.token.toLowerCase()}.${x.pair.toLowerCase()}.${x.tokenIsZero ? 1 : 0}`;
+/** Whether every pool named is the pool the pad's migrator seeded for that coin, with
+ *  the side the request says: a pool is scanned under a coin's name only when the chain
+ *  says it is the coin's. Three reads a pool, once. */
+async function poolsAreTheCoins(c: PublicClient, chain: PointsChain, pools: PoolRef[]): Promise<boolean> {
+  const unknown = pools.filter((x) => !knownPools.has(poolKey(chain.chainId, x)));
+  const checks = await Promise.all(
+    unknown.map(async (x) => {
+      const via = (await c.readContract({ address: chain.pad, abi: poolAbi, functionName: "graduatedVia", args: [x.token] })) as `0x${string}`;
+      if (!via || /^0x0{40}$/.test(via)) return false;
+      const [pair, token0] = await Promise.all([
+        c.readContract({ address: via, abi: poolAbi, functionName: "pairOf", args: [x.token] }) as Promise<`0x${string}`>,
+        c.readContract({ address: x.pair, abi: poolAbi, functionName: "token0" }) as Promise<`0x${string}`>,
+      ]);
+      const ok = pair.toLowerCase() === x.pair.toLowerCase() && (token0.toLowerCase() === x.token.toLowerCase()) === x.tokenIsZero;
+      if (ok) knownPools.add(poolKey(chain.chainId, x));
+      return ok;
+    })
+  );
+  return checks.every(Boolean);
+}
 const MEMORY_KEYS = 64; // answers a warm instance keeps: the oldest goes when a new key comes
 
 export async function GET(req: NextRequest) {
@@ -95,7 +129,7 @@ export async function GET(req: NextRequest) {
   }
   const target: ScanTarget = { chainId, urls: chain.rpcs, chunk: chain.chunk, archive: chain.archive };
   const deadline = Date.now() + BUDGET_MS;
-  const key = `${chainId}.${token.toLowerCase()}.${pools.map((x) => x.pair.toLowerCase()).sort().join(",")}`;
+  const key = `${chainId}.${token.toLowerCase()}.${pools.map((x) => `${x.token.toLowerCase()}:${x.pair.toLowerCase()}:${x.tokenIsZero ? 1 : 0}`).sort().join(",")}`;
 
   try {
     // coins of the pad only, before any scan: a scan costs the nodes the same whatever the
@@ -104,6 +138,9 @@ export async function GET(req: NextRequest) {
     const named = all ? [...new Set(pools.map((x) => x.token.toLowerCase() as `0x${string}`))] : [coin!];
     const known = await Promise.all(named.map((t) => isPadCoin(c, chain, t)));
     if (known.some((k) => !k)) return NextResponse.json({ error: "not a coin of this launchpad" }, { status: 404, headers: cache(300) });
+    if (!(await poolsAreTheCoins(c, chain, pools))) {
+      return NextResponse.json({ error: "a pool that is not the coin's, or its sides the other way round" }, { status: 404, headers: cache(300) });
+    }
     const latest = await latestBlock(target, 2_500, deadline);
     // the pad: the last day, whole or not at all short (a day cut to the scan's fifty chunks
     // would be shown as a day); one coin: the window a browser's first scan reads, and on a

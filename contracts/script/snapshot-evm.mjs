@@ -16,6 +16,8 @@
 //     [--allow-unfrozen] [--vault 0x...] [--allow-contract-holders] [--scale N]
 //     [--fees SYMBOL=buy/sell/creator/holders/burn/liquidity,...]
 //   --rpc may be left out when SRC_RPC is in the environment; --pace is the ms between calls;
+//   a graduated coin's pool is valued as `unlock` will pay it, Uniswap's protocol fee (feeTo) taken off;
+//   a wallet that delegated (EIP-7702) is a wallet, not a contract;
 //   --quote is the SOURCE pad's quote asset (`native` for a pad quoted in the chain's coin);
 //   --fees gives a coin a fee configuration other than the one it has on the source (in basis
 //   points: taxes up to 1000 each, the four shares adding to 10,000) — a coin its creator
@@ -183,7 +185,35 @@ const pairAbi = [
   fn("token1() view returns (address)"),
   fn("totalSupply() view returns (uint256)"),
   fn("balanceOf(address) view returns (uint256)"),
+  fn("getReserves() view returns (uint112, uint112, uint32)"),
+  fn("kLast() view returns (uint256)"),
+  fn("factory() view returns (address)"),
 ];
+const factoryAbi = [fn("feeTo() view returns (address)")];
+const isqrt = (n) => {
+  if (n < 2n) return n;
+  let x = BigInt(Math.floor(Math.sqrt(Number(n))));
+  while (x * x > n) x--;
+  while ((x + 1n) * (x + 1n) <= n) x++;
+  return x;
+};
+/** The LP tokens Uniswap v2 mints to the protocol's `feeTo` at the next mint or burn
+ *  (UniswapV2Pair._mintFee: a sixth of the growth of √k since the last one), which
+ *  `unlock`'s burn mints first: the migrator's share of the pool is its LP over the
+ *  supply plus these, not over the supply as it stands (SECURITY.md M-10: Lester's pool
+ *  read 0.2 cbLTC more than `migrateOut` delivered). Zero where the factory takes no fee. */
+async function protocolFeeLp(pair, lpTotal, blockNumber) {
+  const factory = await readOr(pair, pairAbi, "factory", [], blockNumber, zeroAddress);
+  if (factory === zeroAddress) return 0n;
+  const feeTo = await readOr(factory, factoryAbi, "feeTo", [], blockNumber, zeroAddress);
+  const kLast = await readOr(pair, pairAbi, "kLast", [], blockNumber, 0n);
+  if (feeTo === zeroAddress || kLast === 0n) return 0n;
+  const [r0, r1] = await read(pair, pairAbi, "getReserves", [], blockNumber);
+  const rootK = isqrt(BigInt(r0) * BigInt(r1));
+  const rootKLast = isqrt(kLast);
+  if (rootK <= rootKLast) return 0n;
+  return (lpTotal * (rootK - rootKLast)) / (rootK * 5n + rootKLast);
+}
 const erc20Abi = [
   fn("decimals() view returns (uint8)"),
   fn("balanceOf(address) view returns (uint256)"),
@@ -227,11 +257,15 @@ const readOr = async (address, abi_, functionName, args_, blockNumber, fallbackV
     return fallbackValue;
   }
 };
+/** Whether a contract lives at `address`: code, other than an EIP-7702 delegation (0xef0100
+ *  and an address, 23 bytes), which is a wallet whose key exists on every chain (SECURITY.md
+ *  M-11: a quarter of Notus's and Lester's holders had delegated by November 2026). */
 const codeAt = async (address, blockNumber) => {
   await sleep(PACE_MS);
   const get = client.getCode ?? client.getBytecode;
   const code = await get.call(client, { address, blockNumber });
-  return code && code !== "0x";
+  if (!code || code === "0x") return false;
+  return !(code.length === 48 && code.toLowerCase().startsWith("0xef0100"));
 };
 console.log(`${rpcs.length} RPC node${rpcs.length === 1 ? "" : "s"}: ${rpcs.map(nodeName).join(", ")}`);
 
@@ -380,7 +414,12 @@ for (const token of tokens) {
       if (quoteAsset !== zeroAddress && pairQuoteAsset !== quoteAsset) throw new Error(`${symbol}: its pool ${pair} pairs it with ${pairQuoteAsset}, not the pad's quote`);
       const pairToken = await read(token, tokenAbi, "balanceOf", [pair], block);
       const pairQuote = await read(pairQuoteAsset, erc20Abi, "balanceOf", [pair], block);
-      const lpTotal = await read(pair, pairAbi, "totalSupply", [], block);
+      // the LP supply as the unlock's burn will find it: what stands, plus what the burn
+      // mints to Uniswap's feeTo first (zero where the factory takes no fee)
+      const lpMinted = await read(pair, pairAbi, "totalSupply", [], block);
+      const feeLp = await protocolFeeLp(pair, lpMinted, block);
+      const lpTotal = lpMinted + feeLp;
+      if (feeLp !== 0n) warnings.push(`${symbol}: Uniswap's protocol fee takes ${feeLp} of ${lpTotal} LP at the unlock: the pool's shares below count it`);
       const lpOurs = await read(via, migratorAbi, "liquidity", [token], block);
       // the v2 adapter parks a reserve the pool would not take at the closing price: it
       // waits in the adapter, still the coin's, and unlock brings it back with the pool's share

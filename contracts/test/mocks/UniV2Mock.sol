@@ -39,6 +39,9 @@ contract MockV2Pair is ERC20 {
     address public token1;
     uint112 private reserve0;
     uint112 private reserve1;
+    /// Uniswap's record of k at the last mint or burn, for its protocol fee: this
+    /// factory takes none, so it stays zero, and the snapshot tool reads it as such.
+    uint256 public kLast;
 
     event Mint(address indexed sender, uint256 amount0, uint256 amount1);
     event Swap(address indexed sender, uint256 amount0In, uint256 amount1In, uint256 amount0Out, uint256 amount1Out);
@@ -150,6 +153,8 @@ contract MockV2Pair is ERC20 {
 contract MockV2Factory {
     mapping(address => mapping(address => address)) public getPair;
     address[] public allPairs;
+    /// no protocol fee: what the snapshot tool reads before it counts one
+    address public feeTo;
 
     event PairCreated(address indexed token0, address indexed token1, address pair, uint256);
 

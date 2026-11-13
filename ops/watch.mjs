@@ -49,6 +49,8 @@ import {
   keccak256,
   stringToHex,
   formatUnits,
+  parseEventLogs,
+  toEventSelector,
 } from "../web/node_modules/viem/_esm/index.js";
 import { base } from "../web/node_modules/viem/_esm/chains/index.js";
 
@@ -108,7 +110,7 @@ const SITE_EVERY_MS = Number(env("NOTUS_WATCH_SITE_EVERY", "600")) * 1000;
 const CHUNK = BigInt(env("NOTUS_WATCH_CHUNK", "1500"));
 const FIRST_BLOCK = BigInt(env("NOTUS_WATCH_FROM", "52180589")); // the v11 timelock's deploy block
 const HEARTBEAT_HOUR = Number(env("NOTUS_WATCH_HEARTBEAT_HOUR", "8"));
-const LAG = 30n; // blocks left to settle before they are read (a minute: a public node behind the first by a few blocks still has them)
+const LAG = 30n; // blocks left to settle before they are read; a node behind the first by more is passed over for that range (readLogs)
 const TG_MAX = 3_900; // Telegram takes 4,096 characters a message; a longer one is refused and would wedge the queue
 const FAILS_TO_TELL = 5; // chain passes failed in a row (minutes) before the owner hears of it
 const EXPLORER = env("NOTUS_WATCH_EXPLORER", "https://basescan.org");
@@ -209,6 +211,15 @@ const who = (a) => {
   return l ? `${l} (${short(addr)})` : short(addr);
 };
 const calls = (p) => (p.calls.length === 1 ? p.calls[0] : p.calls.map((c) => `• ${c}`).join("\n"));
+/** The functions an operation calls, by name, the siren ones first: the one line that
+ *  must survive whatever the arguments add up to. */
+const callNames = (p) => {
+  const names = p.fns ?? [];
+  const siren = names.filter((f) => SIREN.has(f));
+  const rest = names.filter((f) => !SIREN.has(f));
+  return [...new Set([...siren, ...rest])].join(", ");
+};
+const CALL_MAX = 400; // characters a call's rendering may take in a message
 const whenUtc = (ts) => new Date(Number(ts) * 1000).toISOString().replace("T", " ").slice(0, 16) + " UTC";
 const hours = (secs) => (Number(secs) / 3600).toFixed(Number(secs) % 3600 === 0 ? 0 : 1);
 const txLink = (hash) => `${EXPLORER}/tx/${hash}`;
@@ -225,11 +236,14 @@ function describeCall(target, data, value) {
       }
       if (typeof x === "string" && isAddress(x)) return who(x);
       if (typeof x === "bigint") return x.toString();
-      if (Array.isArray(x)) return `[${x.map((y) => (typeof y === "string" && isAddress(y) ? who(y) : String(y))).join(", ")}]`;
+      if (Array.isArray(x)) {
+        const items = x.map((y) => (typeof y === "string" && isAddress(y) ? who(y) : String(y)));
+        return items.length > 6 ? `[${items.length} voci: ${items.slice(0, 3).join(", ")}, …]` : `[${items.join(", ")}]`;
+      }
       return String(x);
     });
     text = `${functionName}(${shown.join(", ")})`;
-    return { text: `${who(target)} → ${text}`, fn: functionName, siren: SIREN.has(functionName) };
+    return { text: clip(`${who(target)} → ${text}`, CALL_MAX), fn: functionName, siren: SIREN.has(functionName) };
   } catch {
     const sel = data.slice(0, 10);
     return { text: `${who(target)} → chiamata sconosciuta ${sel} (${(data.length - 2) / 2} byte)${value ? `, ${formatUnits(value, 18)} ETH` : ""}`, fn: sel, siren: true };
@@ -241,12 +255,29 @@ function describeCall(target, data, value) {
 const outbox = []; // mirrored into the state file, so a restart sends what was not yet sent
 /** A string from outside (the site's answer, a contract's argument) cut to a line of `n` characters. */
 const clip = (x, n = 200) => String(x).replace(/\s+/g, " ").slice(0, n);
+/** A message longer than Telegram takes goes in several, cut at line ends and numbered,
+ *  never cut from the end: the end of an operation's message is where its id and the way
+ *  to cancel it used to be, and a long first call pushed them off (SECURITY.md M-08). */
+function pieces(text) {
+  if (text.length <= TG_MAX) return [text];
+  const out = [];
+  let rest = text;
+  while (rest.length > TG_MAX - 12) {
+    let cut = rest.lastIndexOf("\n", TG_MAX - 12);
+    if (cut < TG_MAX / 2) cut = TG_MAX - 12;
+    out.push(rest.slice(0, cut));
+    rest = rest.slice(cut).replace(/^\n/, "");
+  }
+  if (rest) out.push(rest);
+  return out.map((t, i) => `(${i + 1}/${out.length}) ${t}`);
+}
 async function send(text) {
-  if (text.length > TG_MAX) text = `${text.slice(0, TG_MAX - 12)}\n…(troncato)`;
-  log("message:", text.replace(/\n/g, " | "));
-  if (DRY) return;
-  outbox.push(text);
-  await flush();
+  for (const piece of pieces(text)) {
+    log("message:", piece.replace(/\n/g, " | "));
+    if (DRY) continue;
+    outbox.push(piece);
+  }
+  if (!DRY) await flush();
 }
 let flushing = false;
 async function flush() {
@@ -307,29 +338,86 @@ function saveState(s) {
 
 // ---------------------------------------------------------------- the chain pass
 
-let chunk = CHUNK; // blocks per getLogs: halved when the nodes refuse the range (after a long downtime the first one is wide)
-/** Logs of the timelocks and the pads from `from` to `to`, in order. */
+let chunk = CHUNK; // blocks per getLogs: halved when a node refuses the range (after a long downtime the first one is wide)
+const hostOf = (url) => {
+  try {
+    return new URL(url).host;
+  } catch {
+    return "node";
+  }
+};
+/** One JSON-RPC batch to one node: the results in the order asked, or a throw naming the host alone. */
+async function rpcBatch(url, calls) {
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(calls.map((c, i) => ({ jsonrpc: "2.0", id: i + 1, method: c.method, params: c.params }))),
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!r.ok) throw new Error(`${hostOf(url)}: http ${r.status}`);
+  const out = await r.json();
+  const list = Array.isArray(out) ? out : [out];
+  return calls.map((_, i) => {
+    const x = list.find((o) => o?.id === i + 1);
+    if (!x) throw new Error(`${hostOf(url)}: no answer to call ${i + 1}`);
+    if (x.error) throw new Error(`${hostOf(url)}: ${String(x.error.message ?? x.error).slice(0, 160)}`);
+    return x.result;
+  });
+}
+const TIMELOCK_TOPICS = TIMELOCK_EVENTS.map((e) => toEventSelector(e));
+const PAD_TOPICS = PAD_EVENTS.map((e) => toEventSelector(e));
+const hex = (n) => `0x${n.toString(16)}`;
+/** Raw logs as viem's client would have given them: decoded, numbers as bigints. */
+function decodeLogs(raw, abi) {
+  const logs = raw.map((l) => ({
+    ...l,
+    blockNumber: BigInt(l.blockNumber),
+    logIndex: Number(l.logIndex),
+    transactionIndex: Number(l.transactionIndex ?? 0),
+  }));
+  return parseEventLogs({ abi, logs, strict: false });
+}
+/** Logs of the timelocks and the pads from `from` to `to`, in order. A range is read
+ *  from one node, in one batch with that node's head, and believed only if the node's
+ *  head is at or past the range's end: the nodes behind a fallback lag each other, and
+ *  one asked for blocks it does not have yet answers an empty list, not an error, which
+ *  read as "no event" would pass a scheduled operation over for good (SECURITY.md M-07).
+ *  Every node is tried in turn; a range nobody serves fails the pass, read again next. */
 async function readLogs(from, to) {
   const out = [];
   for (let a = from; a <= to; a += chunk) {
     const b = a + chunk - 1n < to ? a + chunk - 1n : to;
-    let tl, pads;
-    try {
-      [tl, pads] = await Promise.all([
-        client.getLogs({ address: TIMELOCKS.map((t) => t.address), events: TIMELOCK_EVENTS, fromBlock: a, toBlock: b }),
-        client.getLogs({ address: PADS.map((p) => p.address), events: PAD_EVENTS, fromBlock: a, toBlock: b }),
-      ]);
-    } catch (e) {
-      const msg = String(e.shortMessage ?? e.message ?? e);
-      // a node refusing the range is told by halving it; a node refusing the
-      // caller ("request limit reached", a 429) is not, the next node answers
-      if (chunk > 100n && /range|too many|exceed|large|limit/i.test(msg) && !/request limit|rate limit/i.test(msg)) {
-        chunk /= 2n;
-        log(`getLogs refused ${a}–${b}: ${chunk} blocks a call from now on`);
+    const why = [];
+    let served = false;
+    for (const url of RPCS) {
+      let head, tl, pads;
+      try {
+        [head, tl, pads] = await rpcBatch(url, [
+          { method: "eth_blockNumber", params: [] },
+          { method: "eth_getLogs", params: [{ address: TIMELOCKS.map((t) => t.address), topics: [TIMELOCK_TOPICS], fromBlock: hex(a), toBlock: hex(b) }] },
+          { method: "eth_getLogs", params: [{ address: PADS.map((p) => p.address), topics: [PAD_TOPICS], fromBlock: hex(a), toBlock: hex(b) }] },
+        ]);
+      } catch (e) {
+        const msg = String(e.message ?? e);
+        why.push(msg);
+        // a node refusing the range is told by halving it; a node refusing the caller
+        // ("request limit reached", a 429) is not, the next node answers
+        if (chunk > 100n && /range|too many|exceed|large|limit/i.test(msg) && !/request limit|rate limit|429/i.test(msg)) {
+          chunk /= 2n;
+          log(`getLogs refused ${a}–${b} (${msg}): ${chunk} blocks a call from now on`);
+        }
+        continue;
       }
-      throw e;
+      if (BigInt(head) < b) {
+        why.push(`${hostOf(url)}: behind (its head ${BigInt(head)}, asked to ${b})`);
+        log(`${hostOf(url)} is behind (head ${BigInt(head)}, blocks to ${b} asked): the next node`);
+        continue;
+      }
+      out.push(...decodeLogs(tl, TIMELOCK_EVENTS), ...decodeLogs(pads, PAD_EVENTS));
+      served = true;
+      break;
     }
-    out.push(...tl, ...pads);
+    if (!served) throw new Error(`no node served blocks ${a}–${b}: ${why.join("; ")}`);
   }
   out.sort((x, y) => (x.blockNumber === y.blockNumber ? Number(x.logIndex) - Number(y.logIndex) : x.blockNumber < y.blockNumber ? -1 : 1));
   return out;
@@ -356,16 +444,17 @@ async function handle(l, pending, quiet) {
       const p = pending[a.id];
       if (p && p.tx === l.transactionHash) {
         p.calls.push(d.text);
+        (p.fns ??= []).push(d.fn);
         p.siren ||= d.siren;
-      } else pending[a.id] = { calls: [d.text], readyAt, timelock: at, reminded: false, siren: d.siren, tx: l.transactionHash };
+      } else pending[a.id] = { calls: [d.text], fns: [d.fn], readyAt, timelock: at, reminded: false, siren: d.siren, tx: l.transactionHash };
       if (quiet) return null;
-      return { kind: "scheduled", id: a.id, at, timelock: l.address, calls: [d.text], siren: d.siren, readyAt, delay: a.delay, tx: l.transactionHash };
+      return { kind: "scheduled", id: a.id, at, timelock: l.address, calls: [d.text], fns: [d.fn], siren: d.siren, readyAt, delay: a.delay, tx: l.transactionHash };
     }
     case "CallExecuted": {
       const d = describeCall(a.target, a.data, a.value);
       delete pending[a.id];
       if (quiet) return null;
-      return { kind: "executed", id: a.id, at, calls: [d.text], siren: d.siren, tx: l.transactionHash };
+      return { kind: "executed", id: a.id, at, calls: [d.text], fns: [d.fn], siren: d.siren, tx: l.transactionHash };
     }
     case "Cancelled": {
       const p = pending[a.id];
@@ -411,16 +500,18 @@ async function handle(l, pending, quiet) {
   }
 }
 
-/** A grouped operation, in words. */
+/** A grouped operation, in words: what it calls and how to cancel it first, the calls
+ *  with their arguments last, so that a long argument hides nothing that matters. */
 function render(g) {
-  const n = g.calls.length > 1 ? ` (${g.calls.length} chiamate)` : "";
+  const n = g.calls.length > 1 ? ` (${g.calls.length} chiamate: ${callNames(g)})` : ` (${callNames(g)})`;
   if (g.kind === "scheduled")
     return (
-      `${g.siren ? "🚨" : "⚠️"} ${g.at}: OPERAZIONE PROGRAMMATA${n}\n${calls(g)}\n` +
+      `${g.siren ? "🚨" : "⚠️"} ${g.at}: OPERAZIONE PROGRAMMATA${n}\n` +
       `eseguibile da ${whenUtc(g.readyAt)} (tra ${hours(g.delay)} h)\nid ${g.id}\n${txLink(g.tx)}` +
-      (g.siren ? `\nSe non sei stato tu: annullala prima di quell'ora dalla Safe (Transaction Builder → custom data):\nto ${g.timelock}\nvalue 0\ndata 0xc4d252f5${g.id.slice(2)}\n(sul VPS: bash script/ops/timelock.sh safe-calldata cancel ${g.id})` : "")
+      (g.siren ? `\nSe non sei stato tu: annullala prima di quell'ora dalla Safe (Transaction Builder → custom data):\nto ${g.timelock}\nvalue 0\ndata 0xc4d252f5${g.id.slice(2)}\n(sul VPS: bash script/ops/timelock.sh safe-calldata cancel ${g.id})` : "") +
+      `\n${calls(g)}`
     );
-  return `${g.siren ? "🚨" : "✅"} ${g.at}: operazione ESEGUITA${n}\n${calls(g)}\n${txLink(g.tx)}`;
+  return `${g.siren ? "🚨" : "✅"} ${g.at}: operazione ESEGUITA${n}\n${txLink(g.tx)}\n${calls(g)}`;
 }
 
 async function chainPass(state) {
@@ -435,7 +526,7 @@ async function chainPass(state) {
   for (const [id, p] of Object.entries(state.pending)) {
     if (!p.reminded && p.readyAt <= now) {
       p.reminded = true;
-      await send(`⏰ ${p.timelock}: l'operazione è ora ESEGUIBILE da chiunque\n${calls(p)}\nid ${id}`);
+      await send(`⏰ ${p.timelock}: l'operazione è ora ESEGUIBILE da chiunque (${callNames(p)})\nid ${id}\n${calls(p)}`);
     }
   }
 }
@@ -459,6 +550,7 @@ async function readPass(state, from, head, first) {
     const g = groups.get(key);
     if (g) {
       g.calls.push(...m.calls);
+      g.fns.push(...m.fns);
       g.siren ||= m.siren;
     } else {
       groups.set(key, m);

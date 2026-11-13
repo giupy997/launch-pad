@@ -73,6 +73,12 @@ contract DeployLitVM is Script {
         require(treasury != FORGE_DEFAULT_SENDER, "TREASURY is forge's stand-in sender");
         address proposer = vm.envOr("PROPOSER", _broadcaster());
         require(proposer != FORGE_DEFAULT_SENDER, "PROPOSER is forge's stand-in sender");
+        // a live chain's pad is proposed on by a Safe, never by the key that deployed it: the
+        // posture Base left behind on 2026-10-12 (SECURITY.md M-12); a testnet's rehearsal pad may
+        require(
+            deployerOwned || proposer != _broadcaster() || block.chainid == 4441 || block.chainid == 31337,
+            "PROPOSER is the deployer's key: on a live chain pass the Safe (or DEPLOYER_OWNED=true for a rehearsal pad)"
+        );
         Launchpad pad = new Launchpad(treasury);
         if (router != address(0)) {
             UniV2Migrator migrator = new UniV2Migrator(address(pad), router);

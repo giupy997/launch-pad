@@ -14,6 +14,12 @@ anything that could move the launchpad's money or change who controls it:
   of the delay. A scheduled operation nobody knows of is the one way the pad's
   cbLTC can leave: the 24-hour delay is worth exactly as much as the chance of
   seeing it in time. An operation that becomes executable is said once more.
+  A range of blocks is read from one node, its head and the logs in one
+  batch, and believed only if that node has the blocks: the nodes behind a
+  fallback lag each other, and one asked for blocks it does not have answers
+  an empty list, not an error (`SECURITY.md` M-07). A message names the calls
+  first, then the id and how to cancel, then the arguments, and a long one
+  goes in numbered pieces (M-08).
 - **the pads** (v12 and v11): the owner-only events as a second signal
   (treasury, fee, migrator, quote, operator, freeze, migrateOut, ownership,
   pool registered).

@@ -17,8 +17,13 @@ nothing is published) — so far from the v11 pad, which the script's defaults
 still name: `SRC_PAD=$BASE_PAD SRC_FROM=$BASE_FROM_BLOCK` points it at v12.
 
 What it costs users: about a day of notice during which trading goes on (no
-new coins), then a few hours of stillness while the coins move. What it costs
-the operator: the custody of the reserves for those hours, in the open (every
+new coins), then two days at least of stillness while the coins move: the
+`migrateOut` operations are prepared once the freeze has landed and are
+executable 24 hours later, the LitVM pad takes the snapshot's root through
+its own 48-hour timelock, scheduled the moment the file exists, and the
+bridging comes between (the notice in step 3 says two to three days, not
+hours). What it costs the operator: the custody of the reserves for those
+days, in the open (every
 step is a timelock operation, public for the delay before it lands, or a
 transaction anyone reads), and nothing more: the receiving pad commits to the
 snapshot's root (a Merkle tree, a leaf per coin and per holder) a delay ahead,
@@ -103,6 +108,7 @@ export BASE_QUOTE=0xcb17C9Db87B595717C857a08468793f5bAb6445F
 export BASE_FROM_BLOCK=52397620                                   # the pad's deploy block
 export DEPLOYER=0x707f56C25e5d8cc12d08A3bf73f54dBeD0CD9A02        # the keystore notus: executes what the Safe scheduled
 export SAFE=0x934A82649b4ca538ff47d9090536837B7092d8F4            # the timelock's proposer and canceller (2 of 3)
+export SAFE_LITVM=         # the Safe on LitVM that proposes on the new pad's timelock (deployed there first; step 1 refuses to run without it)
 export BRIDGE_FROM=         # the EVM account that receives the cbLTC and takes it through Coinbase
 export VAULT=               # an account of yours: coins with no holder to go to are parked there (step 2)
 export LITVM_RPC=           # LitVM mainnet RPC
@@ -121,12 +127,18 @@ and the chain to `web/lib/config.ts` and the site's CSP, as for any new chain.
 ```bash
 source ~/notus-litvm.env; cd ~/launch-pad/contracts && source .env
 UNIV2_ROUTER="${UNIV2_ROUTER:?set UNIV2_ROUTER in ~/notus-litvm.env}" TREASURY="${TREASURY:?set TREASURY in contracts/.env}" NATIVE_VIRTUAL=50000000000000000000 \
+  PROPOSER="${SAFE_LITVM:?set SAFE_LITVM in ~/notus-litvm.env}" MIGRATION_OPERATOR="$DEPLOYER" \
   forge script script/DeployLitVM.s.sol --rpc-url litvm --account notus --broadcast
 ```
 
-(The router comes from the env file, the treasury from `contracts/.env`; the
-shell refuses to run with either missing rather than deploy a pad without a
-migrator or with the deployer as treasury.)
+(The router and the Safe come from the env file, the treasury from
+`contracts/.env`; the shell refuses to run with any missing rather than
+deploy a pad without a migrator, with the deployer as treasury, or with the
+deployer's key as the timelock's proposer, the posture Base left behind on
+2026-10-12. The script itself refuses a proposer equal to the broadcaster on a
+chain that is not a testnet, unless `DEPLOYER_OWNED=true` names a rehearsal
+pad. `MIGRATION_OPERATOR` is the deployer's key: without it step 6 reverts
+`NotOperator` for the delay's 48 hours.)
 
 `NATIVE_VIRTUAL` is the virtual reserve a zkLTC curve opens with: **50 zkLTC**,
 Base v12's 50 cbLTC (v11 opened with 60), so a coin reads the same on both
@@ -329,14 +341,11 @@ Two timelock rounds of 24 hours, with the coin list closing between them:
    ```
 
    The pad closes to new coins at once — trading goes on until the block — so
-   the list is final: prepare the migrateOut of every coin right away, as
-   batches of fifteen (one Safe transaction each; a batch executes whole, so
-   a coin whose migrateOut would revert — a blocklisted pair — is left out
-   with `EXCLUDE=0x...` and goes alone later), ready 24 hours later and
-   executable once the freeze has landed. `migrate-out` refuses to run before
-   the freeze has landed, so it is prepared then (step 4), not now; what is
-   prepared now is the Safe's readiness: signers at hand the day the freeze
-   lands.
+   the list is final. The migrateOut of every coin is prepared once the
+   freeze has landed (step 4; `migrate-out` refuses to run before), as
+   batches of fifteen, one Safe transaction each, ready 24 hours after the
+   Safe signs: what is prepared now is the Safe's readiness, signers at hand
+   the day the freeze lands, on Base and on LitVM.
 
    Announce it to holders: trading goes on until the block, then the coins
    move; nothing to do on their side. And to liquidity providers: only the
@@ -378,9 +387,12 @@ launchpad's that still holds coins stops it as in the dry run: its providers
 did not withdraw, and what they left is stuck on Base for good;
 `--allow-contract-holders` lists the pool as a holder anyway, its coins
 minted on LitVM to an address where nothing answers — the owner's call.
-Commit the file: it is the public record. Then execute every migrateOut
-operation scheduled in step 3 (they are ready: the delay has passed and the
-pad is frozen): the cbLTC land on `BRIDGE_FROM`, and each coin's buckets, at
+Commit the file: it is the public record. The same hour, two operations
+are prepared, so that their delays run together: on LitVM, the file's root
+(`timelock.sh safe-calldata set-root FILE` with the LitVM addresses file,
+the LitVM Safe signs, 48 hours), and on Base the migrateOut of every coin,
+fifteen a batch (the Base Safe signs, 24 hours). Once ready, execute the
+migrateOuts: the cbLTC land on `BRIDGE_FROM`, and each coin's buckets, at
 dust, are burned. Each is its own operation, so one that reverts (a paused
 cbLTC, a blocklisted pair) holds up no other; it is retried later, with
 another `to` if need be — nothing is marked on a revert.
@@ -393,7 +405,11 @@ cd ~/launch-pad/contracts && bash script/ops/timelock.sh safe-calldata migrate-o
 next fifteen coins until it says every coin is out; a batch that reverts is
 prepared again without the coin that reverts, `EXCLUDE=0x...`, and that coin
 alone once the cause is gone). The freeze landing and the move out are thus
-a day apart at least: the notice in step 3 counts it.
+a day apart at least, and the coins trade again on LitVM two days after the
+freeze at the earliest, when the root is set there: the notice in step 3
+says so. The file's pool figures are what `migrateOut` pays: the snapshot
+takes Uniswap's protocol fee off the migrator's share, as the unlock's burn
+does.
 
 ## 5. cbLTC → LTC → zkLTC
 
