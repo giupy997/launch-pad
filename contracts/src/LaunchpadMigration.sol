@@ -14,7 +14,8 @@ import {IDexMigrator, IDexMigratorUnlock} from "./interfaces/IDexMigrator.sol";
 ///         by delegatecall (its fallback): coins arriving from a frozen ledger
 ///         or launchpad elsewhere (migrateToken, migrateBalances), and the
 ///         freeze and migrateOut that let this launchpad's coins leave for
-///         another. Never called on its own address: its own storage is never
+///         another; and claimCashbackFor, which the Launchpad has no room
+///         for. Never called on its own address: its own storage is never
 ///         written to anything that matters, and every function below reads
 ///         and writes the Launchpad's. See ILaunchpadMigration for the ABI.
 contract LaunchpadMigration is LaunchpadBase {
@@ -355,5 +356,39 @@ contract LaunchpadMigration is LaunchpadBase {
         }
         tokensBurned += unsold;
         emit MigratedOut(token, to, quoteOut, tokensBurned);
+    }
+
+    // ------------------------------------------------- cashback, pushed
+
+    /// @notice Pay the cashback of `holders` of `token` out to each of them:
+    ///         what claimCashback pays, sent to the wallets that have not come
+    ///         for it (here, not in the Launchpad, for its size alone). Anyone
+    ///         may call, frozen or not, and the quote goes to the holder alone.
+    ///         Paid: wallets, delegated ones (EIP-7702) among them. Passed
+    ///         over, each keeping its claim for claimCashback: a contract (a
+    ///         pool that anyone can skim, a locker with no way to move the
+    ///         quote on, a vault that accounts for what it claims: a push into
+    ///         one can go where its holders did not mean it to), an account
+    ///         that earns none, a holder with nothing to claim, and one that
+    ///         cannot be paid (the quote asset refuses the address; in a native
+    ///         quote, a delegate that reverts or wants more than PUSH_GAS).
+    /// @return paid the quote sent, all holders together
+    function claimCashbackFor(address token, address[] calldata holders) external nonReentrant returns (uint256 paid) {
+        address asset = curves[token].quoteAsset;
+        for (uint256 i = 0; i < holders.length; i++) {
+            address holder = holders[i];
+            if (!_isWallet(holder) || !_isEligible(token, holder)) continue;
+            uint256 bal = IERC20(token).balanceOf(holder);
+            _settleCashback(token, holder, bal, bal);
+            uint256 amount = pendingCashback[token][holder];
+            if (amount == 0) continue;
+            pendingCashback[token][holder] = 0;
+            if (_tryPayOut(asset, holder, amount)) {
+                paid += amount;
+                emit CashbackClaimed(token, holder, amount);
+            } else {
+                pendingCashback[token][holder] += amount;
+            }
+        }
     }
 }

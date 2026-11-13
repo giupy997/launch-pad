@@ -73,6 +73,10 @@ abstract contract LaunchpadBase is Ownable, ReentrancyGuard {
     /// the accumulator up until balance * acc overflows and every transfer of
     /// the token reverts.
     uint256 internal constant MIN_ELIGIBLE_SUPPLY = 1e18;
+    /// The gas a pushed native payment hands the receiving wallet's code
+    /// (claimCashbackFor): enough for a delegated wallet's receive, a bound
+    /// on what one that burns it can cost the batch.
+    uint256 internal constant PUSH_GAS = 100_000;
     mapping(address token => uint256) public accCashbackPerShare;
     mapping(address token => mapping(address holder => uint256)) public pendingCashback;
     mapping(address token => mapping(address holder => uint256)) public cashbackDebt;
@@ -522,5 +526,25 @@ abstract contract LaunchpadBase is Ownable, ReentrancyGuard {
         } else {
             IERC20(asset).safeTransfer(to, amount);
         }
+    }
+
+    /// _payOut for a batch: says whether the asset left instead of reverting,
+    /// so that one address that cannot be paid does not stop the others. A
+    /// native payment runs the code a wallet delegated to: it is given
+    /// PUSH_GAS and no more, so a delegate that burns gas costs the batch
+    /// that much and is passed over.
+    function _tryPayOut(address asset, address to, uint256 amount) internal returns (bool ok) {
+        if (asset == address(0)) (ok,) = to.call{value: amount, gas: PUSH_GAS}("");
+        else ok = IERC20(asset).trySafeTransfer(to, amount);
+    }
+
+    /// Whether `account` signs for itself: an address without code, or one
+    /// whose code is an EIP-7702 delegation (0xef0100 and the delegate's
+    /// address, 23 bytes: no contract can be deployed with that first byte).
+    /// A third of the wallets holding a coin on Base in November 2026 were
+    /// delegated; a pool, a locker or a vault is neither.
+    function _isWallet(address account) internal view returns (bool) {
+        uint256 size = account.code.length; // the size alone: a contract's code is not copied to be told apart
+        return size == 0 || (size == 23 && bytes3(account.code) == 0xef0100);
     }
 }

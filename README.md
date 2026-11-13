@@ -26,7 +26,9 @@ contracts ran before Base, and what the project was before the contracts:
     at launch (`createTokenWithFees`, `FeeConfig`), which alone funds the
     four shares its creator fixed: the creator (`claimCreatorFees`,
     redirectable with `setFeeRecipient`), its holders as pro-rata cashback
-    (`claimCashback`), a burn pot that buys the coin back on its curve or
+    (`claimCashback`; in the repository's pad, not in the v12 deployed on
+    Base, `claimCashbackFor` sends it to the wallets that have not come for
+    it), a burn pot that buys the coin back on its curve or
     its pool and burns it (`buybackAndBurn`, anyone may call it) and a
     liquidity pot that joins the pool at graduation. After graduation the
     token itself takes the same rates in coins on every transfer that
@@ -41,7 +43,8 @@ contracts ran before Base, and what the project was before the contracts:
     with its coins (`LAUNCH-BASE-V12.md`). The pad is
     split under the EIP-170 size limit: `LaunchpadBase.sol` (storage,
     events, errors, the shared internals), `Launchpad.sol` (the live
-    surface) and `LaunchpadMigration.sol` (the migration functions, run at
+    surface) and `LaunchpadMigration.sol` (the migration functions, and
+    `claimCashbackFor` for the Launchpad's want of room, run at
     the pad's own address by delegatecall from its fallback; tooling calls
     them through `interfaces/ILaunchpadMigration.sol`); `migrationOperator`
     may run a migration into the pad without the timelock's delay, delivering
@@ -254,6 +257,19 @@ contracts ran before Base, and what the project was before the contracts:
 - Holder cashback is spread over the eligible supply (every wallet, not the
   launchpad), with debts rounded up so the sum of all claims can never
   exceed what the contract holds
+- Cashback waits in the pad until its holder claims it, without a term, and
+  most never come: on Lester, 2026-11-13, 17 wallets had claimed 0.86 cbLTC
+  and 2.90 cbLTC waited for 166 addresses. The v12 pad pays the caller of
+  `claimCashback` and nobody else, and its module is fixed: nothing can
+  send it for them. `claimCashbackFor(token, holders)`, in the repository's
+  pad for the next stack, pays a list of wallets what each could claim, to
+  the holder alone, called by anyone. It pays wallets, the delegated ones
+  (EIP-7702: a third of Lester's holders) among them, and passes over
+  contracts, which keep their claim: a push into a pool is skimmed by the
+  first caller, into a locker it stays, into a vault it goes unaccounted. A
+  wallet the quote asset refuses, or whose delegate reverts or wants more
+  than 100,000 gas for a native payment, is passed over the same way and
+  the batch pays the rest
 
 ## Deployments
 
@@ -307,7 +323,9 @@ the call it makes), every role change, the pads' owner-only events, a deploy
 of the site and the pad's address gone from it; and
 `contracts/script/ops/harvest.sh`, the keeper that harvests every graduated
 coin's pool fees a slice every five minutes until the buckets are empty
-(`--watch` for the notice before a freeze); `contracts/script/ops/migrator.sh`, a new
+(`--watch` for the notice before a freeze); `contracts/script/ops/cashback.sh`, the
+report of the holder cashback nobody claimed on a coin and, on a pad that has
+`claimCashbackFor`, the weekly push that sends it; `contracts/script/ops/migrator.sh`, a new
 `UniV2Migrator` for the pad: deployed, its Standard JSON input for Basescan
 written, verified, read back (the pad takes it through the timelock, from
 the Safe: `timelock.sh safe-calldata set-migrator`); `contracts/script/ops/zap.sh`,
@@ -350,7 +368,7 @@ from `web/public/security/`) — trade accordingly.
 
 ```bash
 cd contracts
-forge test                       # incl. the fee model, the freeze, a cashback-solvency fuzz and the ledger-migration suite
+forge test                       # incl. the fee model, the freeze, a cashback-solvency fuzz, the cashback push and the ledger-migration suite
 script/rehearse-local.sh         # the migration to another chain, end to end on anvil
 node script/pool-probe.mjs --rpc <nodes> --launchpad <pad> --from-block <deploy block>   # a graduated coin's pool: what went in, what it holds, every swap since
 # fork tests against live contracts: RUN_FORK_LIVE=true forge test --match-contract Live

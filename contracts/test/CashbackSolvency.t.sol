@@ -5,6 +5,7 @@ import {Test, Vm} from "forge-std/Test.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {Launchpad} from "../src/Launchpad.sol";
 import {LaunchpadBase} from "../src/LaunchpadBase.sol";
+import {ILaunchpadMigration} from "../src/interfaces/ILaunchpadMigration.sol";
 import {UniV2Migrator} from "../src/UniV2Migrator.sol";
 import {MockWETH9, MockV2Factory, MockV2Router, MockV2Pair} from "./mocks/UniV2Mock.sol";
 
@@ -12,7 +13,7 @@ import {MockWETH9, MockV2Factory, MockV2Router, MockV2Pair} from "./mocks/UniV2M
 /// a taxed coin: on its curve, and — once it graduated and its pool is
 /// registered — on the pool: wallet transfers, self-transfers, pool buys and
 /// sells (both legs taxed in coins), harvests that turn the buckets into
-/// quote, buybacks, claims. The accumulator moves on curve fees and on
+/// quote, buybacks, claims, pushes (claimCashbackFor). The accumulator moves on curve fees and on
 /// poolFee and on nothing else; every claim is backed by what the pad holds;
 /// the pool and the migrator never earn; nothing of the coin stays with the
 /// pad but the share graduation locks and the two tax buckets.
@@ -305,7 +306,7 @@ contract CashbackSolvencyTest is Test {
             seed = uint256(keccak256(abi.encode(seed, step)));
             address a = actors[seed % actors.length];
             address b = actors[(seed >> 8) % actors.length];
-            uint256 op = (seed >> 16) % 8;
+            uint256 op = (seed >> 16) % 9;
             uint256 bal = IERC20(token).balanceOf(a);
             uint256 amount = bal == 0 ? 0 : (seed >> 24) % (bal + 1);
             emit log_named_uint("step", step);
@@ -331,7 +332,7 @@ contract CashbackSolvencyTest is Test {
                     vm.prank(a);
                     pad.claimCashback(token);
                 }
-            } else {
+            } else if (op == 7) {
                 if (pad.creatorFees(alice, address(0)) != 0) {
                     vm.prank(alice);
                     pad.claimCreatorFees(address(0));
@@ -339,10 +340,47 @@ contract CashbackSolvencyTest is Test {
                     vm.prank(b);
                     pad.claimCashback(token);
                 }
+            } else {
+                _pushAndCheck();
             }
 
             _checkInvariants();
         }
+    }
+
+    /// The cashback pushed to everyone at once by a stranger
+    /// (claimCashbackFor), the pool, the migrator and the pad in the list
+    /// with the wallets: each wallet receives exactly what it could claim,
+    /// the three that earn none receive nothing, the stranger nothing.
+    function _pushAndCheck() internal {
+        address[] memory list = new address[](everyone.length + 3);
+        uint256[] memory owed = _cashbacks();
+        uint256[] memory before = new uint256[](everyone.length);
+        uint256 expected;
+        for (uint256 i = 0; i < everyone.length; i++) {
+            list[i] = everyone[i];
+            before[i] = everyone[i].balance;
+            expected += owed[i];
+        }
+        list[everyone.length] = pair;
+        list[everyone.length + 1] = address(migrator);
+        list[everyone.length + 2] = address(pad);
+        uint256 padBefore = address(pad).balance;
+        uint256 pairBefore = pair.balance;
+
+        address stranger = makeAddr("stranger");
+        vm.prank(stranger);
+        uint256 paid = ILaunchpadMigration(address(pad)).claimCashbackFor(token, list);
+
+        assertEq(paid, expected, "the push pays the sum of every wallet's claim");
+        assertEq(padBefore - address(pad).balance, paid, "and the pad pays out that and no more");
+        for (uint256 i = 0; i < everyone.length; i++) {
+            assertEq(everyone[i].balance - before[i], owed[i], "each wallet exactly its own");
+            assertEq(pad.cashbackOf(token, everyone[i]), 0, "and its claim is settled");
+        }
+        assertEq(pair.balance, pairBefore, "nothing pushed into the pool");
+        assertEq(address(migrator).balance, 0, "nor into the migrator");
+        assertEq(stranger.balance, 0, "nor to the one who sent it");
     }
 
     /// A harvest, and the exact booking of what it realised: the holders'

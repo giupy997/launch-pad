@@ -24,4 +24,5 @@ interface ILaunchpadMigration {
     function announceFreeze(uint256 atBlock) external;
     function cancelFreeze() external;
     function migrateOut(address token, address to) external returns (uint256 quoteOut, uint256 tokensBurned);
+    function claimCashbackFor(address token, address[] calldata holders) external returns (uint256 paid);
 }

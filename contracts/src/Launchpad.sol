@@ -46,7 +46,8 @@ contract Launchpad is LaunchpadBase {
     }
 
     /// migrateToken, migrateBalances, setMigrationRoot, closeMigration,
-    /// setMigrationOperator, announceFreeze, cancelFreeze, migrateOut: see
+    /// setMigrationOperator, announceFreeze, cancelFreeze, migrateOut,
+    /// claimCashbackFor: see
     /// LaunchpadMigration (ILaunchpadMigration for the ABI). Value only
     /// through them (migrateToken in a native quote); a bare transfer reverts.
     fallback() external payable {
@@ -535,6 +536,8 @@ contract Launchpad is LaunchpadBase {
     }
 
     /// @notice Withdraw the trade-fee cashback earned by holding `token`.
+    ///         claimCashbackFor (LaunchpadMigration) sends it to wallets that
+    ///         have not come for it.
     function claimCashback(address token) external nonReentrant {
         uint256 bal = _isEligible(token, msg.sender) ? IERC20(token).balanceOf(msg.sender) : 0;
         _settleCashback(token, msg.sender, bal, bal);

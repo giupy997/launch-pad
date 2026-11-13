@@ -127,3 +127,34 @@ Before signing: decode the `data` on another machine (`cast 4byte-decode`,
 or paste it into the Safe's decoder) and compare it with what the VPS
 printed. The calldata is produced on the VPS; the Safe exists so that the VPS
 alone can do nothing, which holds only if a signer reads what it signs.
+
+## Unclaimed cashback (`contracts/script/ops/cashback.sh`)
+
+A coin's holders claim their cashback themselves (`claimCashback`, the button
+on the coin's page); what they leave waits in the pad without a term. The
+script reads who is owed what and, on a pad that has `claimCashbackFor`,
+sends it to them.
+
+```
+bash script/ops/cashback.sh 0x<coin>           # the report: no transaction, any pad
+bash script/ops/cashback.sh 0x<coin> --push    # the report, then the push in batches, after a yes
+```
+
+The report scans the coin's transfers from the pad's deploy block
+(`PAD_BLOCK` in the addresses file; `FROM_BLOCK=` to start at the coin's
+own) for every address that ever held it, since a holder who sold everything
+keeps what accrued while they held, and reads `cashbackOf` for each. It
+prints what was claimed so far, what waits, what a push would pay and to how
+many wallets, and the largest claims. `MIN=0.001` leaves out the wallets
+owed less than that much quote.
+
+The Base v12 pad has no `claimCashbackFor` and its module is fixed: there
+`--push` says so and stops, and the report is what there is, for a reminder
+to the holders. On a pad that has it, the push goes in transactions of
+`BATCH` wallets (default 100), signed by the keystore `notus` (the password
+asked once), and each batch's outcome is read from its receipt. Anyone may
+call `claimCashbackFor` and the quote goes to the holder alone, so the key
+that sends it has no say over where the money goes; it pays the gas. The
+list holds wallets, delegated ones (EIP-7702) included; the pad passes
+contracts over, and a wallet that cannot be paid keeps its claim. Run the
+report again after a push to see what is left.
